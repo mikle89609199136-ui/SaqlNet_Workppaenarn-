@@ -144,6 +144,7 @@ export function ChatThreadPage() {
           )}
           <MessagesList
             bottomRef={bottomRef}
+            chatId={chatId}
             error={threadError}
             handleJumpRequests
             hasOlder={hasOlder}

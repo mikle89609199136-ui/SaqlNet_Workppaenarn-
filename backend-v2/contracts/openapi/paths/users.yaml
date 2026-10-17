@@ -336,8 +336,11 @@
       omitted, null or empty object sections do not reset values. A provided folders array replaces the list
       (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for
       legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot.
-      Safe concurrent writes require a shared locked transaction for bulk and section read-modify-write; the
-      current service can still lose parallel updates. Strict root/section/leaf validation runs before SQL
+      Submitted textSize wins over submitted fontSize; otherwise a submitted fontSize sets textSize (#1040).
+      Both fields are validated, including the losing alias. Arbitrary accentColor stays compatibility data.
+      Bulk and legacy section read-modify-write share a row-locked transaction (#1047), preserving disjoint
+      concurrent patches. Row creation and all section changes roll back on update or commit failure.
+      Strict root/section/leaf validation runs before SQL
       (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases
       fail without writes.
     tags:
@@ -369,8 +372,6 @@
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
-    x-contract-gaps:
-      - '#451'
 /users/settings:
   get:
     tags:
@@ -382,7 +383,8 @@
     description: >-
       Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate
       objects; never another user's settings. Detailed legacy notification/sound/storage sections are not
-      included. Typed field contract is #453; runtime normalization is #451/#1040/#1042.
+      included. Typed field contract is #453; shared read defaults are implemented in #451. Appearance compatibility (#1040) resolves a valid stored
+      textSize before legacy fontSize and the default, without backfill. Notification migration remains #1042.
     responses:
       '200': {description: Own account settings and privacy, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/SettingsResponse}}}}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
@@ -410,9 +412,10 @@
       not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge
       Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT
       /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is
-      normalized on reads; unified defaults and migration remain #451/#1040/#1042. Notification preferences
-      are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read
-      normalization require #1042; consumers apply effective policy in #725.
+      normalized on reads; shared read defaults are implemented in #451. Appearance compatibility is
+      implemented in #1040; notification migration remains #1042.
+      Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound
+      aliases and read normalization require #1042; consumers apply effective policy in #725.
     requestBody:
       required: true
       description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
@@ -436,8 +439,6 @@
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
-    x-contract-gaps:
-      - '#451'
 /users/privacy:
   put:
     tags:
@@ -645,8 +646,6 @@
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
-    x-contract-gaps:
-      - '#451'
 /users/sounds:
   get:
     deprecated: true
@@ -713,8 +712,6 @@
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
-    x-contract-gaps:
-      - '#451'
 /users/advanced-settings:
   get:
     deprecated: true
@@ -777,8 +774,6 @@
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
-    x-contract-gaps:
-      - '#451'
 /users/folders:
   get:
     deprecated: true
@@ -907,8 +902,6 @@
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready]
-    x-contract-gaps:
-      - '#451'
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/storage/cache:
   delete:

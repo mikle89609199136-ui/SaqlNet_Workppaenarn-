@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"craneapp/backend-v2/internal/platform/settingsdefaults"
 )
 
 // Rule — правило видимости: кто из других пользователей получает доступ.
@@ -46,15 +48,21 @@ const (
 // defaults — значения для правил, которых в настройках ещё нет. Совпадают
 // с тем, что auth пишет при регистрации; телефон закрыт — раньше там стояло
 // «contacts».
-var defaults = map[Rule]string{
-	LastSeen:              Everyone,
-	Photo:                 Everyone,
-	Phone:                 Nobody,
-	Forwards:              Everyone,
-	Calls:                 Everyone,
-	GroupsAdd:             Everyone,
-	MessagesFromStrangers: Everyone,
-}
+var defaults = func() map[Rule]string {
+	out := make(map[Rule]string)
+	for key, value := range settingsdefaults.Object("privacy_settings") {
+		if text, ok := value.(string); ok {
+			out[Rule(key)] = text
+		}
+		if key == string(MessagesFromStrangers) {
+			out[MessagesFromStrangers] = Nobody
+			if value == true {
+				out[MessagesFromStrangers] = Everyone
+			}
+		}
+	}
+	return out
+}()
 
 // flags — прочие булевы поля настроек приватности: не правила видимости,
 // но живут в том же JSON и должны проходить проверку.
@@ -86,8 +94,10 @@ func Parse(raw []byte) Settings {
 		}
 	}
 	for name := range flags {
-		if value, ok := stored[name].(bool); ok {
-			s.flags[name] = value
+		if value, exists := stored[name]; exists {
+			s.flags[name], _ = value.(bool)
+		} else {
+			s.flags[name], _ = settingsdefaults.Object("privacy_settings")[name].(bool)
 		}
 	}
 	return s

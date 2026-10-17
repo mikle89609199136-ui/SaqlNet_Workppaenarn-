@@ -60,6 +60,7 @@ interface Props {
    */
   readMark?: IReadMark;
   onMessagesSeen?: (messages: IMessageDto[]) => void;
+  chatId?: string;
 }
 
 export const MessagesList = memo(
@@ -83,6 +84,7 @@ export const MessagesList = memo(
     handleJumpRequests = false,
     readMark,
     onMessagesSeen,
+    chatId,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
@@ -129,24 +131,25 @@ export const MessagesList = memo(
         ? activeMessageId
         : renderedMessageIds.at(-1);
 
-    // Чат ленты — по её сообщениям: у пустой ленты переходить некуда.
-    const threadChatId = messages.find((message) => message.chatId)?.chatId;
+    // Чат ленты — по переданному пропу или сообщениям
+    const activeChatId = chatId || messages.find((message) => message.chatId)?.chatId;
     const { jumpToMessage: handleJumpToMessage } = useJumpToMessage({
       onScrollToMessage: jumpToMessage,
       loadOlder,
       hasMoreOlder: hasOlder,
-      chatId: threadChatId,
+      chatId: activeChatId,
     });
 
     /* Переход, запрошенный из другой части экрана — из общего в профиле
-       (#842). Запрос чужого чата не трогаем: его выполнит своя лента. */
+       (#842) или закреплений. Запрос чужого чата не трогаем: его выполнит своя лента. */
     const jumpRequest = useChatUiStore((state) => state.jumpRequest);
     const setJumpRequest = useChatUiStore((state) => state.setJumpRequest);
     useEffect(() => {
-      if (!handleJumpRequests || !jumpRequest || jumpRequest.chatId !== threadChatId) return;
+      if (!handleJumpRequests || !jumpRequest) return;
+      if (jumpRequest.chatId && activeChatId && jumpRequest.chatId !== activeChatId) return;
       setJumpRequest(null);
       void handleJumpToMessage(jumpRequest.messageId);
-    }, [handleJumpRequests, handleJumpToMessage, jumpRequest, setJumpRequest, threadChatId]);
+    }, [handleJumpRequests, handleJumpToMessage, jumpRequest, setJumpRequest, activeChatId]);
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">

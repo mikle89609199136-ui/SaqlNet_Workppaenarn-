@@ -8,7 +8,7 @@
 
 Ответ PUT сохраняется: `200 { "success": true }`. Итоговый snapshot получается отдельным GET; в PUT response не добавляются новые обязательные поля или новый envelope. Пара GET/PUT не является compare-and-swap, экспортом/импортом всего аккаунта или атомарной последовательностью запросов.
 
-Это задача на решение и контракт. Ни спецификация, ни generated types не исправляют текущую конкурентную запись. Внедрение безопасной мутации выполняется backend-задачей #1047; validation/defaults/resolver имеют собственных владельцев ниже.
+Контракт #454 реализован в части конкурентной записи задачей #1047: bulk и legacy section read-modify-write используют общую транзакцию с блокировкой строки. Validation/defaults/resolver имеют собственных владельцев ниже.
 
 ## GET: полный совместимый snapshot
 
@@ -20,10 +20,10 @@
 | `privacySettings`                        | Нормализованные базовые privacy rules; в canonical GET поле называется privacy                                      |
 | `notificationSettings` / `soundSettings` | Legacy detailed objects; после #1042 sound aliases проецируются из canonical flags                                  |
 | `storageSettings` / `advancedSettings`   | Compatibility-only objects, не новые настройки MVP                                                                  |
-| `folders`                                | Массив legacy folders; текущий GET может вернуть null из сохранённого JSON null, нормализация в [] относится к #451 |
+| `folders`                                | Массив legacy folders; GET нормализует сохранённый JSON null в [] после #451 |
 | `passcodeEnabled` / `passcodeTimeout`    | Read-only сведения о passcode, не обновляемые этим PUT                                                              |
 
-Ключи snapshot обязательны, состав preference objects может быть неполным до единых defaults #451. [#453 фиксирует typed leaf schemas](user-api-contract.md); folders намеренно остаются opaque legacy JSON без обещания новой MVP-модели. Privacy exceptions, blocklist, push subscriptions, session/device state и key backup в snapshot не входят.
+Ключи snapshot обязательны; после [#451](settings-defaults.md) preference objects дополняются едиными defaults при чтении, без backfill и без подмешивания в writable patch. [#453 фиксирует typed leaf schemas](user-api-contract.md); folders намеренно остаются opaque legacy JSON без обещания новой MVP-модели. Privacy exceptions, blocklist, push subscriptions, session/device state и key backup в snapshot не входят.
 
 ## PUT: обязательность и правила по полям
 
@@ -72,6 +72,10 @@ Bulk никогда не включает/отключает passcode, не ус
 
 До rollout #1042 bulk пока сохраняет независимые JSONB objects. #454 не объявляет runtime alias mapping реализованным.
 
+## Appearance aliases (#1040)
+
+Переданный textSize приоритетен над переданным fontSize; иначе явный fontSize задаёт textSize независимо от предыдущего canonical/default значения. Все aliases валидируются до разрешения приоритетов. Bulk/export fontSize проецируется из разрешённого textSize. Arbitrary accentColor сохраняется без преобразования в preset. Полная policy и отсутствие глобального backfill — [Appearance compatibility](appearance-settings.md).
+
 ## Атомарность и конкурентные запросы
 
 Одна bulk-операция либо сохраняет все допустимые writable-изменения, либо не сохраняет ни одного. Validation должна закончиться до записи. Недопустим partial success с частью обновлённых разделов или HTTP 200 после ошибки БД.
@@ -86,7 +90,11 @@ Canonical SQL updates, которые уже меняют только пере�
 - Новые обязательные revision/If-Match и конфликт 409 для bulk не вводятся. Optimistic concurrency можно добавить отдельным контрактом, если понадобится редактирование snapshot.
 - Ответ success отправляется после commit. При использовании settings events (#1041) failed/no-op mutation не должна выдавать ложное событие; правило публикации после commit согласуется с транспортом #1041.
 
-После #495 bulk переписывает только явно изменённые разделы; omitted/null/empty sections сохраняются в БД, включая старые повреждённые данные. Snapshot всё ещё читается без блокировки, а UpdatePreference делает собственный read-modify-write. Гарантия от потери параллельных изменений **ещё не реализована**; её проверяет #1047. Даже атомарный SQL UPDATE нескольких колонок сам по себе не защищает от stale snapshot одного раздела.
+В #1047 `UpdateAllSettings` и `UpdatePreference` (включая storage) используют общий `mutateSettings` из `internal/user/settings_mutation.go`: BEGIN → INSERT ON CONFLICT → SELECT sections FOR UPDATE → sparse merge → UPDATE → COMMIT. Validation заканчивается до BEGIN. При ошибке UPDATE/COMMIT откатывается и создание отсутствующей строки; HTTP success возвращается только после commit. No-op bulk не открывает транзакцию.
+
+Canonical settings/privacy и dedicated folders/passcode writers выполняют атомарные SQL UPDATE той же строки и сериализуются с этой блокировкой. Mutation читает только шесть JSON sections: старые повреждённые folders не мешают unrelated patch, omitted/null folders сохраняются физически. Passcode columns не входят в UPDATE. Defaults из #451 добавляются к ответам, но не становятся patch keys.
+
+Проверки на настоящем PostgreSQL (`settings_mutation_integration_test.go`) используют удерживаемую транзакцию и `pg_blocking_pids` как барьер: writer обязан ждать на SELECT FOR UPDATE, затем увидеть предыдущее изменение. Проверены disjoint/same-key patches, оба порядка bulk/section writers, замена/очистка folders, параллельный passcode, ошибки UPDATE и deferred COMMIT, отмена ожидающего запроса. События синхронизации пока не публикуются; транспорт и публикация после commit остаются #1041. Resolver #1042 должен вычислять canonical/alias изменения внутри этой же транзакции.
 
 ## Ошибки и проверяемый round-trip
 
@@ -101,8 +109,8 @@ Round-trip для compatibility-клиента:
 
 ## Владельцы реализации и приёмка
 
-- [#1047](https://github.com/mikle89609199136-ui/CraneApp/issues/1047) (USER-B023): общий safe mutation path и защита bulk/section от потери изменений; создана в Product Backlog, Component Backend.
+- [#1047](https://github.com/mikle89609199136-ui/CraneApp/issues/1047) (USER-B023): реализованы общий locked mutation path и PostgreSQL regression tests для bulk/section writers.
 - #495 — typed validation всех сохраняемых sections, root unknown keys и null/shape policy; #453 — точные leaf schemas, errors и DTO; #451 — единые defaults/normalization чтения.
-- #1042 — notification/sound resolver и миграция; #1040 — Appearance; #1041 — доставка изменений. Эти задачи используют решение #454, не заменяют его конкурентные regression cases.
+- #1042 — notification/sound resolver и миграция; #1040 — [реализованная Appearance compatibility](appearance-settings.md); #1041 — доставка изменений. Эти задачи используют решение #454, не заменяют его конкурентные regression cases.
 
 Приёмка backend-реализации: barriers/две DB connections для воспроизводимой гонки bulk против canonical settings/privacy/preference; сохранение disjoint keys; два folders replacement в определённом порядке; rollback на invalid mixed patch/ошибке БД; no-op/omitted/null/empty semantics; неизменность passcode; alias priority/error cases из #496 и совместимые responses. Проверять на настоящем PostgreSQL, а не только SQL mock. Production data в #454 не изменяются.

@@ -93,7 +93,11 @@ Preview — отдельное решение от допуска/звука. Se
 4. **#725:** применять ту же effective policy в browser fallback, звуке сообщения, рингтоне и service worker. Query cache — клиентское представление серверных настроек; profileStore/localStorage не должен независимо переопределять подтверждённый серверный выбор. Убрать временные fallback-пути при внедрении политики, сохранив корректный старт до загрузки настроек.
 5. Server-фильтрация notifications уже есть, но новое поведение всех flags выпускать согласованно с клиентом/worker, проверив cache versioning, permission, duplicate suppression и старые подписки. Отказ новых settings-read не должен разрешать отключённые ранее оповещения; повторная попытка и сохранённое подтверждённое состояние описываются в #725/#1041.
 
-## Что подтверждено сейчас
+## Personal chat mute (#559)
+
+Серверная [реализация mute](personal-chat-mute.md) уже хранит personal message preference с optional expiry и исключает все подписки владельца для сообщений этого чата. Входящие/пропущенные звонки независимы от этого mute; global notifications остаётся общим gate. Клиентское меню и browser fallback/звук реализует #725. Resolver/one-time migration и sound payload по-прежнему остаются #1042.
+
+## Что было подтверждено на момент решения #496
 
 - Регистрация создаёт settings.notifications/sounds и параллельные подробные objects; callSounds серверным default пока не задан.
 - `push.DBDirectory.Targets` читает settings.notifications. Browser NotificationManager этот флаг пока не применяет.

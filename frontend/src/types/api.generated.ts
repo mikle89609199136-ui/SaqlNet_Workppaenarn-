@@ -587,7 +587,7 @@ export interface paths {
         /**
          * Partially update legacy settings sections
          * @deprecated
-         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Safe concurrent writes require a shared locked transaction for bulk and section read-modify-write; the current service can still lose parallel updates. Strict root/section/leaf validation runs before SQL (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without writes.
+         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Submitted textSize wins over submitted fontSize; otherwise a submitted fontSize sets textSize (#1040). Both fields are validated, including the losing alias. Arbitrary accentColor stays compatibility data. Bulk and legacy section read-modify-write share a row-locked transaction (#1047), preserving disjoint concurrent patches. Row creation and all section changes roll back on update or commit failure. Strict root/section/leaf validation runs before SQL (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without writes.
          */
         put: operations["updateAllSettings"];
         post?: never;
@@ -606,12 +606,12 @@ export interface paths {
         };
         /**
          * Get own account settings and privacy
-         * @description Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate objects; never another user's settings. Detailed legacy notification/sound/storage sections are not included. Typed field contract is #453; runtime normalization is #451/#1040/#1042.
+         * @description Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate objects; never another user's settings. Detailed legacy notification/sound/storage sections are not included. Typed field contract is #453; shared read defaults are implemented in #451. Appearance compatibility (#1040) resolves a valid stored textSize before legacy fontSize and the default, without backfill. Notification migration remains #1042.
          */
         get: operations["getSettings"];
         /**
          * Partially update own account settings
-         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is normalized on reads; unified defaults and migration remain #451/#1040/#1042. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
+         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is normalized on reads; shared read defaults are implemented in #451. Appearance compatibility is implemented in #1040; notification migration remains #1042. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
          */
         put: operations["updateSettings"];
         post?: never;
@@ -1736,6 +1736,30 @@ export interface paths {
         post: operations["pinChat"];
         /** Unpin a chat */
         delete: operations["unpinChat"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chats/{chatId}/mute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mute personal message notifications for a chat
+         * @description Persists only the authenticated member's personal mute (#559), independently of moderator member mute. A future mutedUntil sets an expiry; {} or null/omitted mutedUntil mutes indefinitely. Read effective isMuted and optional mutedUntil in chat details and lists, including archived chats. Repeating the request is safe. Expiry is evaluated at read/delivery time, without a scheduled cleanup job. Message Web Push is suppressed on every subscribed device; call and missed-call notifications are independent. History, unread counts, other members and other personal preferences are preserved. Frontend actions and browser fallback/sound gating are implemented separately in #725.
+         */
+        post: operations["muteChat"];
+        /**
+         * Unmute personal message notifications for a chat
+         * @description Clears only the authenticated member's personal mute. Repeating is safe; global notifications, pin/archive/preview, unread counts and moderator restrictions are unchanged. Global notifications=false can still suppress push after this operation. No request body is required or read.
+         */
+        delete: operations["unmuteChat"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3000,12 +3024,12 @@ export interface components {
         notifications: boolean;
         /** @description Default true when absent during normalization. Incoming message sound preference, independent of callSounds. Effective message sound also requires notifications, an unmuted chat and an eligible delivery context. Legacy messagesSound and notificationsSound become compatibility aliases after #1042. */
         sounds: boolean;
-        /** @description Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated to conversation audio. Effective ringtone also requires notifications and an allowed call. Legacy callsSound becomes an alias after #1042. Absent on older accounts: default true until backend normalization. */
+        /** @description Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated to conversation audio. Effective ringtone also requires notifications and an allowed call. Legacy callsSound becomes an alias after #1042. Missing on older accounts: read projection supplies true (#451) without persisting it before #1042. */
         callSounds: boolean;
-        /** @description Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown keys/null leaves rejected before SQL (#495). Stored unknown keys are hidden on reads; migration remains separate. It is not an extension point. */
+        /** @description Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown keys/null leaves rejected before SQL (#495). Appearance alias compatibility is implemented by #1040; reads resolve valid textSize, then valid legacy fontSize, then the shared default. Bulk/export fontSize projects the resolved value. Arbitrary accentColor remains compatibility data. Stored unknown keys are hidden on reads. It is not an extension point. */
         LegacyGeneralSettings: {
             /**
-             * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme. #728/#1040.
+             * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme (#728). Backend storage/compatibility is implemented by #1040.
              * @enum {string}
              */
             theme?: "light" | "dark" | "system";
@@ -3020,7 +3044,7 @@ export interface components {
              */
             accentPreset?: "violet" | "plum" | "orchid" | "indigo" | "amber" | "teal";
             /**
-             * @description Default medium. Relative UI text scale; exact CSS metrics belong to #728, not a stored pixel count.
+             * @description Default medium; valid stored textSize wins, otherwise a valid legacy fontSize is used (#1040). Relative UI scale; CSS metrics belong to #728.
              * @enum {string}
              */
             textSize?: "small" | "medium" | "large";
@@ -3050,10 +3074,10 @@ export interface components {
             notifications?: components["schemas"]["notifications"];
             sounds?: components["schemas"]["sounds"];
             callSounds?: components["schemas"]["callSounds"];
-            /** @description Deprecated legacy hex preference. Retained for compatibility; not a second MVP accent source. */
+            /** @description Deprecated arbitrary hex preference, preserved in bulk/export without conversion to a preset (#1040). It does not override accentPreset; missing accentPreset uses violet. */
             accentColor?: string;
             /**
-             * @description Deprecated alias data. New clients write textSize; migration is #1040.
+             * @description Deprecated textSize alias (#1040). Reads project resolved textSize. On bulk writes an explicitly submitted textSize wins; otherwise submitted fontSize sets textSize. Both values are validated before writes.
              * @enum {string}
              */
             fontSize?: "small" | "medium" | "large";
@@ -3075,10 +3099,10 @@ export interface components {
             messagesFromStrangers?: boolean;
             /** @description Compatibility preference; normalized default false. Does not enable auth MFA. */
             twoFactorAuth?: boolean;
-            /** @description Compatibility preference; chosen normalized default true, matching registration. Missing flags currently read false; unify in #451. Does not implement account erasure. */
+            /** @description Compatibility preference; chosen normalized default true, matching registration. Missing flags read true after #451; stored false remains false. Does not implement account erasure. */
             autoDeleteAccount?: boolean;
         };
-        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Reads fill missing known keys from shared defaults (#451); this schema does not turn stored compatibility data into an implemented feature. */
         LegacyNotificationSettings: {
             /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
             privateChats?: boolean;
@@ -3101,7 +3125,7 @@ export interface components {
             /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
             newContacts?: boolean;
         };
-        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Reads fill missing known keys from shared defaults (#451); this schema does not turn stored compatibility data into an implemented feature. */
         LegacySoundSettings: {
             /** @description Compatibility percentage; fallback 80. */
             notificationsVolume?: number;
@@ -3124,7 +3148,7 @@ export interface components {
             /** @description Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support. */
             ringtone?: string;
         };
-        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Reads fill missing known keys from shared defaults (#451); this schema does not turn stored compatibility data into an implemented feature. */
         LegacyStorageSettings: {
             /** @description Compatibility preference. */
             autoDownloadMobile?: boolean;
@@ -3135,7 +3159,7 @@ export interface components {
             /** @description Opaque legacy retention identifier; known fallback never. No other supported retention catalogue or enforcement is defined. */
             deleteMediaAfter?: string;
         };
-        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Reads fill missing known keys from shared defaults (#451); this schema does not turn stored compatibility data into an implemented feature. */
         LegacyAdvancedSettings: {
             /** @description Compatibility-only stored data; not a new MVP control. */
             autoReconnect?: boolean;
@@ -3162,9 +3186,9 @@ export interface components {
         LegacyFolderValue: (string | null) | number | boolean | {
             [key: string]: unknown;
         } | unknown[];
-        /** @description Stored legacy list; null can currently be read (#451). Empty array is the normalized empty list. Bulk null/omission preserves; dedicated PUT requires a non-null array (#441). */
+        /** @description Stored legacy list; reads normalize JSON null to [] after #451. Empty array is the normalized empty list. Bulk null/omission preserves; dedicated PUT requires a non-null array (#441). */
         LegacyFolders: components["schemas"]["LegacyFolderValue"][] | null;
-        /** @description Deprecated compatibility snapshot (#454). Preference keys/defaults may be incomplete until #451. This is not a compare-and-swap token; build a patch of changed keys rather than sending a stale writable snapshot back. */
+        /** @description Deprecated compatibility snapshot (#454). Reads fill missing preference keys from shared defaults (#451), without backfill. This is not a compare-and-swap token; build a patch of changed keys rather than sending a stale writable snapshot back. */
         LegacySettingsSnapshot: {
             settings: components["schemas"]["LegacyGeneralSettings"];
             privacySettings: components["schemas"]["PrivacySettings"];
@@ -3229,7 +3253,7 @@ export interface components {
         LegacyStorageSettingsBulkSection: components["schemas"]["LegacyStorageSettings"] | components["schemas"]["LegacyNullSection"];
         /** @description Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyAdvancedSettings; invalid leaves and unknown keys reject the complete command (#495). */
         LegacyAdvancedSettingsBulkSection: components["schemas"]["LegacyAdvancedSettings"] | components["schemas"]["LegacyNullSection"];
-        /** @description Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data. Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495); common locked mutation path is #1047. Correctly typed passcode fields are ignored. Canonical flags beat valid legacy sound aliases (#496/#1042). Unknown root fields and null root are rejected before SQL (#495). */
+        /** @description Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data. Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495); bulk and legacy section writers share a row-locked transaction (#1047). Correctly typed passcode fields are ignored. Canonical flags beat valid legacy sound aliases (#496/#1042). Unknown root fields and null root are rejected before SQL (#495). */
         LegacySettingsBulkPatch: {
             settings?: components["schemas"]["LegacyGeneralSettingsBulkSection"];
             privacySettings?: components["schemas"]["PrivacySettingsPatchBulkSection"];
@@ -3252,10 +3276,10 @@ export interface components {
             /** @enum {string} */
             code?: "invalid_json" | "validation_failed";
         };
-        /** @description Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an old response; defaults are normalization rules, not patch values. Root and leaves must not be null, unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Unified defaults/migration remain #451/#1040/#1042. Animation/GIF controls are outside MVP. */
+        /** @description Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an old response; defaults are normalization rules, not patch values. Root and leaves must not be null, unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Shared read defaults are applied by #451. Appearance compatibility is implemented by #1040 without global backfill; notification migration remains #1042. Animation/GIF controls are outside MVP. */
         MvpSettings: {
             /**
-             * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme. #728/#1040.
+             * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme (#728). Backend storage/compatibility is implemented by #1040.
              * @enum {string}
              */
             theme?: "light" | "dark" | "system";
@@ -3270,7 +3294,7 @@ export interface components {
              */
             accentPreset?: "violet" | "plum" | "orchid" | "indigo" | "amber" | "teal";
             /**
-             * @description Default medium. Relative UI text scale; exact CSS metrics belong to #728, not a stored pixel count.
+             * @description Default medium; valid stored textSize wins, otherwise a valid legacy fontSize is used (#1040). Relative UI scale; CSS metrics belong to #728.
              * @enum {string}
              */
             textSize?: "small" | "medium" | "large";
@@ -3751,6 +3775,13 @@ export interface components {
             role?: string;
             isPinned?: boolean;
             isArchived?: boolean;
+            /** @description Personal message notifications are muted for the authenticated member (#559). False by default and after expiry; independent of moderator member mute, unread counts and call alerts. */
+            isMuted?: boolean;
+            /**
+             * Format: date-time
+             * @description Future UTC expiry of the authenticated member's personal mute. Omitted when unmuted, expired or muted indefinitely; isMuted distinguishes those states.
+             */
+            mutedUntil?: string;
             /**
              * @description Hide message text in notifications for the authenticated user in this chat.
              * @default false
@@ -3775,6 +3806,14 @@ export interface components {
             isPeerBlocked?: boolean;
             /** @description Private chats only. Present instead of peerLastSeen and peerIsOnline when the exact time is hidden from the viewer. */
             peerLastSeenApprox?: components["schemas"]["LastSeenApprox"];
+        };
+        /** @description Personal message alerts only. An empty object or null/omitted mutedUntil mutes indefinitely; a timestamp must be RFC3339 in the future. No other member's state can be changed. */
+        PersonalChatMuteRequest: {
+            /**
+             * Format: date-time
+             * @description Future expiry, or null for indefinite mute. Past/equal-to-now values are rejected by runtime validation.
+             */
+            mutedUntil?: string | null;
         };
         DeleteMessagesRequest: {
             messageIds: string[];
@@ -7456,6 +7495,124 @@ export interface operations {
         responses: {
             /** @description Unpinned */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    muteChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalChatMuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Personal mute saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
+            };
+            /** @description Invalid JSON (invalid_json) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a member or chat does not exist (access_denied) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed (method_not_allowed) */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Database error (internal_error) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unmuteChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chatId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Personal mute cleared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
+            };
+            /** @description Invalid UUID (validation_failed) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a member or chat does not exist (access_denied) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Method not allowed (method_not_allowed) */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Database error (internal_error) */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -55,7 +55,7 @@ func (d *fakeDirectory) MembersExcept(_ context.Context, chatID, userID string) 
 	}
 	return out, nil
 }
-func (d *fakeDirectory) Targets(_ context.Context, userIDs []string) ([]Target, error) {
+func (d *fakeDirectory) Targets(_ context.Context, userIDs []string, _ Event) ([]Target, error) {
 	var out []Target
 	for _, userID := range userIDs {
 		out = append(out, d.targets[userID]...)

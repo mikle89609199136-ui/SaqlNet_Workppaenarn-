@@ -2,7 +2,7 @@
 
 Решение USER-D001, #453, от 16 октября 2026. Основание — `dev` после #454/#706, handlers/services в `backend-v2/internal/user`, session/Origin middleware и edge gateway. В актуальном `paths/users.yaml` **46 операций**; исходные 39 в issue устарели. Все адреса ниже имеют префикс `/api/v2`.
 
-Исполнимый источник — `backend-v2/contracts/openapi/{paths/users.yaml,components/schemas.yaml,components/responses.yaml}`. Из него генерируется `frontend/src/types/api.generated.ts`. Схемы фиксируют wire DTO и выбранные правила записи; сами по себе они не добавляют проверки, defaults или функции. Runtime validation разделов реализована в #495 (17 октября); остальные пробелы отмечены отдельно. Расхождения перечислены ниже и помечены у операций `x-contract-gaps`/описанием. Encryption/key-backup endpoints имеют отдельный контракт и в эти 46 операций не входят.
+Исполнимый источник — `backend-v2/contracts/openapi/{paths/users.yaml,components/schemas.yaml,components/responses.yaml}`. Из него генерируется `frontend/src/types/api.generated.ts`. Схемы фиксируют wire DTO и выбранные правила записи; сами по себе они не добавляют проверки, defaults или функции. Runtime validation разделов реализована в #495, единые [defaults — в #451](settings-defaults.md) (17 октября); остальные пробелы отмечены отдельно. Расхождения перечислены ниже и помечены у операций `x-contract-gaps`/описанием. Encryption/key-backup endpoints имеют отдельный контракт и в эти 46 операций не входят.
 
 ## Общие правила
 
@@ -28,7 +28,7 @@
 | Profile `badges`                     | `string[]?`            | Может быть `null`; схема отражает текущую сериализацию                               |
 | Devices `devices`                    | `DeviceSession[]`      | Всегда массив, пустое значение `[]` после #706                                       |
 | Privacy exceptions `exceptions`      | `PrivacyException[]`   | Всегда массив, пустое значение `[]`                                                  |
-| Legacy `folders` в GET/bulk snapshot | `LegacyFolderValue[]?` | Сохранённый JSON null возможен; нормализация defaults — #451                         |
+| Legacy `folders` в GET/bulk snapshot | `LegacyFolderValue[]?` | После #451 JSON null нормализуется в []                                              |
 
 `?` в этой таблице означает JSON null, а не отсутствие поля: ключи envelopes обязательны. После runtime-нормализации #435 nullability меняется отдельной правкой контракта и типов. `LegacyFolderValue` намеренно допускает произвольный JSON, включая вложенные объекты/массивы: сервер хранит `[]any`, предметной модели и активного MVP editor нет (#561). Это закрытое исключение для совместимости, а не разрешение произвольных settings keys.
 
@@ -50,7 +50,7 @@ Search ищет literal substring без учёта регистра в username
 
 `MvpSettings` — **flat partial object** с закрытыми ключами. `{}` — no-op. Отсутствующее поле сохраняется; root null, null leaf, array, неверный тип/enum и неизвестный ключ дают `400 validation_failed` до любого SQL для **всего** запроса (#495). Null не означает reset/delete. В частности, `false` — полноценное сохранённое значение, не отсутствие. GET/PUT возвращают envelopes с обязательным `settings`, GET также с обязательным `privacy`. Старый объект может не иметь некоторых leaf-полей до нормализации.
 
-Defaults ниже применяются при создании/восстановлении/нормализованном чтении (#451/#1040/#1042), **не подставляются в patch**. Поэтому в request-схемах нет `required` для leaf-полей и JSON Schema `default`, превращающего необязательный PUT в обязательный при генерации типов.
+Defaults ниже применяются при создании/восстановлении/нормализованном чтении (#451), **не подставляются в patch**. [Appearance compatibility](appearance-settings.md) реализована в #1040 без backfill; notification aliases остаются #1042. Поэтому в request-схемах нет `required` для leaf-полей и JSON Schema `default`, превращающего необязательный PUT в обязательный при генерации типов.
 
 | Поле                       | Тип / enum                                       | Default    | Семантика                                                                                                              |
 | -------------------------- | ------------------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -69,9 +69,9 @@ Defaults ниже применяются при создании/восстан�
 | `sounds`                   | boolean                                          | `true`     | Message sound, независим от callSounds                                                                                 |
 | `callSounds`               | boolean                                          | `true`     | Incoming ringtone, не громкость разговора                                                                              |
 
-Appearance enums/defaults из предварительного аудита теперь приняты этим контрактом. Animation/animated emoji/stickers/autoplay GIF не добавляются в MVP. Browser push permission/subscription и громкость голосовых остаются состоянием устройства. Новые значения не означают готовность UI: `system` и применение остальных Appearance controls реализуют #728/#1040/#1041. Нынешний `ISettingsDto` остаётся моделью поддерживаемого UI с light/dark; полный wire type — генерируемый `MvpSettings`.
+Appearance enums/defaults из предварительного аудита теперь приняты этим контрактом. Animation/animated emoji/stickers/autoplay GIF не добавляются в MVP. Browser push permission/subscription и громкость голосовых остаются состоянием устройства. Новые значения не означают готовность UI: `system` и применение остальных Appearance controls реализуют #728/#1041; серверное хранение и совместимость готовы в #1040. Нынешний `ISettingsDto` остаётся моделью поддерживаемого UI с light/dark; полный wire type — генерируемый `MvpSettings`.
 
-`PrivacySettingsPatch` отличен от output `PrivacySettings`: шесть visibility keys (`lastSeen`, `photoVisibility`, `phoneVisibility`, `forwards`, `calls`, `groupsAdd`) принимают `all/nobody`, а также compatibility aliases `everyone/everybody → all`, `contacts/none → nobody`. Contacts-модели нет. Null и неизвестные keys недопустимы. Ещё три keys — boolean `messagesFromStrangers/twoFactorAuth/autoDeleteAccount`. Последние два — старые сохранённые переключатели, не подтверждение наличия MFA/автоудаления. Для отсутствующих visibility defaults: phoneVisibility — nobody, остальные — all; сообщения от незнакомых — true, twoFactorAuth — false, autoDeleteAccount — true (сохраняем registration default). Сейчас отсутствующий autoDeleteAccount нормализуется в false; это расхождение также исправляется в #451, без включения реального автоудаления. Исправление одинаковых defaults и старых строк — #451.
+`PrivacySettingsPatch` отличен от output `PrivacySettings`: шесть visibility keys (`lastSeen`, `photoVisibility`, `phoneVisibility`, `forwards`, `calls`, `groupsAdd`) принимают `all/nobody`, а также compatibility aliases `everyone/everybody → all`, `contacts/none → nobody`. Contacts-модели нет. Null и неизвестные keys недопустимы. Ещё три keys — boolean `messagesFromStrangers/twoFactorAuth/autoDeleteAccount`. Последние два — старые сохранённые переключатели, не подтверждение наличия MFA/автоудаления. Для отсутствующих visibility defaults: phoneVisibility — nobody, остальные — all; сообщения от незнакомых — true, twoFactorAuth — false, autoDeleteAccount — true (сохраняем registration default). После #451 отсутствующий autoDeleteAccount получает true, сохранённый false не меняется; реального автоудаления это не включает.
 
 `callsFrom` не является API key. Исключения — отдельные ресурсы с `rule` из шести visibility keys и `mode=allow|deny`; смена базового правила их не очищает. Проверка: сам владелец, блокировка, персональное исключение, базовое правило. Себя добавить нельзя (`400 self_exception`), неизвестный/disabled пользователь — `404 user_not_found`; удаление отсутствующего исключения успешно. Полный calls policy уже находится в описании `PrivacySettings.calls`.
 
@@ -81,13 +81,13 @@ Appearance enums/defaults из предварительного аудита т�
 
 | Schema                       | Поля и ограничения                                                                                                                                                                                                                          |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `LegacyGeneralSettings`      | MvpSettings плюс старые `accentColor` (hex `#RRGGBB`) и `fontSize=small/medium/large`. Новые клиенты используют accentPreset/textSize; преобразование с сохранением выбора — #1040                                                          |
+| `LegacyGeneralSettings`      | MvpSettings плюс старые `accentColor` (hex `#RRGGBB`) и `fontSize=small/medium/large`. Новые клиенты используют accentPreset/textSize; fontSize → textSize реализован в #1040, canonical значение приоритетно; произвольный HEX сохраняется без подбора пресета                                                          |
 | `LegacyNotificationSettings` | Boolean: privateChats, groups, channels, calls, videoCalls, inAppNotifications, messagePreview, readReceipts, reactions, newContacts. Legacy fallback true, кроме readReceipts=false; поведение — по #496                                   |
 | `LegacySoundSettings`        | notificationsVolume/mediaVolume — integer **0…100** (fallback 80/100); notificationsSound/messagesSound/sendSound/callsSound/vibrateOnCall — boolean (fallback true); notificationSound/messageSound/ringtone — строки (fallback `default`) |
 | `LegacyStorageSettings`      | autoDownloadMobile/autoDownloadWifi/autoDownloadRoaming — boolean; deleteMediaAfter — строковый legacy identifier, известное fallback `never`                                                                                               |
 | `LegacyAdvancedSettings`     | Boolean: autoReconnect, fastConnection, dataCompression, saveDrafts, analytics, developerMode, debugLog, hardwareAcceleration, autoplayGifs; connectionType — строковый legacy identifier, fallback `auto`                                  |
 
-Для sound IDs, deleteMediaAfter и connectionType **нет поддерживаемого серверного каталога**, поэтому не изобретаем enum, отбрасывающий существующие значения. Решение — сохранять opaque string в deprecated data без обещания playback/retention/connection поведения; предел длины — общий JSON body limit. Для advanced fallback при пустом объекте true у autoReconnect/fastConnection/dataCompression/saveDrafts/hardwareAcceleration/autoplayGifs, false у analytics/developerMode/debugLog. Сейчас объекты defaults расходятся между путями (#451).
+Для sound IDs, deleteMediaAfter и connectionType **нет поддерживаемого серверного каталога**, поэтому не изобретаем enum, отбрасывающий существующие значения. Решение — сохранять opaque string в deprecated data без обещания playback/retention/connection поведения; предел длины — общий JSON body limit. Для advanced fallback при пустом объекте true у autoReconnect/fastConnection/dataCompression/saveDrafts/hardwareAcceleration/autoplayGifs, false у analytics/developerMode/debugLog. После #451 все маршруты используют единый источник defaults.
 
 Legacy notification/sound/advanced GET возвращает `{settings: section}`, PUT — `{success: true, settings: section}`. Storage PUT имеет тот же envelope. Не перепутать эти ключи с названиями `notificationSettings/soundSettings/advancedSettings/storageSettings` в bulk snapshot. Dedicated folders PUT возвращает только `{success:true}`; обязательный non-null массив заменяется целиком (#441).
 
@@ -99,20 +99,20 @@ Typed DTO: SettingsPatch, LegacySettingsPatch, NotificationSettingsPatch, SoundS
 
 Повреждённые сохранённые **object sections** читаются по документированной нормализации:
 
-| Сохранённое значение                                    | Результат чтения                                                           |
-| ------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Известный валидный key/value                            | Сохранить без изменения, включая false/0/opaque identifiers                |
-| Неизвестный key                                         | Скрыть из wire DTO                                                         |
-| Известный boolean неверного типа/null                   | false                                                                      |
-| Неверная громкость/тип/диапазон                         | 0                                                                          |
-| Неверный enum/строка/hex color                          | Опустить поле, оставить объект sparse                                      |
-| Повреждённый корень общего settings (null/array/scalar) | notifications/sounds/callSounds=false, остальные keys отсутствуют          |
-| Повреждённый корень detailed section                    | Известные booleans=false, volumes=0; строковые keys отсутствуют            |
-| Валидный пустой объект                                  | Остаётся пустым; существующий section GET fallback пока сохраняется (#451) |
+| Сохранённое значение                                    | Результат чтения                                                       |
+| ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Известный валидный key/value                            | Сохранить без изменения, включая false/0/opaque identifiers            |
+| Неизвестный key                                         | Скрыть из wire DTO                                                     |
+| Известный boolean неверного типа/null                   | false                                                                  |
+| Неверная громкость/тип/диапазон                         | 0                                                                      |
+| Неверный enum/строка/hex color                          | Default из #451, если определён; textSize сначала использует валидный legacy fontSize (#1040); прочие invalid aliases опускаются |
+| Повреждённый корень общего settings (null/array/scalar) | notifications/sounds/callSounds=false, остальные keys из defaults      |
+| Повреждённый корень detailed section                    | Известные booleans=false, volumes=0; строки из defaults                |
+| Валидный пустой объект                                  | Полный default object в ответе; БД не переписывается (#451)            |
 
-GET не переписывает существующую строку. Canonical GET отдаёт только MvpSettings; bulk/export дополнительно сохраняют известные legacy accentColor/fontSize. При записи очищается затронутый legacy/bulk object; omitted/null/empty bulk sections сохраняются в БД без изменений, даже если их данные повреждены. Canonical SQL patch сохраняет соседние stored keys; не-object root ремонтируется в закрытый notifications state перед merge. Пустой bulk (включая только read-only поля) не вызывает SQL. Глобальный backfill и единые defaults не входят в #495.
+GET не переписывает существующую строку. Canonical GET отдаёт только MvpSettings; bulk/export дополнительно возвращают сохранённый accentColor и fontSize как проекцию разрешённого textSize (#1040). При записи очищается затронутый legacy/bulk object; omitted/null/empty bulk sections сохраняются в БД без изменений, даже если их данные повреждены. Canonical SQL patch сохраняет соседние stored keys; не-object root ремонтируется в закрытый notifications state перед merge. Пустой bulk (включая только read-only поля) не вызывает SQL. Единые defaults добавлены в #451 как read projection; глобального backfill нет. Sparse mutation base сохраняет отсутствие flags до #1042.
 
-Все writable bulk sections записываются одним UPDATE после полной валидации: invalid mixed patch не создаёт строку и ничего не меняет, ошибка UPDATE не сохраняет часть разделов. Snapshot для bulk/legacy section read-modify-write пока читается без блокировки; same-section lost updates остаются #1047. Alias priority/conflict resolution и проекции notifications/sounds остаются #1042. Privacy использует существующий Normalize/Parse (#439), dedicated folders и passcode timeout сохраняют свои отдельные задачи.
+Все writable bulk sections записываются одним UPDATE после полной валидации: invalid mixed patch не создаёт строку и ничего не меняет, ошибка UPDATE не сохраняет часть разделов. В #1047 bulk/legacy section read-modify-write используют общую транзакцию: создание строки и чтение актуального snapshot под FOR UPDATE, sparse merge и commit. Ошибка UPDATE/COMMIT откатывает все изменения, включая создание строки. Canonical SQL writers сериализуются той же блокировкой; passcode не записывается из snapshot. Alias priority/conflict resolution и проекции notifications/sounds остаются #1042. Privacy использует существующий Normalize/Parse (#439), dedicated folders и passcode timeout сохраняют свои отдельные задачи.
 
 ## Отдельные операции и их границы
 
@@ -185,18 +185,18 @@ GET не переписывает существующую строку. Canonic
 
 ## Изменения контракта и оставшаяся реализация
 
-| Задача              | Состояние и оставшаяся работа после #495                                                                          |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| #495                | Реализована validation всех object sections до SQL, closed keys/enums/ranges/null и безопасные legacy reads       |
-| #451 / #497 / #1040 | Одинаковые defaults/new/recovered/read, avatarShape, Appearance storage и миграция старых keys/неизвестных данных |
-| #728 / #1041        | Применение Appearance, точные CSS metrics/visual tests, system media query, sync между устройствами/вкладками     |
-| #1042 / #725        | Канонические sound aliases, one-time migration/resolver и применение effective notification policy по #496        |
-| #1047               | Общий locked mutation path для bulk/section writers, отсутствие потерянных конкурентных обновлений                |
-| #435 / #441         | Empty list вместо legacy null; обязательный dedicated folders input без непреднамеренной очистки                  |
-| #442 / #449 / #450  | Timeout=0/invalid input, неправильные методы, один JSON root                                                      |
-| #445 / #446         | Настоящий storage accounting и cache clear                                                                        |
-| #447 / #448         | Реализация согласованного расширенного export/delete scope и последующее расширение DTO                           |
-| #452                | Trusted public origin для canonical profile QR; проверить frontend landing route                                  |
+| Задача              | Состояние и оставшаяся работа после #495                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- |
+| #495                | Реализована validation всех object sections до SQL, closed keys/enums/ranges/null и безопасные legacy reads   |
+| #451 / #497 / #1040 | Defaults и avatarShape готовы в #451; полный Appearance и совместимость fontSize/HEX завершены в #1040   |
+| #728 / #1041        | Применение Appearance, точные CSS metrics/visual tests, system media query, sync между устройствами/вкладками |
+| #1042 / #725        | Канонические sound aliases, one-time migration/resolver и применение effective notification policy по #496    |
+| #1047               | Реализованы общий locked mutation path bulk/section и PostgreSQL concurrency/rollback regression tests            |
+| #435 / #441         | Empty list вместо legacy null; обязательный dedicated folders input без непреднамеренной очистки              |
+| #442 / #449 / #450  | Timeout=0/invalid input, неправильные методы, один JSON root                                                  |
+| #445 / #446         | Настоящий storage accounting и cache clear                                                                    |
+| #447 / #448         | Реализация согласованного расширенного export/delete scope и последующее расширение DTO                       |
+| #452                | Trusted public origin для canonical profile QR; проверить frontend landing route                              |
 
 Стандартизация двух PostgreSQL timestamps и платный billing flow — отдельные обнаруженные пробелы, а не выполненные изменения этого PR. Уже исправленные #432–#440/#443/#444/#706 повторно не считаются остатком: текущие schemas учитывают их результат.
 

@@ -90,6 +90,29 @@ const profile = {
 } satisfies components['schemas']['UserProfile'];
 
 describe('Исполнимый контракт User API (#453)', () => {
+  it('единый источник defaults #451 соответствует схемам разделов', () => {
+    const defaults = JSON.parse(
+      readFileSync(
+        new URL(
+          '../../../backend-v2/internal/platform/settingsdefaults/defaults.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    ) as Record<string, unknown>;
+    for (const [key, schema] of Object.entries({
+      settings: 'MvpSettings',
+      privacy_settings: 'PrivacySettings',
+      notification_settings: 'LegacyNotificationSettings',
+      sound_settings: 'LegacySoundSettings',
+      storage_settings: 'LegacyStorageSettings',
+      advanced_settings: 'LegacyAdvancedSettings',
+      folders: 'LegacyFolders',
+    })) {
+      expect(accepts(schema, defaults[key]), key).toBe(true);
+    }
+  });
+
   it('покрывает все 46 операций, опубликованных корневым контрактом', () => {
     expect(operations).toHaveLength(46);
     expect(new Set(operations.map((op) => op.operationId)).size).toBe(operations.length);
@@ -187,6 +210,33 @@ describe('Исполнимый контракт User API (#453)', () => {
     expect(accepts('LegacyFoldersRequest', { folders: [] })).toBe(true);
     expect(accepts('LegacyFoldersRequest', {})).toBe(false);
     expect(accepts('LegacyFoldersRequest', { folders: null })).toBe(false);
+  });
+
+  it('описывает personal chat mute отдельно от moderator mute', () => {
+    const mute = {
+      mutedUntil: '2030-01-01T00:00:00Z',
+    } satisfies components['schemas']['PersonalChatMuteRequest'];
+    expect(accepts('PersonalChatMuteRequest', mute)).toBe(true);
+    expect(accepts('PersonalChatMuteRequest', {})).toBe(true);
+    expect(accepts('PersonalChatMuteRequest', { mutedUntil: null })).toBe(true);
+    for (const value of [
+      null,
+      [],
+      { mutedUntil: false },
+      { mutedUntil: 'tomorrow' },
+      { userId: 'other' },
+    ]) {
+      expect(accepts('PersonalChatMuteRequest', value)).toBe(false);
+    }
+    expect(
+      accepts('Chat', {
+        id: '55900000-0000-4000-8000-000000000001',
+        type: 'group',
+        isMuted: true,
+        mutedUntil: mute.mutedUntil,
+      })
+    ).toBe(true);
+    expect(api.paths['/chats/{chatId}/mute'].$ref).toContain('chats.yaml');
   });
 
   it('ограничивает типы, диапазоны и ключи compatibility-разделов', () => {

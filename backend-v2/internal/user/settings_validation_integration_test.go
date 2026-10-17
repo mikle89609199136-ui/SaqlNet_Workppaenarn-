@@ -162,7 +162,12 @@ func TestSettingsNormalizeCorruptRowsWithoutReadWrites(t *testing.T) {
 	require.NoError(t, err)
 	before := api.snapshot(t)
 	settings := api.request(t, http.MethodGet, "settings", "", http.StatusOK)["settings"].(map[string]any)
-	require.Equal(t, map[string]any{"palette": "warm", "notifications": false, "sounds": false}, settings)
+	require.Equal(t, "warm", settings["palette"])
+	require.Equal(t, false, settings["notifications"])
+	require.Equal(t, false, settings["sounds"])
+	require.Equal(t, "dark", settings["theme"])
+	require.Equal(t, "letter", settings["avatarShape"])
+	require.NotContains(t, settings, "unknown")
 	all := api.request(t, http.MethodGet, "all-settings", "", http.StatusOK)
 	for _, key := range []string{"notificationSettings", "soundSettings", "advancedSettings"} {
 		for _, value := range all[key].(map[string]any) {

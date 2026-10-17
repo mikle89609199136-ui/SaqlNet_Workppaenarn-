@@ -26,6 +26,40 @@
 > devices с auth.sessions. Исходные наблюдения ниже относятся к указанному commit;
 > runtime validation/defaults/UI/sync остаются отдельными задачами.
 
+> **Продолжение 17 октября в #451:** [единый источник defaults](../settings-defaults.md)
+> используется регистрацией, восстановлением и read projection; SQL defaults обновлены
+> новой миграцией без backfill. Missing keys не становятся записанными flags при unrelated
+> patches, сохранённые false/0/theme/language приоритетны. AvatarShape=letter и callSounds=true
+> включены в общий набор; применение Appearance и alias migration остаются отдельными задачами.
+
+> **Продолжение 17 октября в #1047:** bulk и legacy section writers используют
+> общий транзакционный mutation path с SELECT FOR UPDATE; создание строки откатывается
+> при ошибке UPDATE/COMMIT. Параллельные изменения разных keys сохраняются,
+> passcode не берётся из snapshot, defaults остаются read projection.
+> Проверены PostgreSQL lock barriers, оба порядка writers, folders и rollback/cancel.
+> Resolver #1042 и доставка изменений #1041 остаются отдельными задачами.
+
+> **Продолжение 17 октября в #1040:** проверен полный Appearance round-trip через
+> canonical/bulk API. [Совместимость старых записей](../appearance-settings.md) разрешает
+> fontSize → textSize без глобального backfill; явный canonical patch приоритетен,
+> произвольный HEX сохраняется как compatibility data без подбора пресета.
+> UI/localStorage migration остаётся #728, синхронизация — #1041.
+
+> **Продолжение 17 октября в #559:** [персональный mute](../personal-chat-mute.md)
+> хранится отдельно от moderator mute, поддерживает бессрочный/временный режим,
+> отражается в списке/деталях и проверяется перед message push на всех подписках.
+> Звонки не подавляются personal message mute. Frontend action/fallback остаются #725.
+
+### Актуальная очередь после #1040
+
+На 17 октября открыты 9 связанных mvp-go issues (включая текущую #559).
+Рекомендуемый порядок: **#559 → #1042 → #728 → #725 → #1041 → #720**;
+#720 можно делать независимо после уже смерженной #706. #1043 готова к review
+в PR #1054; #1001 находится In review и требует приёмки рингтона. Отдельная
+#855 зависит от TURN credentials #851 и решения о модели contacts.
+После мержа реализации #559 остаются 5 задач основной очереди, 2 приёмки и #855.
+Состояния в исходных таблицах ниже — исторический snapshot от 16 октября.
+
 ## Основание и границы проверки
 
 > **Продолжение 17 октября в #495:** typed validation всех общих и detailed sections
