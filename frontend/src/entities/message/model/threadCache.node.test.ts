@@ -28,6 +28,44 @@ describe('склейка страниц истории', () => {
 
     expect(flattenThread(data).map((message) => message.id)).toEqual([older.id, newer.id]);
   });
+
+  /* Страница по смещению после новых сообщений начинается с тех, что уже
+     лежат в первой (#1064). */
+  it('сообщение с двух страниц попадает в ленту один раз', () => {
+    const older = makeMessage();
+    const shared = makeMessage();
+    const newer = makeMessage();
+
+    const ids = flattenThread(pages([shared, newer], [older, shared])).map((m) => m.id);
+
+    expect(ids).toEqual([older.id, shared.id, newer.id]);
+  });
+
+  it('из двух копий остаётся правленная позже, на какой бы странице она ни была', () => {
+    const base = makeMessage({ content: 'до правки', updatedAt: new Date('2026-10-17T10:00:00Z') });
+    const edited = {
+      ...base,
+      content: 'после правки',
+      updatedAt: new Date('2026-10-17T10:05:00Z'),
+    };
+
+    expect(flattenThread(pages([base], [edited]))[0].content).toBe('после правки');
+    expect(flattenThread(pages([edited], [base]))[0].content).toBe('после правки');
+  });
+
+  it('при равной правке остаётся копия из первой страницы', () => {
+    const shown = makeMessage({
+      updatedAt: new Date('2026-10-17T10:00:00Z'),
+      reactions: [{ emoji: '👍', count: 1, myReaction: true }],
+    });
+    const stale = { ...shown, reactions: [] };
+
+    expect(flattenThread(pages([shown], [stale]))[0].reactions).toHaveLength(1);
+  });
+
+  it('пустые страницы дают пустой список', () => {
+    expect(flattenThread(pages([], []))).toEqual([]);
+  });
 });
 
 describe('добавление сообщения', () => {

@@ -26,9 +26,28 @@ export type IThreadPages = InfiniteData<TMessagesList>;
  */
 export const EMPTY_THREAD: TMessagesList = [];
 
+function editedLater(candidate: IMessageDto, kept: IMessageDto): boolean {
+  if (!candidate.updatedAt || !kept.updatedAt) return false;
+  return new Date(candidate.updatedAt).getTime() > new Date(kept.updatedAt).getTime();
+}
+
+/**
+ * Страницы склеиваются без повторов.
+ *
+ * Повтор бывает на стыке страниц: история грузится по смещению, и если
+ * за это время пришли новые сообщения, следующая страница начинается с
+ * тех, что уже лежат в первой. Они показывались дважды подряд (#1064).
+ * Из двух копий остаётся та, что правили позже, а при равенстве — из
+ * более ранней страницы: её человек уже видит.
+ */
 export function flattenThread(data: IThreadPages | undefined): TMessagesList {
   if (!data) return [];
-  return sortMessagesChronologically<IMessageDto>(data.pages.flat());
+  const byId = new Map<string, IMessageDto>();
+  for (const message of data.pages.flat()) {
+    const kept = byId.get(message.id);
+    if (!kept || editedLater(message, kept)) byId.set(message.id, message);
+  }
+  return sortMessagesChronologically<IMessageDto>([...byId.values()]);
 }
 
 function hasMessage(data: IThreadPages, messageId: string): boolean {
