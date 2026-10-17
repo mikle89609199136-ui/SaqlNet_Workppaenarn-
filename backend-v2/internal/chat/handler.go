@@ -564,6 +564,8 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		respondSuccess(w, r, h.service.SetNotificationPreview(r.Context(), current.ID, chatID, *input.HideNotificationPreview))
+	case suffix == "/mute":
+		h.personalMute(w, r, current.ID, chatID)
 	case suffix == "/pin" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		respondSuccess(w, r, h.service.SetFlag(r.Context(), current.ID, chatID, "pin", r.Method == http.MethodPost))
 	case suffix == "/archive" && (r.Method == http.MethodPost || r.Method == http.MethodDelete):

@@ -71,6 +71,9 @@ type Chat struct {
 
 	// Personal preference of the authenticated member (#560).
 	HideNotificationPreview bool `json:"hideNotificationPreview"`
+	// Personal message alerts, independent of moderator member mute (#559).
+	IsMuted    bool   `json:"isMuted"`
+	MutedUntil string `json:"mutedUntil,omitempty"`
 }
 
 type LastMessagePreview struct {
@@ -472,7 +475,12 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.entities, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
 		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions,
 		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions,
-		       COALESCE(cs.hide_notification_preview, FALSE)
+		       COALESCE(cs.hide_notification_preview, FALSE),
+		       COALESCE(cs.notifications_muted_at IS NOT NULL AND
+		         (cs.notifications_muted_until IS NULL OR cs.notifications_muted_until > NOW()), FALSE),
+		       CASE WHEN cs.notifications_muted_at IS NOT NULL AND cs.notifications_muted_until > NOW()
+		         THEN to_char(cs.notifications_muted_until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+		         ELSE '' END
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -518,7 +526,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
 		LEFT JOIN users.profiles lm_up ON lm_up.user_id = lm.sender_id
 			WHERE COALESCE(cs.is_archived, FALSE) = $2
-			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at, cs.hide_notification_preview,
+			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at, cs.hide_notification_preview, cs.notifications_muted_at, cs.notifications_muted_until,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
 			         peer.viewer_privacy, peer.viewer_blocks, peer.viewer_exceptions,
@@ -567,7 +575,12 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.entities, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
 		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions,
 		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions,
-		       COALESCE(cs.hide_notification_preview, FALSE)
+		       COALESCE(cs.hide_notification_preview, FALSE),
+		       COALESCE(cs.notifications_muted_at IS NOT NULL AND
+		         (cs.notifications_muted_until IS NULL OR cs.notifications_muted_until > NOW()), FALSE),
+		       CASE WHEN cs.notifications_muted_at IS NOT NULL AND cs.notifications_muted_until > NOW()
+		         THEN to_char(cs.notifications_muted_until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+		         ELSE '' END
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -613,7 +626,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
 		LEFT JOIN users.profiles lm_up ON lm_up.user_id = lm.sender_id
 			WHERE c.id = $2
-			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at, cs.hide_notification_preview,
+			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at, cs.hide_notification_preview, cs.notifications_muted_at, cs.notifications_muted_until,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
 			         peer.viewer_privacy, peer.viewer_blocks, peer.viewer_exceptions,
@@ -2064,7 +2077,7 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
 			&unreadCount, &lmID, &lmSenderID, &lmContent, &lmEntities, &lmType, &lmSender,
 			&peerPrivacy, &peerBlocksViewer, &peerExceptions,
-			&viewerPrivacy, &viewerBlocksPeer, &viewerExceptions, &chat.HideNotificationPreview,
+			&viewerPrivacy, &viewerBlocksPeer, &viewerExceptions, &chat.HideNotificationPreview, &chat.IsMuted, &chat.MutedUntil,
 		); err != nil {
 			return nil, err
 		}

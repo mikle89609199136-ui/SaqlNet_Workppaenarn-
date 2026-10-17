@@ -56,8 +56,9 @@ func (d DBDirectory) MembersExcept(ctx context.Context, chatID, userID string) (
 
 // Targets — подписки получателей. Выключил уведомления в настройках — его
 // подписок здесь нет; нет строки настроек — уведомления по умолчанию
-// включены, язык — русский.
-func (d DBDirectory) Targets(ctx context.Context, userIDs []string) ([]Target, error) {
+// включены, язык — русский. Personal mute фильтрует только message этого
+// чата, на всех устройствах; calls/missed_call от него не зависят (#559).
+func (d DBDirectory) Targets(ctx context.Context, userIDs []string, event Event) ([]Target, error) {
 	if len(userIDs) == 0 {
 		return nil, nil
 	}
@@ -68,7 +69,13 @@ func (d DBDirectory) Targets(ctx context.Context, userIDs []string) ([]Target, e
 		LEFT JOIN users.settings us ON us.user_id = ps.user_id
 		WHERE ps.user_id = ANY($1::uuid[])
 		  AND COALESCE(us.settings->>'notifications', 'true') <> 'false'
-	`, pq.Array(userIDs))
+		  AND ($3 <> 'message' OR NOT EXISTS (
+		    SELECT 1 FROM chats.user_chat_settings cs
+		    WHERE cs.user_id=ps.user_id AND cs.chat_id=$2::uuid
+		      AND cs.notifications_muted_at IS NOT NULL
+		      AND (cs.notifications_muted_until IS NULL OR cs.notifications_muted_until > NOW())
+		  ))
+	`, pq.Array(userIDs), event.ChatID, event.Kind)
 	if err != nil {
 		return nil, err
 	}

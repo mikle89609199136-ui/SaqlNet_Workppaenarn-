@@ -212,6 +212,33 @@ describe('Исполнимый контракт User API (#453)', () => {
     expect(accepts('LegacyFoldersRequest', { folders: null })).toBe(false);
   });
 
+  it('описывает personal chat mute отдельно от moderator mute', () => {
+    const mute = {
+      mutedUntil: '2030-01-01T00:00:00Z',
+    } satisfies components['schemas']['PersonalChatMuteRequest'];
+    expect(accepts('PersonalChatMuteRequest', mute)).toBe(true);
+    expect(accepts('PersonalChatMuteRequest', {})).toBe(true);
+    expect(accepts('PersonalChatMuteRequest', { mutedUntil: null })).toBe(true);
+    for (const value of [
+      null,
+      [],
+      { mutedUntil: false },
+      { mutedUntil: 'tomorrow' },
+      { userId: 'other' },
+    ]) {
+      expect(accepts('PersonalChatMuteRequest', value)).toBe(false);
+    }
+    expect(
+      accepts('Chat', {
+        id: '55900000-0000-4000-8000-000000000001',
+        type: 'group',
+        isMuted: true,
+        mutedUntil: mute.mutedUntil,
+      })
+    ).toBe(true);
+    expect(api.paths['/chats/{chatId}/mute'].$ref).toContain('chats.yaml');
+  });
+
   it('ограничивает типы, диапазоны и ключи compatibility-разделов', () => {
     expect(accepts('LegacySoundSettings', { notificationsVolume: 0, mediaVolume: 100 })).toBe(true);
     expect(accepts('LegacySoundSettings', { notificationsVolume: -1 })).toBe(false);
