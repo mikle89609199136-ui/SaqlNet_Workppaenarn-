@@ -1,5 +1,6 @@
 import { useDebounce } from '@/shared/lib';
 import { chatsQuery, getLastMessageText } from '@/entities/chat';
+import { useProfileStore } from '@/entities/user';
 import { useQuery } from '@tanstack/react-query';
 import type { TMessagesList } from '@/types';
 import { useMemo, useState, type MouseEvent } from 'react';
@@ -22,6 +23,7 @@ export const ForwardChatMessagesModal = ({
   setSelectionMode,
 }: Props) => {
   const { t } = useTranslation();
+  const viewerId = useProfileStore((state) => state.user?.id);
   const { data: chats = [] } = useQuery(chatsQuery());
 
   const navigate = useNavigate();
@@ -115,7 +117,7 @@ export const ForwardChatMessagesModal = ({
 
                       {chat.lastMessage && (
                         <div className="line-clamp-1 truncate min-w-0 max-w-8/10 text-left text-ink-3">
-                          {getLastMessageText(chat.lastMessage, t)}
+                          {getLastMessageText(chat.lastMessage, t, viewerId)}
                         </div>
                       )}
                     </div>

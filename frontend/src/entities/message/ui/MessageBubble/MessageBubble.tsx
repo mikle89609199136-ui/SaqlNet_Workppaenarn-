@@ -243,9 +243,9 @@ export const MessageBubble = memo(
     const editedAt = formatEditedAt(message, t);
     const announcement = [
       mine ? t('you', 'Вы') : authorName,
-      // Звонок getLastMessageText подписывает сам («Звонок завершен · 28 сек»),
+      // Звонок getLastMessageText подписывает сам («Входящий звонок · 28 сек»),
       // а не читает служебный JSON из content.
-      getLastMessageText({ ...message, type: isVoice ? 'voice' : actualType }, t),
+      getLastMessageText({ ...message, type: isVoice ? 'voice' : actualType }, t, currentUserId),
       formatMessageTime(message.createdAt),
       editedAt,
       delivery && deliveryLabel[delivery],
@@ -471,7 +471,7 @@ export const MessageBubble = memo(
             )}
 
             {isCall ? (
-              <CallMessageContent message={message} trailing={meta} />
+              <CallMessageContent currentUserId={currentUserId} message={message} trailing={meta} />
             ) : message.undecryptable ? (
               /* Подпись к нечитаемому сообщению собирается здесь: причину
                  назвал слой шифрования, а язык знает интерфейс. */

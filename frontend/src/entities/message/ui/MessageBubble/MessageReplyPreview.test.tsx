@@ -180,3 +180,20 @@ describe('цитата на сообщение вне ленты', () => {
     expect(screen.queryByText('давнее сообщение')).toBeNull();
   });
 });
+
+/* Ответ на звонок (#1073): в цитате вид звонка, а не служебный JSON. */
+describe('цитата звонка', () => {
+  it('видеозвонок — «Видеозвонок», без callKind', () => {
+    const replied = makeMessage({
+      id: 'call-1',
+      type: 'call',
+      content: JSON.stringify({ callKind: 'video', status: 'answered', duration: 5 }),
+    });
+    const reply = makeMessage({ replyTo: 'call-1' });
+
+    renderPreview(<MessageReplyPreview message={reply} repliedMessage={replied} />);
+
+    expect(screen.getByText('Видеозвонок')).toBeInTheDocument();
+    expect(screen.queryByText(/callKind/)).toBeNull();
+  });
+});

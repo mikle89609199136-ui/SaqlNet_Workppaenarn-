@@ -64,7 +64,7 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
     useCallback(() => readDraftRich(chat.id), [chat.id])
   );
 
-  const lastMessage = typingLabel ?? getLastMessageText(chat.lastMessage, t);
+  const lastMessage = typingLabel ?? getLastMessageText(chat.lastMessage, t, currentUserId);
 
   const peerId = chat.peerId;
   const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingLabel));
@@ -72,7 +72,11 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
   /* Кто написал последнее: своё — «Вы:», в группе — имя автора. В личном
      чате чужое без подписи: собеседник там один. */
   const last = chat.lastMessage;
-  const isOwnLast = Boolean(last && currentUserId && last.senderId === currentUserId);
+  // У звонка направление уже в подписи («Исходящий…»), а «прочитано» у него
+  // смысла не имеет: ни «Вы:», ни галочек (#1073).
+  const isOwnLast = Boolean(
+    last && currentUserId && last.senderId === currentUserId && last.type !== 'call'
+  );
   const prefix =
     !typingLabel && last
       ? isOwnLast

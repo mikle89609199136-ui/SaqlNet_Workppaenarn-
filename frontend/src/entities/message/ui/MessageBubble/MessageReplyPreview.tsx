@@ -1,7 +1,7 @@
 import { Icon } from '@/shared/ui/Icon';
 import { useChatUiStore } from '@/entities/chat';
 import type { IMediaItem, IMessageDto, TMediaMessageType } from '../../model/types';
-import { cn } from '@/shared/lib';
+import { cn, describeCallMessage } from '@/shared/lib';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -80,7 +80,14 @@ export const MessageReplyPreview = memo(
     } else if (isFile) {
       typeLabel = t('lastMessage.file', 'Файл');
     } else if (isCall) {
-      typeLabel = t('lastMessage.call', 'Звонок');
+      // Вид звонка — из исходника в ленте; у превью сервера служебного
+      // JSON нет, там просто «Звонок» (#1073).
+      typeLabel =
+        repliedMessage &&
+        describeCallMessage(repliedMessage.content, repliedMessage.senderId, undefined).kind ===
+          'video'
+          ? t('call.history.videoCall', 'Видеозвонок')
+          : t('lastMessage.call', 'Звонок');
     } else if (isSticker) {
       typeLabel = t('lastMessage.sticker', 'Стикер');
     } else if (isGif) {

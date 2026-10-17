@@ -799,3 +799,49 @@ describe('время правки', () => {
     expect(screen.getByRole('article').getAttribute('aria-label')).not.toMatch(/Изменено/);
   });
 });
+
+/* Тип и итог звонка в ленте (#1073). */
+describe('звонок в ленте', () => {
+  const renderCall = (senderId: string, fields: Record<string, unknown>) =>
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={makeMessage({
+          id: `call-${senderId}`,
+          senderId,
+          type: 'call',
+          content: JSON.stringify(fields),
+        })}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+  it('чужой пропущенный — «Пропущенный звонок», отмечен как пропущенный', () => {
+    const { container } = renderCall('user-2', { status: 'missed', initiatorId: 'user-2' });
+
+    expect(screen.getByText('Пропущенный звонок')).toBeInTheDocument();
+    expect(container.querySelector('[data-call="missed"]')).not.toBeNull();
+  });
+
+  it('свой отвеченный видео — «Исходящий видеозвонок» и длительность', () => {
+    renderCall('user-1', {
+      callKind: 'video',
+      status: 'answered',
+      duration: 65,
+      initiatorId: 'user-1',
+    });
+
+    expect(screen.getByText('Исходящий видеозвонок')).toBeInTheDocument();
+    expect(screen.getByText('1:05')).toBeInTheDocument();
+  });
+
+  it('свой без ответа — «Без ответа»', () => {
+    renderCall('user-1', { status: 'missed', initiatorId: 'user-1' });
+
+    expect(screen.getByText('Исходящий звонок')).toBeInTheDocument();
+    expect(screen.getByText('Без ответа')).toBeInTheDocument();
+  });
+});

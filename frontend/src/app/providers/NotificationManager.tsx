@@ -24,7 +24,8 @@ const MAX_BODY_LENGTH = 120;
 async function resolveNotificationBody(
   chatId: string,
   message: ILastMessageDto,
-  t: TFunction
+  t: TFunction,
+  viewerId: string
 ): Promise<string> {
   // Read the server preference even if another device changed it.
   // If the request fails, keep message text out of the system notification.
@@ -37,8 +38,10 @@ async function resolveNotificationBody(
 
   if (typeof message?.content !== 'string' || !message.content) return fallbackBody(t);
 
-  // Звонок не зашифрован; подпись — на языке интерфейса.
-  if (message.type === 'call') return formatCallPreview(message.content, t);
+  // Звонок не зашифрован; подпись — на языке интерфейса, с итогом (#1073).
+  if (message.type === 'call') {
+    return formatCallPreview(message.content, t, { senderId: message.senderId, viewerId });
+  }
 
   try {
     const decrypted = await decryptChatLastMessagePreview(chatId, message);
@@ -118,7 +121,7 @@ export function NotificationManager() {
       const title = message.senderName || 'CraneApp';
 
       const userId = useProfileStore.getState().user?.id ?? '';
-      void resolveNotificationBody(chatId, message, t).then((body) => {
+      void resolveNotificationBody(chatId, message, t, userId).then((body) => {
         // Пока шла расшифровка, пользователь мог вернуться во вкладку.
         if (!document.hidden) return;
         const profile = useProfileStore.getState();

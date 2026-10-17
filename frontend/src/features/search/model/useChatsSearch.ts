@@ -1,4 +1,4 @@
-import { searchUsersQuery, MIN_SEARCH_LENGTH } from '@/entities/user';
+import { searchUsersQuery, MIN_SEARCH_LENGTH, useProfileStore } from '@/entities/user';
 import type { IChatDto, ISearchUserDto } from '@/types';
 import { getLastMessageText } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
@@ -37,6 +37,7 @@ function normalize(value: string): string {
  */
 export function useChatsSearch(allChats: IChatDto[]): Result {
   const { t } = useTranslation();
+  const viewerId = useProfileStore((state) => state.user?.id);
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounce(query, 300);
 
@@ -48,10 +49,10 @@ export function useChatsSearch(allChats: IChatDto[]): Result {
 
     return allChats.filter((chat) => {
       const title = normalize(chat.title || '');
-      const lastMessage = normalize(getLastMessageText(chat.lastMessage, t) || '');
+      const lastMessage = normalize(getLastMessageText(chat.lastMessage, t, viewerId) || '');
       return title.includes(needle) || lastMessage.includes(needle);
     });
-  }, [allChats, query, t]);
+  }, [allChats, query, t, viewerId]);
 
   const { data: foundPeople = [], isFetching } = useQuery(searchUsersQuery(debouncedQuery));
 

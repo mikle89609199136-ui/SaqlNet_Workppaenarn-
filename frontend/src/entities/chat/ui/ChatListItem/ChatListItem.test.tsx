@@ -273,3 +273,64 @@ describe('строка списка чатов', () => {
     });
   });
 });
+
+/* Звонок в превью (#1073): тип и итог, без «Вы:» и галочек — направление
+   уже в подписи, а «прочитано» у звонка смысла не имеет. */
+describe('звонок последним сообщением', () => {
+  const callContent = (fields: Record<string, unknown>) => JSON.stringify(fields);
+
+  it('чужой пропущенный — «Пропущенный звонок»', () => {
+    renderRow(
+      makeChat({
+        id: CHAT_ID,
+        title: 'Максим',
+        type: 'private',
+        lastMessage: last({
+          type: 'call',
+          senderId: 'u-2',
+          content: callContent({ callKind: 'audio', status: 'missed', initiatorId: 'u-2' }),
+        }),
+      })
+    );
+
+    expect(screen.getByText('Пропущенный звонок')).toBeInTheDocument();
+  });
+
+  it('свой отвеченный — «Исходящий звонок · 1:05», без «Вы:» и галочек', () => {
+    const { container } = renderRow(
+      makeChat({
+        id: CHAT_ID,
+        title: 'Максим',
+        type: 'private',
+        lastMessage: last({
+          type: 'call',
+          senderId: ME,
+          content: callContent({
+            callKind: 'audio',
+            status: 'answered',
+            duration: 65,
+            initiatorId: ME,
+          }),
+          readAt: '2026-10-17T10:00:00Z',
+        }),
+      })
+    );
+
+    expect(screen.getByText('Исходящий звонок · 1:05')).toBeInTheDocument();
+    expect(screen.queryByText(/Вы:/)).toBeNull();
+    expect(container.querySelector('[data-receipt]')).toBeNull();
+  });
+
+  it('своё текстовое — по-прежнему с «Вы:»', () => {
+    renderRow(
+      makeChat({
+        id: CHAT_ID,
+        title: 'Максим',
+        type: 'private',
+        lastMessage: last({ senderId: ME, content: 'до завтра' }),
+      })
+    );
+
+    expect(screen.getByText(/Вы:/)).toBeInTheDocument();
+  });
+});
