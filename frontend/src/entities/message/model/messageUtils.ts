@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+import { describeDayTime, type IDayTimeOptions } from '@/shared/lib';
 import type { IMessageDto, TMessagesList } from './types';
 
 export const hasMessageMedia = (msg: IMessageDto) => !!(msg.mediaUrl || msg.mediaUnavailable);
@@ -12,6 +14,32 @@ export const formatMessageTime = (value: Date | string) => {
         minute: '2-digit',
       }).format(date);
 };
+
+/**
+ * «Изменено сегодня в 21:05» (#1066): у пузыря видно только «изменено», а
+ * поправить могли и до моего ответа, и после.
+ *
+ * Время правки — `updatedAt`: сервер меняет его только правкой. Если
+ * появится отдельное `editedAt` (#711), меняется только эта функция.
+ */
+export function formatEditedAt(
+  message: Pick<IMessageDto, 'isEdited' | 'updatedAt'>,
+  t: TFunction,
+  options: IDayTimeOptions = {}
+): string | null {
+  if (!message.isEdited || !message.updatedAt) return null;
+  const date = message.updatedAt instanceof Date ? message.updatedAt : new Date(message.updatedAt);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const { day, time, date: onDate } = describeDayTime(date, options);
+  if (day === 'today') {
+    return t('editedAt.today', { time, defaultValue: 'Изменено сегодня в {{time}}' });
+  }
+  if (day === 'yesterday') {
+    return t('editedAt.yesterday', { time, defaultValue: 'Изменено вчера в {{time}}' });
+  }
+  return t('editedAt.onDate', { date: onDate, time, defaultValue: 'Изменено {{date}} в {{time}}' });
+}
 
 export function getMessagePreview(message: IMessageDto | null) {
   if (!message) return '';

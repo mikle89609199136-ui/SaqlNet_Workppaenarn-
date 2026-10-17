@@ -767,3 +767,35 @@ describe('вложение, которое не открылось', () => {
     expect(screen.queryByRole('button', { name: 'Загрузить медиа ещё раз' })).toBeNull();
   });
 });
+
+/* Когда поправили (#1066): подсказкой у «изменено» и в подписи для диктора. */
+describe('время правки', () => {
+  const renderMessage = (overrides: Parameters<typeof makeMessage>[0]) =>
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={makeMessage({ id: 'm-edited', content: 'текст', ...overrides })}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+  it('у «изменено» подсказка со временем правки, та же — в подписи сообщения', () => {
+    renderMessage({ isEdited: true, updatedAt: new Date() });
+
+    const mark = screen.getByText('изменено');
+    expect(mark.getAttribute('title')).toMatch(/^Изменено сегодня в \d\d:\d\d$/);
+    expect(screen.getByRole('article').getAttribute('aria-label')).toContain(
+      mark.getAttribute('title')
+    );
+  });
+
+  it('у неизменённого нет ни метки, ни строки в подписи', () => {
+    renderMessage({ isEdited: false });
+
+    expect(screen.queryByText('изменено')).toBeNull();
+    expect(screen.getByRole('article').getAttribute('aria-label')).not.toMatch(/Изменено/);
+  });
+});

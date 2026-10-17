@@ -5,7 +5,7 @@ import { menuPointNear } from '../../model/messageMenu';
 import { useMessageMenuKeys } from '../../model/useMessageMenuKeys';
 import type { IMediaItem, IMessageDto } from '../../model/types';
 import { cn, receiptState } from '@/shared/lib';
-import { formatMessageTime, hasMessageMedia } from '../../model/messageUtils';
+import { formatEditedAt, formatMessageTime, hasMessageMedia } from '../../model/messageUtils';
 import { memo, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CallMessageContent } from './CallMessageContent';
@@ -239,12 +239,15 @@ export const MessageBubble = memo(
       read: t('messageStatus.read', 'Прочитано'),
     };
 
+    // Когда поправили (#1066): подсказкой у «изменено» и в подписи для диктора.
+    const editedAt = formatEditedAt(message, t);
     const announcement = [
       mine ? t('you', 'Вы') : authorName,
       // Звонок getLastMessageText подписывает сам («Звонок завершен · 28 сек»),
       // а не читает служебный JSON из content.
       getLastMessageText({ ...message, type: isVoice ? 'voice' : actualType }, t),
       formatMessageTime(message.createdAt),
+      editedAt,
       delivery && deliveryLabel[delivery],
     ]
       .filter(Boolean)
@@ -263,7 +266,7 @@ export const MessageBubble = memo(
             <Icon className="size-3 stroke-2" name="pin" />
           </span>
         )}
-        {message.isEdited && <span>{t('edited', 'изменено')}</span>}
+        {message.isEdited && <span title={editedAt ?? undefined}>{t('edited', 'изменено')}</span>}
         <time>{formatMessageTime(message.createdAt)}</time>
         {delivery && (
           <span
