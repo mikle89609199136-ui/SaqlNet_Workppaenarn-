@@ -23,11 +23,11 @@
 - **Auth:** все канонические и сохраняемые legacy-маршруты требуют сессию. Browser credentials — HttpOnly cookie по `sessionCookie` OpenAPI (#705). Изменение с cookie требует собственного или точно разрешённого `Origin`; авторизация не переносится в тело или URL.
 - **Запись:** `Content-Type: application/json`; только изменённые поля раздела, без оболочки `settings`/`privacy`. Отсутствующее поле сохраняет прежнее значение. Пустой объект не запрашивает сброс. Это shallow update верхнего уровня, а не рекурсивный merge и не RFC JSON Merge Patch. Вложенный объект, если будет допущен схемой, заменяется целиком.
 - **Ответ:** обычный PUT возвращает соответствующий итоговый раздел. Frontend сохраняет канонический GET payload в query cache и после изменения перечитывает его. Bulk ответ `{ "success": true }` не является ответом канонического PUT. [Решение #454](settings-bulk-api.md) сохраняет этот acknowledgement и задаёт отдельный legacy envelope.
-- **Validation — целевое правило:** известные ключи, типы, enums/ranges; неизвестный ключ, неверный тип и `null` вместо значения дают `400 validation_failed` до записи. `null` не используется как команда удаления/сброса. Точные поля и допустимые legacy-преобразования фиксируются в #453/#496, runtime validation — в #495. Общие ограничения должны применяться и к совместимым bulk/section writes; legacy route не должен обходить privacy policy.
+- **Validation — реализована в #495:** известные ключи, типы, enums/ranges; неизвестный ключ, неверный тип и `null` вместо значения дают `400 validation_failed` до любого SQL. `null` не используется как команда удаления/сброса. Поля определены в #453/#496; те же проверки действуют для соответствующих bulk/section writes. Legacy general section дополнительно принимает только известные aliases accentColor/fontSize по #453.
 - **Defaults — целевое правило:** единый набор для регистрации, восстановления отсутствующей строки и чтения через любой поддерживаемый маршрут (#451). Отсутствие нового поля в старой записи не должно сбрасывать другие предпочтения. Нельзя утверждать готовность этого правила до #451/#1040/#1042.
 - **Конкурентность:** patch разных полей не должен терять соседние изменения. Текущий SQL merge общих settings сохраняет omitted keys; read-modify-write bulk/preferences имеет риск потери параллельной записи. Семантика bulk определена в [#454](settings-bulk-api.md), runtime-защита конкурентной записи — #1047; стратегия синхронизации устройств/вкладок — #1041. Атомарности нескольких разных HTTP-запросов не обещаем.
 
-Privacy validation уже действует при `PUT /users/privacy` и записи privacy через bulk. Общие settings пока принимают `map[string]any`: строгая проверка неизвестных ключей/типов/null **ещё не реализована**. OpenAPI в #498 уточняет маршруты, envelopes и deprecation; [#453 фиксирует полный typed contract](user-api-contract.md), включая Appearance enums/defaults и notification preferences из #496. Runtime validation/migration и применение новых Appearance-полей остаются #495/#451/#1040/#728.
+Privacy validation уже действует при `PUT /users/privacy` и записи privacy через bulk. В #495 остальные sections проходят typed DTO validation в service до SQL; handlers возвращают 400 validation_failed для неверных root/leaf/keys/types/ranges. [Полный контракт #453](user-api-contract.md) описывает также безопасную нормализацию повреждённых legacy reads. Единые defaults, миграция и применение новых Appearance-полей остаются #451/#1040/#1042/#728.
 
 ### Ошибки канонических маршрутов
 
@@ -36,7 +36,7 @@ Privacy validation уже действует при `PUT /users/privacy` и за
 | HTTP | Код / смысл                                               | Состояние                                                |
 | ---- | --------------------------------------------------------- | -------------------------------------------------------- |
 | 400  | `invalid_json` — тело не удалось декодировать             | Есть сейчас                                              |
-| 400  | `validation_failed` — недопустимые поля/значения          | Есть для privacy; для общего settings требуется #495     |
+| 400  | `validation_failed` — недопустимые поля/значения          | Privacy и остальные object sections проверяются до SQL (#495) |
 | 401  | `missing_token`, `invalid_token`, `token_revoked`         | Общая session middleware                                 |
 | 403  | `cross_site_request` — запрещённый Origin записи с cookie | Общая Origin-защита                                      |
 | 405  | `method_not_allowed`                                      | Settings/privacy handlers                                |
@@ -75,7 +75,7 @@ Privacy validation уже действует при `PUT /users/privacy` и за
 | #496               | Решение принято: [канонические поля, приоритеты и mapping](notification-settings.md); внедрение — #1042/#725 |
 | #454               | [Bulk contract принят](settings-bulk-api.md); safe mutation path — #1047, validation — #495                  |
 | #453               | Типизированные keys/enums/ranges и полная status matrix User API, включая выбранные envelopes                |
-| #451 / #495 / #497 | Runtime defaults/validation/avatarShape                                                                      |
+| #451 / #497        | Единые defaults и серверный default avatarShape; validation реализована в #495                               |
 | #1040 / #1042      | Backend Appearance и notification migration по согласованной схеме                                           |
 | #1041              | Доставка изменений и применение между устройствами/вкладками                                                 |
 

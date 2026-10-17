@@ -2,7 +2,7 @@
 
 Решение USER-D001, #453, от 16 октября 2026. Основание — `dev` после #454/#706, handlers/services в `backend-v2/internal/user`, session/Origin middleware и edge gateway. В актуальном `paths/users.yaml` **46 операций**; исходные 39 в issue устарели. Все адреса ниже имеют префикс `/api/v2`.
 
-Исполнимый источник — `backend-v2/contracts/openapi/{paths/users.yaml,components/schemas.yaml,components/responses.yaml}`. Из него генерируется `frontend/src/types/api.generated.ts`. Схемы фиксируют wire DTO и выбранные правила записи; они не добавляют в Go отсутствующие проверки, defaults или функции. Расхождения перечислены ниже и помечены у операций `x-contract-gaps`/описанием. Encryption/key-backup endpoints имеют отдельный контракт и в эти 46 операций не входят.
+Исполнимый источник — `backend-v2/contracts/openapi/{paths/users.yaml,components/schemas.yaml,components/responses.yaml}`. Из него генерируется `frontend/src/types/api.generated.ts`. Схемы фиксируют wire DTO и выбранные правила записи; сами по себе они не добавляют проверки, defaults или функции. Runtime validation разделов реализована в #495 (17 октября); остальные пробелы отмечены отдельно. Расхождения перечислены ниже и помечены у операций `x-contract-gaps`/описанием. Encryption/key-backup endpoints имеют отдельный контракт и в эти 46 операций не входят.
 
 ## Общие правила
 
@@ -48,7 +48,7 @@ Search ищет literal substring без учёта регистра в username
 
 Маршруты и переход legacy clients определены в [#498](settings-api.md), notification policy — в [#496](notification-settings.md), bulk — в [#454](settings-bulk-api.md).
 
-`MvpSettings` — **flat partial object** с закрытыми ключами. `{}` — no-op. Отсутствующее поле сохраняется; root null, null leaf, array, неверный тип/enum и неизвестный ключ должны давать `400 validation_failed` без записи **всего** запроса (#495). Null не означает reset/delete. В частности, `false` — полноценное сохранённое значение, не отсутствие. GET/PUT возвращают envelopes с обязательным `settings`, GET также с обязательным `privacy`. Старый объект может не иметь некоторых leaf-полей до нормализации.
+`MvpSettings` — **flat partial object** с закрытыми ключами. `{}` — no-op. Отсутствующее поле сохраняется; root null, null leaf, array, неверный тип/enum и неизвестный ключ дают `400 validation_failed` до любого SQL для **всего** запроса (#495). Null не означает reset/delete. В частности, `false` — полноценное сохранённое значение, не отсутствие. GET/PUT возвращают envelopes с обязательным `settings`, GET также с обязательным `privacy`. Старый объект может не иметь некоторых leaf-полей до нормализации.
 
 Defaults ниже применяются при создании/восстановлении/нормализованном чтении (#451/#1040/#1042), **не подставляются в patch**. Поэтому в request-схемах нет `required` для leaf-полей и JSON Schema `default`, превращающего необязательный PUT в обязательный при генерации типов.
 
@@ -77,7 +77,7 @@ Appearance enums/defaults из предварительного аудита т�
 
 ## Типизированные compatibility-разделы
 
-У каждого раздела именованная schema, все известные поля optional для partial write/старых sparse rows. Target validation #495 отклоняет неизвестные keys, null leaves и неверные типы до записи. Пока generic JSONB handlers этого не делают; старые неизвестные сохранённые данные требуют migration/normalization, а не объявления их новыми MVP fields.
+У каждого раздела именованная schema, все известные поля optional для partial write/старых sparse rows. Runtime validation #495 отклоняет неизвестные keys, null leaves и неверные типы до любого SQL, включая создание settings row. Те же typed DTO checks используются при service-вызовах. Старые неизвестные данные скрываются на чтении; это не новые MVP fields.
 
 | Schema                       | Поля и ограничения                                                                                                                                                                                                                          |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -92,6 +92,27 @@ Appearance enums/defaults из предварительного аудита т�
 Legacy notification/sound/advanced GET возвращает `{settings: section}`, PUT — `{success: true, settings: section}`. Storage PUT имеет тот же envelope. Не перепутать эти ключи с названиями `notificationSettings/soundSettings/advancedSettings/storageSettings` в bulk snapshot. Dedicated folders PUT возвращает только `{success:true}`; обязательный non-null массив заменяется целиком (#441).
 
 В bulk у каждого из шести object sections собственная nullable schema: **null разрешён только на уровне раздела** и означает no-op. Folders omitted/null сохраняет список, `[]` очищает. Правильно типизированные passcodeEnabled/passcodeTimeout read-only, принимаются и игнорируются для совместимости. Правила валидации aliases/приоритета canonical flags — #496/#1042; safe concurrent mutation — #1047. Полная семантика — [bulk contract](settings-bulk-api.md).
+
+## Runtime validation и старые данные (#495)
+
+Typed DTO: SettingsPatch, LegacySettingsPatch, NotificationSettingsPatch, SoundSettingsPatch, StorageSettingsPatch и AdvancedSettingsPatch. Они проверяют весь patch до любого SQL, включая ensureSettings. Корень canonical/section/bulk — объект, имена ключей точные (Theme не является theme). Неверный JSON/лимит тела — invalid_json; валидный JSON неправильной формы/типа — validation_failed. Указатели DTO сохраняют отличие omitted от false/0/пустой строки; null leaf недопустим. Bulk null section разрешён как no-op. Неизвестные root keys и неверно типизированные read-only passcode fields также отвергаются до записи.
+
+Повреждённые сохранённые **object sections** читаются по документированной нормализации:
+
+| Сохранённое значение                                    | Результат чтения                                                           |
+| ------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Известный валидный key/value                            | Сохранить без изменения, включая false/0/opaque identifiers                |
+| Неизвестный key                                         | Скрыть из wire DTO                                                         |
+| Известный boolean неверного типа/null                   | false                                                                      |
+| Неверная громкость/тип/диапазон                         | 0                                                                          |
+| Неверный enum/строка/hex color                          | Опустить поле, оставить объект sparse                                      |
+| Повреждённый корень общего settings (null/array/scalar) | notifications/sounds/callSounds=false, остальные keys отсутствуют          |
+| Повреждённый корень detailed section                    | Известные booleans=false, volumes=0; строковые keys отсутствуют            |
+| Валидный пустой объект                                  | Остаётся пустым; существующий section GET fallback пока сохраняется (#451) |
+
+GET не переписывает существующую строку. Canonical GET отдаёт только MvpSettings; bulk/export дополнительно сохраняют известные legacy accentColor/fontSize. При записи очищается затронутый legacy/bulk object; omitted/null/empty bulk sections сохраняются в БД без изменений, даже если их данные повреждены. Canonical SQL patch сохраняет соседние stored keys; не-object root ремонтируется в закрытый notifications state перед merge. Пустой bulk (включая только read-only поля) не вызывает SQL. Глобальный backfill и единые defaults не входят в #495.
+
+Все writable bulk sections записываются одним UPDATE после полной валидации: invalid mixed patch не создаёт строку и ничего не меняет, ошибка UPDATE не сохраняет часть разделов. Snapshot для bulk/legacy section read-modify-write пока читается без блокировки; same-section lost updates остаются #1047. Alias priority/conflict resolution и проекции notifications/sounds остаются #1042. Privacy использует существующий Normalize/Parse (#439), dedicated folders и passcode timeout сохраняют свои отдельные задачи.
 
 ## Отдельные операции и их границы
 
@@ -111,7 +132,7 @@ Legacy notification/sound/advanced GET возвращает `{settings: section}
 
 ## Матрица операций
 
-Во всех error responses схемы именованные, с точным набором `code` для данной операции. Общие 401/403/429/500/502/503 выше включены в OpenAPI; здесь указаны success и специфические отказы/неправильный метод. `400 validation_failed` для target settings/folders/timeout включает ещё не внедрённые проверки из таблицы runtime gaps.
+Во всех error responses схемы именованные, с точным набором `code` для данной операции. Общие 401/403/429/500/502/503 выше включены в OpenAPI; здесь указаны success и специфические отказы/неправильный метод. `400 validation_failed` для settings реализован в #495; dedicated folders/timeout ещё имеют отмеченные runtime gaps.
 
 | Метод и путь                                       | Operation / request schema                                   | Success schema                         | Специфические ошибки                                                                                                       |
 | -------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -164,24 +185,24 @@ Legacy notification/sound/advanced GET возвращает `{settings: section}
 
 ## Изменения контракта и оставшаяся реализация
 
-| Задача              | Что остаётся выполнить после #453                                                                                     |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| #495                | Strict root/section/leaf validation, closed keys/enums/ranges, atomic rejection и проверка всех bulk sections/aliases |
-| #451 / #497 / #1040 | Одинаковые defaults/new/recovered/read, avatarShape, Appearance storage и миграция старых keys/неизвестных данных     |
-| #728 / #1041        | Применение Appearance, точные CSS metrics/visual tests, system media query, sync между устройствами/вкладками         |
-| #1042 / #725        | Канонические sound aliases, one-time migration/resolver и применение effective notification policy по #496            |
-| #1047               | Общий locked mutation path для bulk/section writers, отсутствие потерянных конкурентных обновлений                    |
-| #435 / #441         | Empty list вместо legacy null; обязательный dedicated folders input без непреднамеренной очистки                      |
-| #442 / #449 / #450  | Timeout=0/invalid input, неправильные методы, один JSON root                                                          |
-| #445 / #446         | Настоящий storage accounting и cache clear                                                                            |
-| #447 / #448         | Реализация согласованного расширенного export/delete scope и последующее расширение DTO                               |
-| #452                | Trusted public origin для canonical profile QR; проверить frontend landing route                                      |
+| Задача              | Состояние и оставшаяся работа после #495                                                                          |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| #495                | Реализована validation всех object sections до SQL, closed keys/enums/ranges/null и безопасные legacy reads       |
+| #451 / #497 / #1040 | Одинаковые defaults/new/recovered/read, avatarShape, Appearance storage и миграция старых keys/неизвестных данных |
+| #728 / #1041        | Применение Appearance, точные CSS metrics/visual tests, system media query, sync между устройствами/вкладками     |
+| #1042 / #725        | Канонические sound aliases, one-time migration/resolver и применение effective notification policy по #496        |
+| #1047               | Общий locked mutation path для bulk/section writers, отсутствие потерянных конкурентных обновлений                |
+| #435 / #441         | Empty list вместо legacy null; обязательный dedicated folders input без непреднамеренной очистки                  |
+| #442 / #449 / #450  | Timeout=0/invalid input, неправильные методы, один JSON root                                                      |
+| #445 / #446         | Настоящий storage accounting и cache clear                                                                        |
+| #447 / #448         | Реализация согласованного расширенного export/delete scope и последующее расширение DTO                           |
+| #452                | Trusted public origin для canonical profile QR; проверить frontend landing route                                  |
 
 Стандартизация двух PostgreSQL timestamps и платный billing flow — отдельные обнаруженные пробелы, а не выполненные изменения этого PR. Уже исправленные #432–#440/#443/#444/#706 повторно не считаются остатком: текущие schemas учитывают их результат.
 
 ## Проверка и изменение схем
 
-`frontend/src/types/userApiContract.node.test.ts` компилирует все request/success/error schemas и проверяет fixtures допустимых/недопустимых partial settings, bulk/null, диапазонов, privacy aliases, обязательных profile fields, коллекций и timestamps. `satisfies` fixtures также проверяются отдельным TypeScript вызовом. Эти проверки проверяют **выбранный контракт**, не Go runtime conformance или browser UI.
+`frontend/src/types/userApiContract.node.test.ts` компилирует все request/success/error schemas и проверяет fixtures допустимых/недопустимых partial settings, bulk/null, диапазонов, privacy aliases, обязательных profile fields, коллекций и timestamps. `satisfies` fixtures также проверяются отдельным TypeScript вызовом. Эти проверки проверяют **выбранный контракт**. Go tests settings_validation_test.go и settings_validation_integration_test.go дополнительно проверяют HTTP handlers на настоящем PostgreSQL: no-SQL rejection, round-trip, false/0, bulk no-op, readonly passcode, corrupt reads и атомарность UPDATE при ошибке БД. Auth middleware в этих HTTP fixtures заменяется фиксированным владельцем; browser UI в #495 не меняется.
 
 Byte-limit passcode выражен расширением `x-min-trimmed-utf8-bytes`; contract validator регистрирует этот keyword. Обычный JSON Schema validator без поддержки расширения проверит тип строки, но не этот byte-limit. Проверки decoded push keys/host allowlist остаются в Go validator и его тестах.
 

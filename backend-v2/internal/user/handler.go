@@ -273,11 +273,15 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"settings": settings, "privacy": privacy})
 	case http.MethodPut:
-		var body map[string]any
-		if !decode(w, r, &body) {
+		body, ok := decodeSettingsPatch(w, r)
+		if !ok {
 			return
 		}
 		settings, err := h.service.UpdateSettings(r.Context(), current.ID, body)
+		if errors.Is(err, ErrInvalidSettings) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "settings update failed")
 			return
@@ -299,12 +303,12 @@ func (h *Handler) AllSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, settings)
 	case http.MethodPut:
-		var input AllSettings
-		if !decode(w, r, &input) {
+		input, ok := decodeSettingsBulkPatch(w, r)
+		if !ok {
 			return
 		}
 		if err := h.service.UpdateAllSettings(r.Context(), current.ID, input); err != nil {
-			if errors.Is(err, ErrInvalidPrivacy) {
+			if errors.Is(err, ErrInvalidPrivacy) || errors.Is(err, ErrInvalidSettings) {
 				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
 				return
 			}
@@ -356,11 +360,15 @@ func (h *Handler) Preference(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{spec.key: settings})
 	case http.MethodPut:
-		var body map[string]any
-		if !decode(w, r, &body) {
+		body, ok := decodeSettingsPatch(w, r)
+		if !ok {
 			return
 		}
 		settings, err := h.service.UpdatePreference(r.Context(), current.ID, spec.column, body)
+		if errors.Is(err, ErrInvalidSettings) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "preference update failed")
 			return
@@ -413,11 +421,15 @@ func (h *Handler) Storage(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"storage": usage, "settings": settings})
 	case path == "/api/v2/users/storage/settings" && r.Method == http.MethodPut:
-		var body map[string]any
-		if !decode(w, r, &body) {
+		body, ok := decodeSettingsPatch(w, r)
+		if !ok {
 			return
 		}
 		settings, err := h.service.UpdateStorageSettings(r.Context(), current.ID, body)
+		if errors.Is(err, ErrInvalidSettings) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "storage settings update failed")
 			return

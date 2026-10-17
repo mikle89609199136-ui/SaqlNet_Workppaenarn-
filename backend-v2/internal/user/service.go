@@ -559,19 +559,23 @@ func (s *Service) Status(ctx context.Context, viewerID, userID string) (map[stri
 }
 
 func (s *Service) Settings(ctx context.Context, userID string) (map[string]any, map[string]any, error) {
+	return s.readSettings(ctx, userID, "settings")
+}
+
+func (s *Service) readSettings(ctx context.Context, userID, section string) (map[string]any, map[string]any, error) {
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, nil, err
 	}
-	var settings map[string]any
+	var rawSettings []byte
 	var rawPrivacy []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT settings, privacy_settings FROM users.settings WHERE user_id = $1
-	`, userID).Scan((*jsonMap)(&settings), &rawPrivacy)
+	`, userID).Scan(&rawSettings, &rawPrivacy)
 	if err != nil {
-		return settings, nil, err
+		return nil, nil, err
 	}
 	// Отдаём канонический вид: старые «contacts» и «none» — уже «nobody».
-	return settings, privacy.Parse(rawPrivacy).Map(), nil
+	return normalizeStoredSettings(section, rawSettings), privacy.Parse(rawPrivacy).Map(), nil
 }
 
 func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, error) {
@@ -581,29 +585,52 @@ func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, 
 	var out AllSettings
 	var folders jsonArray
 	var rawPrivacy []byte
+	var rawSettings, rawNotifications, rawSounds, rawStorage, rawAdvanced []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT settings, privacy_settings, notification_settings, sound_settings,
 		       storage_settings, advanced_settings, folders, passcode_enabled, passcode_timeout
 		FROM users.settings WHERE user_id = $1
 	`, userID).Scan(
-		(*jsonMap)(&out.Settings),
+		&rawSettings,
 		&rawPrivacy,
-		(*jsonMap)(&out.NotificationSettings),
-		(*jsonMap)(&out.SoundSettings),
-		(*jsonMap)(&out.StorageSettings),
-		(*jsonMap)(&out.AdvancedSettings),
+		&rawNotifications,
+		&rawSounds,
+		&rawStorage,
+		&rawAdvanced,
 		&folders,
 		&out.PasscodeEnabled,
 		&out.PasscodeTimeout,
 	)
 	out.Folders = []any(folders)
 	if err == nil {
+		out.Settings = normalizeStoredSettings("legacy_settings", rawSettings)
 		out.PrivacySettings = privacy.Parse(rawPrivacy).Map()
+		out.NotificationSettings = normalizeStoredSettings("notification_settings", rawNotifications)
+		out.SoundSettings = normalizeStoredSettings("sound_settings", rawSounds)
+		out.StorageSettings = normalizeStoredSettings("storage_settings", rawStorage)
+		out.AdvancedSettings = normalizeStoredSettings("advanced_settings", rawAdvanced)
 	}
 	return out, err
 }
 
 func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input AllSettings) error {
+	// Сначала проверить ВСЕ sections, затем выполнять любой SQL, включая ensure.
+	for _, section := range []struct {
+		name  string
+		patch map[string]any
+	}{
+		{"legacy_settings", input.Settings},
+		{"notification_settings", input.NotificationSettings},
+		{"sound_settings", input.SoundSettings},
+		{"storage_settings", input.StorageSettings},
+		{"advanced_settings", input.AdvancedSettings},
+	} {
+		if section.patch != nil {
+			if err := validateSettingsPatch(section.name, section.patch); err != nil {
+				return err
+			}
+		}
+	}
 	// Тот же вход в настройки приватности, что и PUT /users/privacy: без
 	// проверки здесь её можно было бы обойти.
 	if input.PrivacySettings != nil {
@@ -613,6 +640,10 @@ func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input Al
 		}
 		input.PrivacySettings = normalized
 	}
+	if len(input.Settings)+len(input.PrivacySettings)+len(input.NotificationSettings)+
+		len(input.SoundSettings)+len(input.StorageSettings)+len(input.AdvancedSettings) == 0 && input.Folders == nil {
+		return nil
+	}
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return err
 	}
@@ -620,48 +651,48 @@ func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input Al
 	if err != nil {
 		return err
 	}
-	merge := func(base, patch map[string]any) map[string]any {
-		if base == nil {
-			base = map[string]any{}
-		}
-		for key, value := range patch {
-			base[key] = value
-		}
-		return base
-	}
-	current.Settings = merge(current.Settings, input.Settings)
-	current.PrivacySettings = merge(current.PrivacySettings, input.PrivacySettings)
-	current.NotificationSettings = merge(current.NotificationSettings, input.NotificationSettings)
-	current.SoundSettings = merge(current.SoundSettings, input.SoundSettings)
-	current.StorageSettings = merge(current.StorageSettings, input.StorageSettings)
-	current.AdvancedSettings = merge(current.AdvancedSettings, input.AdvancedSettings)
+	var folders any
 	if input.Folders != nil {
-		current.Folders = input.Folders
+		folders = jsonArray(input.Folders)
 	}
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE users.settings SET
-			settings = $2::jsonb,
-			privacy_settings = $3::jsonb,
-			notification_settings = $4::jsonb,
-			sound_settings = $5::jsonb,
-			storage_settings = $6::jsonb,
-			advanced_settings = $7::jsonb,
-			folders = $8::jsonb,
+			settings = COALESCE($2::jsonb, settings),
+			privacy_settings = COALESCE($3::jsonb, privacy_settings),
+			notification_settings = COALESCE($4::jsonb, notification_settings),
+			sound_settings = COALESCE($5::jsonb, sound_settings),
+			storage_settings = COALESCE($6::jsonb, storage_settings),
+			advanced_settings = COALESCE($7::jsonb, advanced_settings),
+			folders = COALESCE($8::jsonb, folders),
 			updated_at = NOW()
 		WHERE user_id = $1
-	`, userID, jsonMap(current.Settings), jsonMap(current.PrivacySettings), jsonMap(current.NotificationSettings), jsonMap(current.SoundSettings), jsonMap(current.StorageSettings), jsonMap(current.AdvancedSettings), jsonArray(current.Folders))
+	`, userID,
+		mergedSettingsSection(current.Settings, input.Settings),
+		mergedSettingsSection(current.PrivacySettings, input.PrivacySettings),
+		mergedSettingsSection(current.NotificationSettings, input.NotificationSettings),
+		mergedSettingsSection(current.SoundSettings, input.SoundSettings),
+		mergedSettingsSection(current.StorageSettings, input.StorageSettings),
+		mergedSettingsSection(current.AdvancedSettings, input.AdvancedSettings), folders,
+	)
 	return err
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, userID string, settings map[string]any) (map[string]any, error) {
+	if err := validateSettingsPatch("settings", settings); err != nil {
+		return nil, err
+	}
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, err
 	}
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE users.settings SET settings = settings || $2::jsonb, updated_at = NOW() WHERE user_id = $1
-	`, userID, jsonMap(settings))
-	if err != nil {
-		return nil, err
+	if len(settings) > 0 {
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE users.settings SET settings =
+				(CASE WHEN jsonb_typeof(settings) = 'object' THEN settings ELSE $3::jsonb END) || $2::jsonb,
+				updated_at = NOW() WHERE user_id = $1
+		`, userID, jsonMap(settings), jsonMap(closedSettings("settings")))
+		if err != nil {
+			return nil, err
+		}
 	}
 	next, _, err := s.Settings(ctx, userID)
 	return next, err
@@ -700,12 +731,23 @@ func (s *Service) Preference(ctx context.Context, userID, column string, fallbac
 }
 
 func (s *Service) UpdatePreference(ctx context.Context, userID, column string, patch map[string]any) (map[string]any, error) {
+	switch column {
+	case "notification_settings", "sound_settings", "storage_settings", "advanced_settings":
+	default:
+		return nil, fmt.Errorf("%w: unknown preference section", ErrInvalidSettings)
+	}
+	if err := validateSettingsPatch(column, patch); err != nil {
+		return nil, err
+	}
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, err
 	}
 	current, err := s.jsonColumn(ctx, userID, column)
 	if err != nil {
 		return nil, err
+	}
+	if len(patch) == 0 {
+		return current, nil
 	}
 	for key, value := range patch {
 		current[key] = value
@@ -797,7 +839,7 @@ func (s *Service) Export(ctx context.Context, userID string) (ExportData, error)
 	if err != nil {
 		return ExportData{}, err
 	}
-	settings, privacy, err := s.Settings(ctx, userID)
+	settings, privacy, err := s.readSettings(ctx, userID, "legacy_settings")
 	if err != nil {
 		return ExportData{}, err
 	}
@@ -963,7 +1005,7 @@ func (s *Service) ensureSettings(ctx context.Context, userID string) error {
 }
 
 func (s *Service) jsonColumn(ctx context.Context, userID, column string) (map[string]any, error) {
-	var current map[string]any
+	var raw []byte
 	var q string
 	switch column {
 	case "notification_settings":
@@ -977,8 +1019,10 @@ func (s *Service) jsonColumn(ctx context.Context, userID, column string) (map[st
 	default:
 		return nil, ErrInvalidInput
 	}
-	err := s.db.QueryRowContext(ctx, q, userID).Scan((*jsonMap)(&current))
-	return current, err
+	if err := s.db.QueryRowContext(ctx, q, userID).Scan(&raw); err != nil {
+		return nil, err
+	}
+	return normalizeStoredSettings(column, raw), nil
 }
 
 func (s *Service) updateJsonColumn(ctx context.Context, userID, column string, value map[string]any) error {
