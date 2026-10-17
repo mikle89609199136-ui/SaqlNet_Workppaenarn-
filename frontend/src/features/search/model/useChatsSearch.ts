@@ -1,6 +1,6 @@
 import { searchUsersQuery, MIN_SEARCH_LENGTH, useProfileStore } from '@/entities/user';
 import type { IChatDto, ISearchUserDto } from '@/types';
-import { getLastMessageText } from '@/entities/chat';
+import { getChatTitle, getLastMessageText } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,7 +48,8 @@ export function useChatsSearch(allChats: IChatDto[]): Result {
     if (!needle) return [];
 
     return allChats.filter((chat) => {
-      const title = normalize(chat.title || '');
+      // У «Избранного» — название на языке интерфейса (#1075).
+      const title = normalize(getChatTitle(chat, t));
       const lastMessage = normalize(getLastMessageText(chat.lastMessage, t, viewerId) || '');
       return title.includes(needle) || lastMessage.includes(needle);
     });

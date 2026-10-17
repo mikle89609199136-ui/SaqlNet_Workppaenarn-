@@ -8,7 +8,7 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
 import { AppUpdateBanner } from '@/features/app-update';
-import { useStartPrivateChat } from '@/features/chat-actions';
+import { useOpenSavedMessages, useStartPrivateChat } from '@/features/chat-actions';
 import { PushPrompt } from '@/features/push-notifications';
 import { ROUTES } from '@/shared/config/routes';
 import { useConnectionStatus } from '@/shared/lib';
@@ -86,6 +86,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
   const search = useChatsSearch(visibleChats);
   // Найденный человек — начать с ним чат (#863: действие передаётся поиску).
   const startChat = useStartPrivateChat();
+  const openSaved = useOpenSavedMessages();
 
   /* Архив живёт в том же кеше, что и основной список; запрос лёгкий. */
   const { data: archivedChats = [] } = useQuery(chatsQuery({ archived: true }));
@@ -214,6 +215,21 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
           {connection !== 'connected' && <Spinner className="size-3.5 border-2" tone="current" />}
           <span className="truncate">{title}</span>
         </h1>
+        {/* Вход в «Избранное» (#1075): себя в поиске людей не найти. */}
+        <button
+          aria-label={t('savedMessages.title', 'Избранное')}
+          className={buttonStyles({
+            variant: 'secondary',
+            iconOnly: true,
+            className: 'text-ink-2',
+          })}
+          disabled={openSaved.isPending}
+          onClick={() => openSaved.mutate()}
+          title={t('savedMessages.title', 'Избранное')}
+          type="button"
+        >
+          <Icon name="bookmark" size="md" />
+        </button>
         <Link
           aria-label={t('settings.menu.title', 'Настройки')}
           className={buttonStyles({

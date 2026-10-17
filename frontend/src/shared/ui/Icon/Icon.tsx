@@ -2,6 +2,7 @@ import type { TIconTypes } from '@/types';
 import { cn } from '@/shared/lib';
 import {
   AlertTriangle,
+  Bookmark,
   Bold,
   Code,
   Italic,
@@ -117,6 +118,7 @@ interface Props extends Omit<LucideProps, 'size' | 'ref'> {
 }
 
 const iconsConfig: Record<TIconTypes, LucideIcon> = {
+  bookmark: Bookmark,
   bold: Bold,
   italic: Italic,
   underline: Underline,

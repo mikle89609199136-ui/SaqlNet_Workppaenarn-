@@ -168,3 +168,14 @@ describe('подтверждение «Удалить чат» (#825, вход �
     expect(onConfirm).toHaveBeenCalledWith(true);
   });
 });
+
+/* У «Избранного» уведомлений нет — и прятать в них нечего (#1075). */
+describe('меню строки «Избранного»', () => {
+  it('без пункта про текст в уведомлениях, закрепление на месте', () => {
+    renderMenu(makeChat({ type: 'self', title: 'Избранное' }));
+
+    const items = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    expect(items.some((item) => /уведомлениях/.test(item ?? ''))).toBe(false);
+    expect(screen.getByRole('menuitem', { name: /Закрепить/ })).toBeInTheDocument();
+  });
+});

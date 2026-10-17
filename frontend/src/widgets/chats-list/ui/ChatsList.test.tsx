@@ -2,11 +2,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { I18nextProvider } from 'react-i18next';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
 import { makeChat, makeMessage } from '@/test/fixtures';
 import { chatKeys } from '@/entities/chat';
+import { useProfileStore } from '@/entities/user';
+import { clearToasts, getToasts } from '@/shared/ui';
 import { useServerEvents } from '@/realtime/useServerEvents';
 import { mockChatListLayout } from '@/test/harness/chatListLayout';
 import { fakeSocket } from '@/test/harness/fakeSocket';
@@ -407,5 +409,85 @@ describe('ChatsList widget', () => {
 
       expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     });
+  });
+});
+
+/* Вход в «Избранное» (#1075): себя в поиске людей не найти, поэтому
+   кнопка в шапке списка. Пустое «Избранное» в списке не висит. */
+describe('«Избранное» из шапки списка', () => {
+  const ME = 'user-me';
+
+  beforeEach(() => {
+    useProfileStore.setState({ user: { id: ME } as never, isAuth: true });
+  });
+
+  afterEach(() => {
+    clearToasts();
+  });
+
+  function renderAt(queryClient: QueryClient) {
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <I18nextProvider i18n={testI18n}>
+          <MemoryRouter initialEntries={['/chats']}>
+            <Routes>
+              <Route element={<ChatsList onOpenCreateGroup={vi.fn()} />} path="/chats" />
+              <Route element={<p>открыт чат</p>} path="/chats/:chatId" />
+            </Routes>
+          </MemoryRouter>
+        </I18nextProvider>
+      </QueryClientProvider>
+    );
+  }
+
+  it('кнопка заводит «Избранное» своим id и открывает его', async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(api('/chats/private'), async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ chatId: 'chat-saved', exists: false }, { status: 201 });
+      })
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(chatKeys.list(), []);
+    queryClient.setQueryData(chatKeys.archived(), []);
+
+    renderAt(queryClient);
+    fireEvent.click(screen.getByRole('button', { name: 'Избранное' }));
+
+    expect(await screen.findByText('открыт чат')).toBeInTheDocument();
+    expect(bodies).toEqual([{ userId: ME }]);
+  });
+
+  it('сервер не ответил — тост, остаёмся в списке', async () => {
+    server.use(http.post(api('/chats/private'), () => HttpResponse.json({}, { status: 500 })));
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    queryClient.setQueryData(chatKeys.list(), []);
+    queryClient.setQueryData(chatKeys.archived(), []);
+
+    renderAt(queryClient);
+    fireEvent.click(screen.getByRole('button', { name: 'Избранное' }));
+
+    await waitFor(() => expect(getToasts()).toHaveLength(1));
+    expect(screen.queryByText('открыт чат')).toBeNull();
+  });
+
+  it('пустое «Избранное» в списке не показано, с сообщением — показано', () => {
+    const empty = makeChat({ id: 'chat-self', type: 'self', title: 'Избранное' } as never);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(chatKeys.list(), [empty]);
+    queryClient.setQueryData(chatKeys.archived(), []);
+
+    const { unmount } = renderAt(queryClient);
+    expect(screen.queryByRole('link', { name: /Избранное/ })).toBeNull();
+    unmount();
+
+    queryClient.setQueryData(chatKeys.list(), [
+      { ...empty, lastMessage: { content: 'заметка', type: 'text', senderId: ME } },
+    ]);
+    renderAt(queryClient);
+    expect(screen.getByRole('link', { name: /Избранное/ })).toBeInTheDocument();
   });
 });

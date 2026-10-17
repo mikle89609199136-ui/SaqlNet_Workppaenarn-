@@ -334,3 +334,25 @@ describe('звонок последним сообщением', () => {
     expect(screen.getByText(/Вы:/)).toBeInTheDocument();
   });
 });
+
+/* «Избранное» в списке (#1075): значок, название из словаря, без «Вы:»
+   и галочек — всё своё, и читать его некому. */
+describe('строка «Избранного»', () => {
+  it('значок и «Избранное», без «Вы:», галочек и буквы', () => {
+    const { container } = renderRow(
+      makeChat({
+        id: CHAT_ID,
+        title: 'Избранное',
+        type: 'self',
+        peerId: undefined,
+        lastMessage: last({ senderId: ME, content: 'купить хлеб', readAt: '2026-10-17T10:00:00Z' }),
+      } as never)
+    );
+
+    expect(screen.getByText('Избранное')).toBeInTheDocument();
+    expect(screen.getByText('купить хлеб')).toBeInTheDocument();
+    expect(screen.queryByText(/Вы:/)).toBeNull();
+    expect(container.querySelector('[data-receipt]')).toBeNull();
+    expect(container.querySelector('svg')).not.toBeNull();
+  });
+});

@@ -3,7 +3,7 @@ import { CreateGroupModal } from '@/features/group-management';
 import { GroupInfoPanel } from '@/widgets/group-info';
 import { setCallStage, useCall } from '@/features/call';
 import { CALLS_ENABLED } from '@/shared/config';
-import { UserProfilePanel } from '@/features/user-profile';
+import { SavedMessagesPanel, UserProfilePanel } from '@/features/user-profile';
 import { cn, useIsMobile, usePaneWidth } from '@/shared/lib';
 import { PaneResizer } from '@/shared/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -244,6 +244,9 @@ export function ChatsPage() {
                 onClose={closeProfile}
                 startCall={startProfileCall}
               />
+            ) : shownProfile.kind === 'saved' && chatId ? (
+              // «Избранное»: вместо профиля — общее в нём (#1075).
+              <SavedMessagesPanel chatId={chatId} key={chatId} onClose={closeProfile} />
             ) : (
               <UserProfilePanel
                 onClose={closeProfile}

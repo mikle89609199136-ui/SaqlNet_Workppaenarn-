@@ -134,3 +134,16 @@ describe('аватарка', () => {
     expect(container.querySelector('img')).toBeInTheDocument();
   });
 });
+
+/* Значок вместо фото, сетки и буквы — у «Избранного» закладка (#1075). */
+describe('аватарка-значок', () => {
+  it('рисует значок без буквы и без фото, даже если фото передано', () => {
+    const { container } = render(
+      <Avatar icon="bookmark" id="u-me" name="Избранное" src="/me.jpg" />
+    );
+
+    expect(container.querySelector('svg')).not.toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.textContent).not.toContain('И');
+  });
+});

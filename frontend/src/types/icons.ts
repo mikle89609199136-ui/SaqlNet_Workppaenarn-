@@ -1,6 +1,7 @@
 export type TIconTypes =
   | 'bell'
   | 'bellOff'
+  | 'bookmark'
   | 'burger'
   | 'camera'
   | 'channel'

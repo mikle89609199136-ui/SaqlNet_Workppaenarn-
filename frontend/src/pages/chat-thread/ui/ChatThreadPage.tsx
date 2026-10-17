@@ -10,7 +10,7 @@ import { useCall } from '@/features/call';
 import { CALLS_ENABLED } from '@/shared/config';
 import { DeleteMessagesDialog, MessageActionsPopover } from '@/features/message-actions';
 import { PinnedMessagesNavigator } from '@/features/pinned-messages';
-import { UserProfileModal } from '@/features/user-profile';
+import { SavedMessagesModal, UserProfileModal } from '@/features/user-profile';
 import { PhotoEditorModal } from '@/features/photo-editor';
 
 import { useOutletContext } from 'react-router-dom';
@@ -228,6 +228,7 @@ export function ChatThreadPage() {
           <DeleteMessagesDialog
             currentUserId={currentUserId}
             isGroup={chat?.type === 'group'}
+            isSavedMessages={chat?.type === 'self'}
             onConfirm={confirmDelete}
           />
           {selectionMode && (
@@ -247,14 +248,23 @@ export function ChatThreadPage() {
             />
           )}
 
-          {profileMode === 'modal' && profileModal.kind !== 'group' && (
-            <UserProfileModal
+          {profileMode === 'modal' && profileModal.kind === 'saved' && (
+            <SavedMessagesModal
+              isOpen={profileModal.isOpen}
               onClose={() => setProfileModal({ isOpen: false, userId: null })}
-              profileModal={profileModal}
-              renderActions={renderProfileActions}
-              startCall={startProfileCall}
             />
           )}
+
+          {profileMode === 'modal' &&
+            profileModal.kind !== 'group' &&
+            profileModal.kind !== 'saved' && (
+              <UserProfileModal
+                onClose={() => setProfileModal({ isOpen: false, userId: null })}
+                profileModal={profileModal}
+                renderActions={renderProfileActions}
+                startCall={startProfileCall}
+              />
+            )}
 
           {modals.photoEditorFile && (
             <PhotoEditorModal
