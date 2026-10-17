@@ -1,3 +1,4 @@
+import { isUnsent } from '@/entities/message';
 import type { IMessageDto, TMessagesList } from '@/types';
 
 /**
@@ -171,14 +172,14 @@ export function selectReadUpTo(
   currentUserId?: string
 ): IMessageDto[] {
   const readMs = timeMs(lastReadAt);
-  return items
-    .slice(0, lastVisibleIndex + 1)
-    .flatMap((item) =>
-      item.type === 'message' &&
-      isIncoming(item.message, currentUserId) &&
-      !item.message.isRead &&
-      !(timeMs(item.message.createdAt) <= readMs)
-        ? [item.message]
-        : []
-    );
+  return items.slice(0, lastVisibleIndex + 1).flatMap((item) =>
+    item.type === 'message' &&
+    isIncoming(item.message, currentUserId) &&
+    // Временного id сервер не знает: весь запрос получил бы 400 (#1067).
+    !isUnsent(item.message) &&
+    !item.message.isRead &&
+    !(timeMs(item.message.createdAt) <= readMs)
+      ? [item.message]
+      : []
+  );
 }

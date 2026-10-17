@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import type { TIconTypes } from '@/types';
 import { cn } from '@/shared/lib';
+import { Icon } from '../Icon';
 import { useAvatarShape, type TAvatarShape } from './avatarShape';
 import { avatarToneIndex, hashBytes } from './avatarTone';
 import { GridMark } from './GridMark';
@@ -56,6 +58,8 @@ interface Props {
   /* На чём лежит аватарка: обводка точки «в сети» — цвета этого фона.
      Панель — по умолчанию; шапка чата лежит на фоне ленты. */
   surface?: 'sheet' | 'chat';
+  /* Значок вместо фото, сетки и буквы — у «Избранного» закладка (#1075). */
+  icon?: TIconTypes;
   className?: string;
 }
 
@@ -67,6 +71,7 @@ export const Avatar = ({
   shape,
   online = false,
   surface = 'sheet',
+  icon,
   className,
 }: Props) => {
   /* Проп важнее настройки: он ставится там, где вид выбран замыслом
@@ -86,7 +91,23 @@ export const Avatar = ({
     setHasError(false);
   }
 
-  const showImage = Boolean(src && !hasError);
+  const showImage = Boolean(src && !hasError) && !icon;
+
+  if (icon) {
+    return (
+      <span className={cn('relative inline-flex shrink-0', className)}>
+        <span
+          aria-hidden="true"
+          className={cn(
+            'inline-flex items-center justify-center rounded-pill bg-brand-fill text-on-brand',
+            box
+          )}
+        >
+          <Icon className="size-1/2" name={icon} />
+        </span>
+      </span>
+    );
+  }
 
   return (
     <span className={cn('relative inline-flex shrink-0', className)}>

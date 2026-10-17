@@ -1,30 +1,69 @@
 import { AudioPlayer, Icon, VideoPlayer } from '@/shared/ui';
-import type { IMessageDto } from '../../model/types';
+import type { IMessageDto, TMediaUnavailableReason } from '../../model/types';
 import { formatFileSize } from '@/shared/lib';
-import { type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 interface Props {
   message: IMessageDto;
   onOpenImage: Dispatch<SetStateAction<string | null>>;
   /** Время и статус: у голосового они стоят под его длительностью. */
   trailing?: ReactNode;
+  /** Скачать вложение ещё раз, если оно не скачалось (#1062). */
+  onRetryMedia?: (message: IMessageDto) => Promise<void> | void;
 }
 
-export const MessageMedia = ({ message, onOpenImage, trailing }: Props) => {
+/* Причину называет сервис кодом, подпись — здесь, на языке интерфейса. */
+function unavailableText(reason: TMediaUnavailableReason | undefined, t: TFunction): string {
+  switch (reason) {
+    case 'foreign':
+      return t('mediaUnavailable.foreign', 'Медиа недоступно: файл не из этого приложения');
+    case 'decryptFailed':
+      return t('mediaUnavailable.decryptFailed', 'Медиа недоступно: ошибка расшифровки');
+    case 'downloadFailed':
+      return t('mediaUnavailable.downloadFailed', 'Не удалось загрузить медиа');
+    case 'notFound':
+      return t('mediaUnavailable.notFound', 'Медиа недоступно: файла нет на сервере');
+    case 'forbidden':
+      return t('mediaUnavailable.forbidden', 'Медиа недоступно: нет доступа к файлу');
+    default:
+      return t('mediaUnavailableUnencrypted', 'Медиа недоступно: файл не зашифрован');
+  }
+}
+
+export const MessageMedia = ({ message, onOpenImage, trailing, onRetryMedia }: Props) => {
   const { t } = useTranslation();
+  const [retrying, setRetrying] = useState(false);
   const { mediaUnavailable, mediaUnavailableReason, mediaUrl, mediaType, type, mediaEncryption } =
     message;
 
   if (mediaUnavailable) {
-    /* Причину называет сервис кодом, подпись — здесь, на языке интерфейса. */
-    const reasonText =
-      mediaUnavailableReason === 'foreign'
-        ? t('mediaUnavailable.foreign', 'Медиа недоступно: файл не из этого приложения')
-        : mediaUnavailableReason === 'decryptFailed'
-          ? t('mediaUnavailable.decryptFailed', 'Медиа недоступно: ошибка расшифровки')
-          : t('mediaUnavailableUnencrypted', 'Медиа недоступно: файл не зашифрован');
-    return <div className="message-media-unavailable">{reasonText}</div>;
+    // Повторять имеет смысл только скачивание: файла нет, доступа нет или
+    // он не расшифровался — второй раз выйдет то же самое.
+    const canRetry = mediaUnavailableReason === 'downloadFailed' && onRetryMedia;
+
+    return (
+      <div className="message-media-unavailable">
+        {unavailableText(mediaUnavailableReason, t)}
+        {canRetry && (
+          <button
+            aria-label={t('retryMediaDownload', 'Загрузить медиа ещё раз')}
+            className="ml-2 font-semibold text-brand hover:underline focus-visible:underline disabled:opacity-60 group-data-[mine]/bubble:text-on-brand"
+            disabled={retrying}
+            onClick={(event) => {
+              // Иначе нажатие откроет меню сообщения.
+              event.stopPropagation();
+              setRetrying(true);
+              void Promise.resolve(onRetryMedia(message)).finally(() => setRetrying(false));
+            }}
+            type="button"
+          >
+            {t('retry', 'Повторить')}
+          </button>
+        )}
+      </div>
+    );
   }
 
   if (!mediaUrl) return null;

@@ -1,6 +1,6 @@
 import { API_ENDPOINTS, ApiClient } from '@/shared/api';
 import { toPlayableVoiceBlob, type IVoiceMeta } from '@/shared/lib/voice';
-import { resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
+import { mediaBlobByUrl, resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
 import { resolveChat } from '@/entities/chat/model/chatResolver';
 import type {
   IChatContext,
@@ -8,6 +8,7 @@ import type {
   IEmojisResponse,
   IEncryptedMedia,
   ILastMessageDto,
+  IMediaDisplayPatch,
   IMediaItem,
   IMessageDto,
   IUploadResponse,
@@ -26,7 +27,66 @@ import { trimRichText, type IMessageEntity } from '@/shared/lib/richText';
 import { sortMessagesChronologically } from '@/shared/lib';
 import type { CryptoService, IDecryptedMessage, TUndecryptableReason } from './CryptoService';
 
-const MEDIA_MESSAGE_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file', 'gif', 'sticker']);
+/**
+ * Вложения, которые шифруются и загружаются файлом. Стикеры и GIF сюда не
+ * входят: это ссылки на каталог приложения, и сервер принимает их только
+ * открытыми (#593, #973). Зашифрованную копию стикера он отклонит (#1061).
+ */
+const ENCRYPTED_MEDIA_TYPES = new Set(['image', 'video', 'audio', 'voice', 'file']);
+
+const UNAVAILABLE_MEDIA_REFUSAL = 'Нельзя переслать вложение, которое не открылось';
+
+/**
+ * Почему сообщение нельзя переслать; null — можно.
+ *
+ * Звонок сервер от клиента не принимает вовсе, а вложение без файла ушло
+ * бы пустым и тоже получило бы отказ (#1061). Нерасшифрованное — по
+ * признаку, а не по ведущему замку: подпись переводится, а причина нет.
+ */
+function forwardRefusal(message: IMessageDto): string | null {
+  const { undecryptable, mediaUrl, mediaUnavailable } = message as IMessageDto & {
+    undecryptable?: TUndecryptableReason;
+    mediaUrl?: string | null;
+    mediaUnavailable?: boolean;
+  };
+
+  if (undecryptable) return 'Нельзя переслать сообщение, которое не удалось расшифровать';
+  if (message.type === 'call') return 'Нельзя переслать звонок';
+  if (message.type !== 'text' && (!mediaUrl || mediaUnavailable)) {
+    return UNAVAILABLE_MEDIA_REFUSAL;
+  }
+  return null;
+}
+
+/**
+ * Файл вложения не скачался — сеть, ответ сервера или битый ответ.
+ *
+ * Отдельный класс, чтобы отличить этот шаг от расшифровки: раньше любой
+ * сбой показывался как «ошибка расшифровки», хотя чаще всего достаточно
+ * было скачать файл ещё раз (#1062).
+ */
+class MediaDownloadError extends Error {
+  readonly status?: number;
+
+  constructor(cause: unknown) {
+    super('Encrypted media download failed', { cause });
+    this.name = 'MediaDownloadError';
+    const status = (cause as { status?: unknown } | null)?.status;
+    if (typeof status === 'number') this.status = status;
+  }
+}
+
+/** Код причины для подписи под вложением: подпись выбирает интерфейс. */
+function mediaFailureReason(
+  error: unknown
+): NonNullable<IMediaDisplayPatch['mediaUnavailableReason']> {
+  if (!(error instanceof MediaDownloadError)) return 'decryptFailed';
+  // Файла нет и не будет, доступа нет — повтор не поможет.
+  if (error.status === 404 || error.status === 410) return 'notFound';
+  if (error.status === 403) return 'forbidden';
+  return 'downloadFailed';
+}
+
 /** Одно сообщение отправки: что уходит на сервер и как показать ответ у нас. */
 interface IPreparedSend {
   item: Record<string, unknown>;
@@ -117,6 +177,14 @@ export class MessageService {
     return response.data.position;
   }
 
+  /** В каком чате сообщение — для перехода из «Избранного» к оригиналу (#1076). */
+  async getMessageLocation(messageId: string): Promise<string> {
+    const response = await this.apiClient.get<{ chatId: string }>(
+      API_ENDPOINTS.MESSAGE_LOCATION(messageId)
+    );
+    return response.data.chatId;
+  }
+
   /**
    * Отправка — всегда пачкой (#808): одно сообщение — пачка из одного.
    * Сервер пишет пачку одной транзакцией, в её порядке, и отвечает
@@ -134,7 +202,36 @@ export class MessageService {
     );
 
     const sent = response.data.messages;
-    return Promise.all(prepared.map(({ toDisplay }, index) => toDisplay(sent[index])));
+    return Promise.all(
+      prepared.map(async ({ toDisplay }, index) =>
+        // Ответ сервера несёт превью цитаты зашифрованным (#1065).
+        this.decryptReplyPreview(chatId, await toDisplay(sent[index]))
+      )
+    );
+  }
+
+  /**
+   * Цитата ответа (#1065).
+   *
+   * Сервер кладёт в сообщение-ответ превью исходного — в шифрованном чате
+   * это конверт. Оно расшифровывается тем же путём, что последнее
+   * сообщение в списке чатов, и ни одним путём наружу шифрованным не
+   * уходит: иначе плашка показала бы конверт. Звонок не шифруется — в нём
+   * служебный JSON, текстом его не показываем.
+   */
+  private async decryptReplyPreview<T extends IMessageDto>(
+    chatId: string,
+    message: T,
+    chatContext: IChatContext | null = null
+  ): Promise<T> {
+    const preview = message.replyPreview;
+    if (!preview) return message;
+    if (preview.type === 'call') return { ...message, replyPreview: { ...preview, content: '' } };
+
+    return {
+      ...message,
+      replyPreview: await this.processLastMessageForDisplay(chatId, preview, chatContext),
+    };
   }
 
   /** Текст: шифруется ключом чата, показывается у нас как есть. */
@@ -184,7 +281,7 @@ export class MessageService {
     captionEntities: IMessageEntity[] = [],
     voice?: IVoiceMeta
   ): Promise<IPreparedSend> {
-    if (!MEDIA_MESSAGE_TYPES.has(mediaType)) {
+    if (!ENCRYPTED_MEDIA_TYPES.has(mediaType)) {
       throw new Error(`Unsupported media message type: ${mediaType}`);
     }
 
@@ -326,7 +423,20 @@ export class MessageService {
     type: 'sticker' | 'gif',
     replyTo: string | null = null
   ): Promise<IMessageDto> {
-    const prepared: IPreparedSend = {
+    const [message] = await this.sendPrepared(chatId, [
+      this.prepareCatalogMedia(mediaUrl, type, replyTo, null),
+    ]);
+    return message;
+  }
+
+  /** Стикер или GIF: ссылка на каталог, ничего не шифруется и не загружается. */
+  private prepareCatalogMedia(
+    mediaUrl: string,
+    type: 'sticker' | 'gif',
+    replyTo: string | null,
+    forwardedFrom: string | null
+  ): IPreparedSend {
+    return {
       item: {
         content: '',
         type,
@@ -334,6 +444,7 @@ export class MessageService {
         mediaUrl,
         mediaType: type,
         mediaEncrypted: false,
+        ...(forwardedFrom ? { forwardedFrom } : {}),
       },
       toDisplay: (sent) =>
         ({
@@ -346,8 +457,6 @@ export class MessageService {
           mediaUnavailable: false,
         }) as IMessageDto,
     };
-    const [message] = await this.sendPrepared(chatId, [prepared]);
-    return message;
   }
 
   async processMessageForDisplay(
@@ -377,15 +486,19 @@ export class MessageService {
     }
 
     const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
-    return {
-      ...item,
-      content,
-      entities,
-      senderVerified,
-      undecryptable,
-      ...(voice ? { voice } : {}),
-      ...mediaPatch,
-    };
+    return this.decryptReplyPreview(
+      chatId,
+      {
+        ...item,
+        content,
+        entities,
+        senderVerified,
+        undecryptable,
+        ...(voice ? { voice } : {}),
+        ...mediaPatch,
+      },
+      context
+    );
   }
 
   async processPinnedMessageForDisplay(
@@ -536,7 +649,7 @@ export class MessageService {
 
     const mediaEncrypted = metadata.mediaEncrypted ?? false;
     if (!mediaEncrypted) {
-      if (!MEDIA_MESSAGE_TYPES.has(item.type)) return {};
+      if (!ENCRYPTED_MEDIA_TYPES.has(item.type)) return {};
       return {
         mediaUrl: null,
         mediaEncrypted: false,
@@ -552,7 +665,11 @@ export class MessageService {
       const objectUrl =
         typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
           ? await resolveMediaObjectUrl(mediaUrl, async () => {
-              const response = await this.apiClient.get<IEncryptedMedia>(mediaUrl);
+              const response = await this.apiClient
+                .get<IEncryptedMedia>(mediaUrl)
+                .catch((error: unknown) => {
+                  throw new MediaDownloadError(error);
+                });
               const blob = await this.cryptoService.decryptMedia(chatId, response.data);
               // Голосовое, которое браузер сам не проиграет, — перекодируется (#843).
               return item.type === 'voice' ? toPlayableVoiceBlob(blob) : blob;
@@ -567,14 +684,22 @@ export class MessageService {
         mediaUnavailable: false,
       };
     } catch (error) {
-      console.warn('Encrypted media decrypt failed:', error);
+      // Неудача в реестре не запоминается: следующий вызов — «Повторить»
+      // или перезапрос ленты — скачает файл заново.
+      const reason = mediaFailureReason(error);
+      console.warn(
+        reason === 'decryptFailed'
+          ? 'Encrypted media decrypt failed:'
+          : 'Encrypted media download failed:',
+        error
+      );
       return {
         mediaUrl: null,
         mediaOriginalUrl: mediaUrl,
         mediaEncrypted: true,
         mediaEncryption: metadata.mediaEncryption ?? null,
         mediaUnavailable: true,
-        mediaUnavailableReason: 'decryptFailed',
+        mediaUnavailableReason: reason,
       };
     }
   }
@@ -611,7 +736,7 @@ export class MessageService {
       entities: plain.entities,
     };
 
-    return message;
+    return this.decryptReplyPreview(chatId, message, chatContext);
   }
 
   /**
@@ -673,6 +798,12 @@ export class MessageService {
     if (originals.length + (comment.trim() ? 1 : 0) > MAX_MESSAGES_PER_SEND) {
       throw new Error(`Не больше ${MAX_MESSAGES_PER_SEND} сообщений за одну отправку`);
     }
+    // По той же причине до подготовки — то, что сервер не примет: иначе
+    // файлы перед таким сообщением загрузились бы впустую (#1061).
+    for (const original of originals) {
+      const refusal = forwardRefusal(original);
+      if (refusal) throw new Error(refusal);
+    }
 
     const chatContext = await this.getChatContext(targetChatId, 'encryption');
     const prepared: IPreparedSend[] = [];
@@ -704,18 +835,23 @@ export class MessageService {
     chatContext: IChatContext
   ): Promise<IPreparedSend> {
     const content = message.content ?? '';
+    const { mediaUrl: media, mediaOriginalUrl } = message as IMessageDto & {
+      mediaUrl?: string | null;
+      mediaOriginalUrl?: string;
+    };
 
-    /* Признак надёжнее прежней проверки по ведущему замку: подпись
-       переводится, а причина — нет. */
-    if ((message as IMessageDto & { undecryptable?: TUndecryptableReason }).undecryptable) {
-      throw new Error('Нельзя переслать сообщение, которое не удалось расшифровать');
+    // Стикер и GIF — ссылкой на тот же элемент каталога, как при обычной
+    // отправке: шифрованную копию сервер не примет (#1061).
+    if (message.type === 'sticker' || message.type === 'gif') {
+      const catalogUrl = mediaOriginalUrl ?? media;
+      if (!catalogUrl || !isCatalogMediaUrl(catalogUrl)) {
+        throw new Error(UNAVAILABLE_MEDIA_REFUSAL);
+      }
+      return this.prepareCatalogMedia(catalogUrl, message.type, null, message.id);
     }
 
-    const media = (message as IMessageDto & { mediaUrl?: string | null }).mediaUrl;
-
-    if (MEDIA_MESSAGE_TYPES.has(message.type) && media) {
-      // Файл уже расшифрован и лежит в памяти вкладки по адресу blob:.
-      const blob = await fetch(media).then((response) => response.blob());
+    if (ENCRYPTED_MEDIA_TYPES.has(message.type) && media) {
+      const blob = await this.forwardedMediaBlob(message, media);
 
       return this.prepareMedia(
         targetChatId,
@@ -740,6 +876,29 @@ export class MessageService {
       chatContext,
       message.entities ?? []
     );
+  }
+
+  /**
+   * Файл пересылаемого сообщения — расшифрованный, из реестра.
+   *
+   * Читать его по адресу blob: через fetch нельзя: такой запрос подчиняется
+   * CSP `connect-src`, а edge схему blob: там не разрешает
+   * (backend-v2/internal/platform/httpx/httpx.go). На прод-сборке пересылка
+   * файлов из-за этого падала, а dev-сервер CSP не ставит (#1060).
+   *
+   * Пока пересылка ждёт над полем ввода, реестр мог отпустить файл ради
+   * места. Тогда он скачивается и расшифровывается заново, ключом исходного
+   * чата, — тем же путём, что при показе в ленте.
+   */
+  private async forwardedMediaBlob(message: IMessageDto, objectUrl: string): Promise<Blob> {
+    const held = mediaBlobByUrl(objectUrl);
+    if (held) return held;
+
+    const restored = await this.resolveMediaForDisplay(message.chatId, message);
+    const blob = restored.mediaUrl ? mediaBlobByUrl(restored.mediaUrl) : undefined;
+    if (blob) return blob;
+
+    throw new Error('Файл пересылаемого сообщения недоступен');
   }
 
   async listReactions(messageId: string) {

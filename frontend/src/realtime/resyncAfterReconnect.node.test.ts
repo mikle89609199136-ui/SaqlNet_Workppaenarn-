@@ -241,14 +241,17 @@ describe('восстановление после обрыва связи', () =
     unsubscribe();
   });
 
-  it('should leave closed chats alone', async () => {
-    // У закрытого чата наблюдателей нет: тянуть его историю незачем.
+  it('забывает историю закрытого чата: при открытии она загрузится заново (#1068)', async () => {
+    // Сейчас запросов нет — у закрытого чата никто не смотрит историю. Но
+    // из кеша она показалась бы без пропущенного за обрыв, а счётчик в
+    // списке — с ним.
     const queryClient = makeClient();
     let requests = 0;
+    const fresh = makeMessage({ id: 'm-fresh', chatId: CHAT_ID });
     server.use(
-      http.get(api(`/messages/${CHAT_ID}`), () => {
+      http.get(api(`/messages/`), () => {
         requests += 1;
-        return HttpResponse.json({ messages: [] });
+        return HttpResponse.json({ messages: [fresh] });
       })
     );
 
@@ -260,6 +263,7 @@ describe('восстановление после обрыва связи', () =
     await resyncAfterReconnect(queryClient);
 
     expect(requests).toBe(0);
+    expect(queryClient.getQueryData(chatKeys.messages(CHAT_ID))).toBeUndefined();
   });
 
   it('should mark the chat list as stale', async () => {
@@ -275,5 +279,116 @@ describe('восстановление после обрыва связи', () =
     await resyncAfterReconnect(queryClient);
 
     expect(invalidated).toContainEqual(chatKeys.list());
+  });
+});
+
+/* Что ещё догоняется после обрыва (#1068): удаления, пропущенные за время
+   обрыва, закрепления, данные чатов и архив. */
+describe('восстановление: пропущенные удаления и всё, что вокруг ленты', () => {
+  const threadOf = (queryClient: QueryClient) =>
+    flattenThread(queryClient.getQueryData<IThreadPages>(chatKeys.messages(CHAT_ID))).map(
+      (message) => message.id
+    );
+
+  function serveHistory(messages: ReturnType<typeof makeMessage>[] | 'error') {
+    server.use(
+      http.get(api(`/messages/${CHAT_ID}`), () =>
+        messages === 'error' ? HttpResponse.error() : HttpResponse.json({ messages })
+      )
+    );
+  }
+
+  it('сообщение, удалённое во время обрыва, пропадает из открытого чата', async () => {
+    const m1 = makeMessage({ id: 'm-1', chatId: CHAT_ID });
+    const m2 = makeMessage({ id: 'm-2', chatId: CHAT_ID });
+    const m3 = makeMessage({ id: 'm-3', chatId: CHAT_ID });
+    // Удалённое у всех и скрытое у себя сервер одинаково не отдаёт.
+    serveHistory([m1, m3]);
+    const queryClient = makeClient();
+    const unsubscribe = openThread(queryClient, [[m1, m2, m3]]);
+
+    try {
+      await resyncAfterReconnect(queryClient);
+      expect(threadOf(queryClient)).toEqual(['m-1', 'm-3']);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('неотправленное из очереди остаётся, хотя сервер его не знает', async () => {
+    const m1 = makeMessage({ id: 'm-1', chatId: CHAT_ID });
+    const unsent = {
+      ...makeMessage({ id: 'temp-unsent', chatId: CHAT_ID }),
+      tempId: 'temp-unsent',
+      status: 'failed' as const,
+    };
+    serveHistory([m1]);
+    const queryClient = makeClient();
+    const unsubscribe = openThread(queryClient, [[m1, unsent]]);
+
+    try {
+      await resyncAfterReconnect(queryClient);
+      expect(threadOf(queryClient)).toEqual(['m-1', 'temp-unsent']);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it.each([
+    ['пустая страница', [] as ReturnType<typeof makeMessage>[]],
+    ['ошибка сети', 'error' as const],
+  ])('%s — лента не меняется', async (_name, response) => {
+    const m1 = makeMessage({ id: 'm-1', chatId: CHAT_ID });
+    const m2 = makeMessage({ id: 'm-2', chatId: CHAT_ID });
+    serveHistory(response);
+    const queryClient = makeClient();
+    const unsubscribe = openThread(queryClient, [[m1, m2]]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await resyncAfterReconnect(queryClient);
+      expect(threadOf(queryClient)).toEqual(['m-1', 'm-2']);
+    } finally {
+      warn.mockRestore();
+      unsubscribe();
+    }
+  });
+
+  it('архив, закрепления и данные чатов перечитываются, история открытого — одной страницей', async () => {
+    const m1 = makeMessage({ id: 'm-1', chatId: CHAT_ID });
+    const offsets: Array<string | null> = [];
+    server.use(
+      http.get(api(`/messages/${CHAT_ID}`), ({ request }) => {
+        offsets.push(new URL(request.url).searchParams.get('offset'));
+        return HttpResponse.json({ messages: [m1] });
+      })
+    );
+    const queryClient = makeClient();
+    const unsubscribe = openThread(queryClient, [[m1]]);
+    queryClient.setQueryData<IThreadPages>(chatKeys.messages('chat-closed'), {
+      pages: [[makeMessage({ id: 'm-closed', chatId: 'chat-closed' })]],
+      pageParams: [0],
+    });
+    const invalidated: Array<{ queryKey: unknown; exact?: boolean }> = [];
+    const original = queryClient.invalidateQueries.bind(queryClient);
+    vi.spyOn(queryClient, 'invalidateQueries').mockImplementation((filters: any, options) => {
+      invalidated.push({ queryKey: filters?.queryKey, exact: filters?.exact });
+      return original(filters, options);
+    });
+
+    try {
+      await resyncAfterReconnect(queryClient);
+
+      const keys = invalidated.map((entry) => entry.queryKey);
+      expect(keys).toContainEqual(chatKeys.list());
+      expect(keys).toContainEqual(chatKeys.archived());
+      expect(keys).toContainEqual(chatKeys.pins(CHAT_ID));
+      expect(keys).toContainEqual(chatKeys.pins('chat-closed'));
+      expect(invalidated).toContainEqual({ queryKey: chatKeys.detail(CHAT_ID), exact: true });
+      expect(invalidated).toContainEqual({ queryKey: chatKeys.detail('chat-closed'), exact: true });
+      expect(offsets).toEqual(['0']);
+    } finally {
+      unsubscribe();
+    }
   });
 });

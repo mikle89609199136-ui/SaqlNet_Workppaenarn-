@@ -148,6 +148,10 @@ func classifyMessageRoute(method, path string) routeGroup {
 			case http.MethodPost:
 				return routeGroupMessageWrite
 			}
+		case "location":
+			if method == http.MethodGet {
+				return routeGroupMessageRead
+			}
 		case "favorite":
 			if method == http.MethodPost || method == http.MethodDelete {
 				return routeGroupMessageWrite

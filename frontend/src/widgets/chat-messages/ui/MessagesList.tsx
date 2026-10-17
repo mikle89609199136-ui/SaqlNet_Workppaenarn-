@@ -37,6 +37,10 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /** Скачать ещё раз вложение, которое не скачалось (#1062). */
+  onRetryMedia?: (message: IMessageDto) => Promise<void> | void;
+  /** К исходному сообщению пересланного — в «Избранном» (#1076). */
+  onOpenOriginal?: (messageId: string) => void;
   /** Профиль автора пересланного сообщения (#785). */
   onOpenProfile?: (userId: string) => void;
   /**
@@ -78,6 +82,8 @@ export const MessagesList = memo(
     onRetryMessage,
     onOpenProfile,
     onCancelMessage,
+    onRetryMedia,
+    onOpenOriginal,
     showDeliveryStatus = false,
     isGroupChat = false,
     trackUnread = true,
@@ -147,9 +153,19 @@ export const MessagesList = memo(
     useEffect(() => {
       if (!handleJumpRequests || !jumpRequest) return;
       if (jumpRequest.chatId && activeChatId && jumpRequest.chatId !== activeChatId) return;
+      // Пока лента грузится, искать не в чем: переход в другой чат искал
+      // сообщение в пустом списке и сдавался (#1076).
+      if (isLoading) return;
       setJumpRequest(null);
       void handleJumpToMessage(jumpRequest.messageId);
-    }, [handleJumpRequests, handleJumpToMessage, jumpRequest, setJumpRequest, activeChatId]);
+    }, [
+      handleJumpRequests,
+      handleJumpToMessage,
+      jumpRequest,
+      setJumpRequest,
+      activeChatId,
+      isLoading,
+    ]);
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -229,6 +245,8 @@ export const MessagesList = memo(
                         onReact={onReact}
                         onRetryMessage={onRetryMessage}
                         onCancelMessage={onCancelMessage}
+                        onRetryMedia={onRetryMedia}
+                        onOpenOriginal={onOpenOriginal}
                         onSelection={toggleMessageSelection}
                         repliedMessage={replyId ? messagesById.get(replyId) : undefined}
                         showDeliveryStatus={showDeliveryStatus}

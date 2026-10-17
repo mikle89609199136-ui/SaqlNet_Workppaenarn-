@@ -1,7 +1,8 @@
 import type { IMessageEntity, TLastSeenApprox } from '@/shared/lib';
 import type { TMediaMessageType, TMessageType, TReactionsList } from '@/types';
 
-export type TChatType = 'private' | 'group' | 'channel';
+/** `self` — «Избранное»: чат с самим собой (#719, #1075). */
+export type TChatType = 'private' | 'group' | 'channel' | 'self';
 
 export type TChatRole = 'member' | 'admin' | 'owner';
 

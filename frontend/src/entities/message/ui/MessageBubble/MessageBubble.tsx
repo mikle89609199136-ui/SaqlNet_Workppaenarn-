@@ -5,7 +5,12 @@ import { menuPointNear } from '../../model/messageMenu';
 import { useMessageMenuKeys } from '../../model/useMessageMenuKeys';
 import type { IMediaItem, IMessageDto } from '../../model/types';
 import { cn, receiptState } from '@/shared/lib';
-import { formatMessageTime, hasMessageMedia } from '../../model/messageUtils';
+import {
+  formatEditedAt,
+  formatMessageTime,
+  forwardedOriginId,
+  hasMessageMedia,
+} from '../../model/messageUtils';
 import { memo, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CallMessageContent } from './CallMessageContent';
@@ -50,6 +55,10 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление неудачного сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /** Скачать ещё раз вложение, которое не скачалось (#1062). */
+  onRetryMedia?: (message: IMessageDto) => Promise<void> | void;
+  /** Перейти к исходному сообщению пересланного — в «Избранном» (#1076). */
+  onOpenOriginal?: (messageId: string) => void;
   /**
    * Показывать ли «прочитано» у своих сообщений.
    *
@@ -166,6 +175,8 @@ export const MessageBubble = memo(
     onOpenProfile,
     onRetryMessage,
     onCancelMessage,
+    onRetryMedia,
+    onOpenOriginal,
     showDeliveryStatus = false,
     isGroupChat = false,
     isFirstInGroup = true,
@@ -236,12 +247,16 @@ export const MessageBubble = memo(
       read: t('messageStatus.read', 'Прочитано'),
     };
 
+    // Когда поправили (#1066): подсказкой у «изменено» и в подписи для диктора.
+    const editedAt = formatEditedAt(message, t);
+    const originId = forwardedOriginId(message);
     const announcement = [
       mine ? t('you', 'Вы') : authorName,
-      // Звонок getLastMessageText подписывает сам («Звонок завершен · 28 сек»),
+      // Звонок getLastMessageText подписывает сам («Входящий звонок · 28 сек»),
       // а не читает служебный JSON из content.
-      getLastMessageText({ ...message, type: isVoice ? 'voice' : actualType }, t),
+      getLastMessageText({ ...message, type: isVoice ? 'voice' : actualType }, t, currentUserId),
       formatMessageTime(message.createdAt),
+      editedAt,
       delivery && deliveryLabel[delivery],
     ]
       .filter(Boolean)
@@ -260,7 +275,7 @@ export const MessageBubble = memo(
             <Icon className="size-3 stroke-2" name="pin" />
           </span>
         )}
-        {message.isEdited && <span>{t('edited', 'изменено')}</span>}
+        {message.isEdited && <span title={editedAt ?? undefined}>{t('edited', 'изменено')}</span>}
         <time>{formatMessageTime(message.createdAt)}</time>
         {delivery && (
           <span
@@ -415,31 +430,59 @@ export const MessageBubble = memo(
                 сообщению. Пустым оно бывает только у старых пересылок.
                 Профиль открывается, только если автор разрешил ссылку на
                 себя: иначе сервер не присылает forwardedSenderId (#785). */}
-            {message.isForwarded && (
-              <p className={cn('mb-0.5 text-caption', mine ? 'text-out-meta' : 'text-brand')}>
+            {/* В «Избранном» строка целиком ведёт к оригиналу (#1076), как
+                цитата ответа; имя автора тогда простым текстом — его профиль
+                откроется из исходного чата. */}
+            {message.isForwarded && onOpenOriginal && originId ? (
+              <button
+                aria-label={t('savedMessages.goToOriginal', 'Перейти к исходному сообщению')}
+                className={cn(
+                  'mb-0.5 block text-left text-caption hover:underline focus-visible:underline',
+                  mine ? 'text-out-meta' : 'text-brand'
+                )}
+                onClick={(event) => {
+                  // Клик по пузырю выделяет сообщение — здесь не нужно.
+                  event.stopPropagation();
+                  onOpenOriginal(originId);
+                }}
+                type="button"
+              >
                 {message.forwardedSenderName ? (
                   <>
                     {t('forwardedFrom', 'Переслано от')}{' '}
-                    {message.forwardedSenderId && onOpenProfile ? (
-                      <button
-                        className="font-semibold hover:underline focus-visible:underline"
-                        onClick={(event) => {
-                          // Клик по пузырю выделяет сообщение — здесь не нужно.
-                          event.stopPropagation();
-                          onOpenProfile(message.forwardedSenderId!);
-                        }}
-                        type="button"
-                      >
-                        {message.forwardedSenderName}
-                      </button>
-                    ) : (
-                      <b className="font-semibold">{message.forwardedSenderName}</b>
-                    )}
+                    <b className="font-semibold">{message.forwardedSenderName}</b>
                   </>
                 ) : (
                   t('forwarded', 'Переслано')
                 )}
-              </p>
+              </button>
+            ) : (
+              message.isForwarded && (
+                <p className={cn('mb-0.5 text-caption', mine ? 'text-out-meta' : 'text-brand')}>
+                  {message.forwardedSenderName ? (
+                    <>
+                      {t('forwardedFrom', 'Переслано от')}{' '}
+                      {message.forwardedSenderId && onOpenProfile ? (
+                        <button
+                          className="font-semibold hover:underline focus-visible:underline"
+                          onClick={(event) => {
+                            // Клик по пузырю выделяет сообщение — здесь не нужно.
+                            event.stopPropagation();
+                            onOpenProfile(message.forwardedSenderId!);
+                          }}
+                          type="button"
+                        >
+                          {message.forwardedSenderName}
+                        </button>
+                      ) : (
+                        <b className="font-semibold">{message.forwardedSenderName}</b>
+                      )}
+                    </>
+                  ) : (
+                    t('forwarded', 'Переслано')
+                  )}
+                </p>
+              )
             )}
 
             {hasReply && (
@@ -454,6 +497,7 @@ export const MessageBubble = memo(
             <MessageMedia
               message={message}
               onOpenImage={onOpenImage}
+              onRetryMedia={onRetryMedia}
               trailing={isVoice ? meta : undefined}
             />
 
@@ -464,7 +508,7 @@ export const MessageBubble = memo(
             )}
 
             {isCall ? (
-              <CallMessageContent message={message} trailing={meta} />
+              <CallMessageContent currentUserId={currentUserId} message={message} trailing={meta} />
             ) : message.undecryptable ? (
               /* Подпись к нечитаемому сообщению собирается здесь: причину
                  назвал слой шифрования, а язык знает интерфейс. */

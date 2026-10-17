@@ -8,6 +8,7 @@ export * from './model/getChatSubtitle';
 export * from './model/chatUiStore';
 export * from './model/chatDraftsStore';
 export * from './model/isConversationStarted';
+export * from './model/chatTitle';
 export * from './model/getLastMessageText';
 export * from './model/chatResolver';
 export * from './model/chatResolverBridge';

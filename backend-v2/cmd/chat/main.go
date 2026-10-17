@@ -124,6 +124,8 @@ func main() {
 	mux.Handle("PUT /api/v2/messages/{messageId}", authenticated(http.HandlerFunc(handler.EditMessage)))
 	mux.Handle("DELETE /api/v2/messages/{messageId}", authenticated(http.HandlerFunc(handler.DeleteMessage)))
 	mux.Handle("GET /api/v2/messages/{messageId}/reactions", authenticated(http.HandlerFunc(handler.ListReactions)))
+	// Где лежит сообщение — переход из «Избранного» к оригиналу (#1076).
+	mux.Handle("GET /api/v2/messages/{messageId}/location", authenticated(http.HandlerFunc(handler.MessageLocation)))
 
 	mux.Handle("/api/v2/messages/", authenticated(http.HandlerFunc(handler.Messages)))
 

@@ -1,8 +1,11 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
-import { chatKeys } from '@/entities/chat';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { chatKeys, readDraft, writeDraft } from '@/entities/chat';
+import { useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
+import { queryClient } from '@/shared/api';
+import { getToasts } from '@/shared/ui';
 import { createTestQueryClient, renderSettings } from '@/test/harness/renderSettings';
 
 /**
@@ -28,7 +31,7 @@ describe('выход из аккаунта', () => {
   it('чистит кеш запросов, чтобы чужие сообщения не остались в памяти', async () => {
     const logout = vi.spyOn(services.authService, 'logout').mockResolvedValue(undefined as never);
 
-    const queryClient = createTestQueryClient();
+    // Общий клиент приложения: его и чистит выход, в приложении он один.
     queryClient.setQueryData(chatKeys.messages('chat-1'), {
       pages: [[{ id: 'm1' }]],
       pageParams: [0],
@@ -107,5 +110,76 @@ describe('выход из аккаунта', () => {
 
     logoutAll.mockRestore();
     wipeDevice.mockRestore();
+  });
+});
+
+/* Выход очищает вкладку целиком (#1072): прежде AuthService сам стирал
+   профиль, и общая очистка после этого ничего не делала — черновики,
+   переводы и ключи в памяти доставались следующему, кто войдёт. */
+describe('выход очищает вкладку', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('«Выйти» — черновики стёрты, профиль снят, на экране вход', async () => {
+    vi.spyOn(services.authService, 'logout').mockResolvedValue(undefined as never);
+    writeDraft('chat-1', 'недописанное');
+
+    renderSettings({ queryClient, section: 'account' });
+    await userEvent.click(await screen.findByRole('button', { name: /Выйти из аккаунта/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Выйти' }));
+
+    expect(await screen.findByText('Вход')).toBeInTheDocument();
+    expect(readDraft('chat-1')).toBe('');
+    expect(useProfileStore.getState().isAuth).toBe(false);
+    expect(getToasts()).toEqual([]);
+  });
+
+  it('сервер не ответил — вкладка всё равно очищена, и человек об этом знает', async () => {
+    vi.spyOn(services.authService, 'logout').mockRejectedValue(new TypeError('Failed to fetch'));
+    writeDraft('chat-1', 'недописанное');
+
+    renderSettings({ queryClient, section: 'account' });
+    await userEvent.click(await screen.findByRole('button', { name: /Выйти из аккаунта/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Выйти' }));
+
+    expect(await screen.findByText('Вход')).toBeInTheDocument();
+    expect(readDraft('chat-1')).toBe('');
+    expect(getToasts()).toEqual([
+      expect.objectContaining({
+        message: 'Сервер не ответил — выход выполнен только на этом устройстве',
+      }),
+    ]);
+  });
+
+  it('«Завершить все сеансы» — ключи стираются до очистки профиля, черновики тоже', async () => {
+    vi.spyOn(services.authService, 'logoutAll').mockResolvedValue(undefined as never);
+    let signedInDuringWipe: boolean | null = null;
+    vi.spyOn(services.cryptoService, 'wipeDevice').mockImplementation(async () => {
+      signedInDuringWipe = useProfileStore.getState().isAuth;
+    });
+    writeDraft('chat-1', 'недописанное');
+
+    renderSettings({ queryClient, section: 'account', subsection: 'sessions' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Завершить все сеансы' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Завершить сеансы' }));
+
+    expect(await screen.findByText('Вход')).toBeInTheDocument();
+    expect(signedInDuringWipe).toBe(true);
+    expect(readDraft('chat-1')).toBe('');
+    expect(useProfileStore.getState().isAuth).toBe(false);
+  });
+
+  it('«Завершить все сеансы» не удалось — черновик на месте', async () => {
+    vi.spyOn(services.authService, 'logoutAll').mockRejectedValue(new Error('unavailable'));
+    writeDraft('chat-1', 'недописанное');
+
+    renderSettings({ queryClient, section: 'account', subsection: 'sessions' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Завершить все сеансы' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Завершить сеансы' }));
+
+    expect(
+      await screen.findByText(/Другие устройства всё ещё могут иметь доступ/)
+    ).toBeInTheDocument();
+    expect(readDraft('chat-1')).toBe('недописанное');
+    expect(useProfileStore.getState().isAuth).toBe(true);
   });
 });

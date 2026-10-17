@@ -53,11 +53,26 @@ export interface IMessageUnpinEvent {
   messageId: string;
 }
 
+/** Что именно поменял автор события: сервер хранит одну реакцию на человека. */
+export interface IReactionChange {
+  action: 'added' | 'removed' | 'replaced';
+  emoji: string | null;
+  previousEmoji: string | null;
+}
+
+/**
+ * Реакции сообщения после чужого или своего действия.
+ *
+ * `myReaction` в событии нет: рассылка одна на всех, а флаг у каждого
+ * получателя свой (#149). Его считает клиент — по `actorId` и `change`.
+ */
 export interface IReactionUpdatedEvent {
   type: string;
   chatId: string;
   messageId: string;
-  reactions: TReactionsList;
+  actorId?: string;
+  change?: IReactionChange;
+  reactions: Array<Omit<TReactionsList[number], 'myReaction'>>;
 }
 
 export interface IMessagesReadEvent {

@@ -693,3 +693,155 @@ describe('ширина пузыря с аудио', () => {
     expect(bubbleOf('audio')).toHaveClass('w-full');
   });
 });
+
+/* Вложение не скачалось (#1062): подпись по причине и «Повторить» только
+   там, где повтор может помочь. */
+describe('вложение, которое не открылось', () => {
+  const unavailable = (reason: string) =>
+    ({
+      ...makeMessage({ id: `m-${reason}`, content: '' }),
+      type: 'image',
+      mediaUrl: null,
+      mediaUnavailable: true,
+      mediaUnavailableReason: reason,
+    }) as never;
+
+  const renderUnavailable = (reason: string, onRetryMedia?: () => Promise<void>) =>
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={unavailable(reason)}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onRetryMedia={onRetryMedia}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+  it('не скачалось — своя подпись и «Повторить», пока повтор идёт, кнопка выключена', async () => {
+    let finish!: () => void;
+    const onRetryMedia = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        })
+    );
+    const user = userEvent.setup();
+    renderUnavailable('downloadFailed', onRetryMedia);
+
+    expect(screen.getByText('Не удалось загрузить медиа')).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: 'Загрузить медиа ещё раз' });
+    await user.click(retry);
+
+    expect(onRetryMedia).toHaveBeenCalledTimes(1);
+    expect(onRetryMedia).toHaveBeenCalledWith(expect.objectContaining({ id: 'm-downloadFailed' }));
+    expect(retry).toBeDisabled();
+    // Нажатие по кнопке не открывает меню сообщения.
+    expect(useChatUiStore.getState().actionMenu).toBeNull();
+
+    finish();
+    await vi.waitFor(() => expect(retry).toBeEnabled());
+  });
+
+  it.each([
+    ['notFound', 'Медиа недоступно: файла нет на сервере'],
+    ['forbidden', 'Медиа недоступно: нет доступа к файлу'],
+    ['decryptFailed', 'Медиа недоступно: ошибка расшифровки'],
+    ['foreign', 'Медиа недоступно: файл не из этого приложения'],
+    ['unencrypted', 'Медиа недоступно: файл не зашифрован'],
+  ])('%s — своя подпись и без «Повторить»', (reason, text) => {
+    renderUnavailable(
+      reason,
+      vi.fn(async () => {})
+    );
+
+    expect(screen.getByText(text)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Загрузить медиа ещё раз' })).toBeNull();
+  });
+
+  it('без обработчика повтора кнопки нет', () => {
+    renderUnavailable('downloadFailed');
+
+    expect(screen.getByText('Не удалось загрузить медиа')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Загрузить медиа ещё раз' })).toBeNull();
+  });
+});
+
+/* Когда поправили (#1066): подсказкой у «изменено» и в подписи для диктора. */
+describe('время правки', () => {
+  const renderMessage = (overrides: Parameters<typeof makeMessage>[0]) =>
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={makeMessage({ id: 'm-edited', content: 'текст', ...overrides })}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+  it('у «изменено» подсказка со временем правки, та же — в подписи сообщения', () => {
+    renderMessage({ isEdited: true, updatedAt: new Date() });
+
+    const mark = screen.getByText('изменено');
+    expect(mark.getAttribute('title')).toMatch(/^Изменено сегодня в \d\d:\d\d$/);
+    expect(screen.getByRole('article').getAttribute('aria-label')).toContain(
+      mark.getAttribute('title')
+    );
+  });
+
+  it('у неизменённого нет ни метки, ни строки в подписи', () => {
+    renderMessage({ isEdited: false });
+
+    expect(screen.queryByText('изменено')).toBeNull();
+    expect(screen.getByRole('article').getAttribute('aria-label')).not.toMatch(/Изменено/);
+  });
+});
+
+/* Тип и итог звонка в ленте (#1073). */
+describe('звонок в ленте', () => {
+  const renderCall = (senderId: string, fields: Record<string, unknown>) =>
+    renderBubble(
+      <MessageBubble
+        currentUserId="user-1"
+        message={makeMessage({
+          id: `call-${senderId}`,
+          senderId,
+          type: 'call',
+          content: JSON.stringify(fields),
+        })}
+        onOpenImage={vi.fn()}
+        onReact={vi.fn()}
+        onSelection={vi.fn()}
+        translations={{}}
+      />
+    );
+
+  it('чужой пропущенный — «Пропущенный звонок», отмечен как пропущенный', () => {
+    const { container } = renderCall('user-2', { status: 'missed', initiatorId: 'user-2' });
+
+    expect(screen.getByText('Пропущенный звонок')).toBeInTheDocument();
+    expect(container.querySelector('[data-call="missed"]')).not.toBeNull();
+  });
+
+  it('свой отвеченный видео — «Исходящий видеозвонок» и длительность', () => {
+    renderCall('user-1', {
+      callKind: 'video',
+      status: 'answered',
+      duration: 65,
+      initiatorId: 'user-1',
+    });
+
+    expect(screen.getByText('Исходящий видеозвонок')).toBeInTheDocument();
+    expect(screen.getByText('1:05')).toBeInTheDocument();
+  });
+
+  it('свой без ответа — «Без ответа»', () => {
+    renderCall('user-1', { status: 'missed', initiatorId: 'user-1' });
+
+    expect(screen.getByText('Исходящий звонок')).toBeInTheDocument();
+    expect(screen.getByText('Без ответа')).toBeInTheDocument();
+  });
+});

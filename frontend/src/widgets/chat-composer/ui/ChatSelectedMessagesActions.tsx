@@ -1,6 +1,7 @@
 import { Button, Icon } from '@/shared/ui';
 import { useEscapeKey, useIsMobile } from '@/shared/lib';
 import { useChatUiStore } from '@/entities/chat';
+import { canForwardMessage } from '@/features/message-actions';
 import { useTranslation } from 'react-i18next';
 import { ComposerRow } from './ComposerRow';
 import { ComposerWrapper } from './ComposerWrapper';
@@ -29,6 +30,9 @@ export const ChatSelectedMessagesActions = ({
   const isMobile = useIsMobile();
   const selectedMessages = useChatUiStore((state) => state.selectedMessages);
   const selectedCount = selectedMessages.length;
+  // Пересылается всё отмеченное одной пачкой: если среди него звонок или
+  // вложение, которое не открылось, кнопки нет (#1061).
+  const canForward = selectedMessages.every(canForwardMessage);
 
   const isConfirmOpen = useChatUiStore((state) => Boolean(state.deleteTargets));
 
@@ -46,19 +50,21 @@ export const ChatSelectedMessagesActions = ({
               <span data-testid="selected-count">{selectedCount}</span>
             </div>
 
-            <Button
-              aria-label={t('forward', 'Переслать')}
-              className="shrink-0"
-              disabled={selectedCount === 0}
-              onClick={onForwardMessage}
-              size="sm"
-              title={t('forward', 'Переслать')}
-              type="button"
-              variant="ghost"
-            >
-              <Icon name="forward" size="sm" />
-              {!isMobile && <span>{t('forward', 'Переслать')}</span>}
-            </Button>
+            {canForward && (
+              <Button
+                aria-label={t('forward', 'Переслать')}
+                className="shrink-0"
+                disabled={selectedCount === 0}
+                onClick={onForwardMessage}
+                size="sm"
+                title={t('forward', 'Переслать')}
+                type="button"
+                variant="ghost"
+              >
+                <Icon name="forward" size="sm" />
+                {!isMobile && <span>{t('forward', 'Переслать')}</span>}
+              </Button>
+            )}
 
             <Button
               aria-label={t('copy', 'Скопировать')}

@@ -10,6 +10,27 @@ const MAX_RECONNECT_DELAY_MS = 30_000;
 /** Разброс паузы, доля. Нужен, чтобы вкладки не возвращались одной волной. */
 const JITTER = 0.2;
 
+/**
+ * Сколько тишины считать обрывом (#1069). Сервер шлёт ping раз в 30 с, но
+ * перед каждым проверяет отзыв токена и продлевает присутствие — на живом
+ * соединении пауза доходит до ~43 с. Два интервала с запасом и меньше
+ * серверных 90 с, после которых он рвёт молчащего сам.
+ */
+const LIVENESS_TIMEOUT_MS = 60_000;
+
+/**
+ * Сколько ждать ответа на свой ping при пробуждении: с запасом на проверку
+ * отзыва, которую сервер делает перед ответом (до 3 с).
+ */
+const PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * На какой неудаче подряд спрашивать сервер, жива ли сессия (#1070).
+ * Первая проверка — примерно через 3 с после обрыва (паузы 1 + 2 с):
+ * короткое моргание сети её не вызывает. Дальше — каждые три попытки.
+ */
+const SESSION_CHECK_EVERY = 3;
+
 /** Что можно переопределить при создании клиента. */
 export interface IWebSocketClientOptions {
   /**
@@ -17,15 +38,29 @@ export interface IWebSocketClientOptions {
    * отправит её при подключении сам, в адресе токена нет.
    */
   hasSession?: () => boolean;
+  /**
+   * Жива ли сессия на сервере: `false` — её нет, `true` — есть или
+   * проверить не удалось. Транспорт о HTTP не знает, проверку дают ему.
+   */
+  checkSession?: () => Promise<boolean>;
   reconnectDelay?: number;
   maxReconnectDelay?: number;
+  /** Тишина, после которой соединение считается мёртвым. */
+  livenessTimeout?: number;
+  /** Ожидание ответа на ping при проверке открытого соединения. */
+  probeTimeout?: number;
 }
 
 export class WebSocketClient {
   private url: string;
   private hasSession: () => boolean;
+  private checkSession?: () => Promise<boolean>;
+  private checkingSession: boolean;
   private reconnectDelay: number;
   private maxReconnectDelay: number;
+  private livenessTimeout: number;
+  private probeTimeout: number;
+  private livenessTimer: number | null;
   private socket: WebSocket | null;
   private reconnectAttempts: number;
   private reconnectTimer: number | null;
@@ -37,8 +72,13 @@ export class WebSocketClient {
   constructor(url: string, options: IWebSocketClientOptions = {}) {
     this.url = url;
     this.hasSession = options.hasSession ?? (() => false);
+    this.checkSession = options.checkSession;
+    this.checkingSession = false;
     this.reconnectDelay = options.reconnectDelay ?? 1000;
     this.maxReconnectDelay = options.maxReconnectDelay ?? MAX_RECONNECT_DELAY_MS;
+    this.livenessTimeout = options.livenessTimeout ?? LIVENESS_TIMEOUT_MS;
+    this.probeTimeout = options.probeTimeout ?? PROBE_TIMEOUT_MS;
+    this.livenessTimer = null;
     this.socket = null;
     this.reconnectAttempts = 0;
     this.reconnectTimer = null;
@@ -105,6 +145,7 @@ export class WebSocketClient {
   disconnect() {
     this.shouldReconnect = false;
     this.cancelScheduledReconnect();
+    this.stopLivenessTimer();
     this.stopWatchingForWakeUps();
 
     // Ссылка обнуляется до закрытия: иначе событие close объявит о разрыве
@@ -141,10 +182,14 @@ export class WebSocketClient {
 
   handleOpen() {
     this.reconnectAttempts = 0;
+    this.armLivenessTimer(this.livenessTimeout);
     eventBus.emit('socket:connected', undefined);
   }
 
   handleMessage(event) {
+    // Любое входящее — признак жизни: и ping, и pong, и событие.
+    this.armLivenessTimer(this.livenessTimeout);
+
     try {
       const message = JSON.parse(event.data);
 
@@ -183,9 +228,66 @@ export class WebSocketClient {
     if (this.socket !== socket) return;
 
     this.socket = null;
+    this.stopLivenessTimer();
     eventBus.emit('socket:disconnected', undefined);
 
     this.scheduleReconnect();
+  }
+
+  /**
+   * Сторожевой таймер соединения (#1069).
+   *
+   * Соединение рвётся и молча: ноутбук проснулся, телефон сменил сеть,
+   * роутер сбросил NAT. Браузер признаёт такое мёртвым нескоро — `close`
+   * может не прийти минутами, а клиент сам в него не пишет, пока не
+   * спросят. Всё это время шапка показывала «на связи», а сообщения не
+   * приходили. Таймер заводится на открытие и на каждое входящее и
+   * снимается на закрытие; без соединения не заводится.
+   */
+  armLivenessTimer(timeout: number) {
+    this.stopLivenessTimer();
+    const socket = this.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+    this.livenessTimer = window.setTimeout(() => {
+      this.livenessTimer = null;
+      this.dropDeadConnection(socket);
+    }, timeout);
+  }
+
+  stopLivenessTimer() {
+    if (this.livenessTimer === null) return;
+
+    window.clearTimeout?.(this.livenessTimer);
+    this.livenessTimer = null;
+  }
+
+  /** Соединение молчит — бросить его и сразу подключиться заново. */
+  dropDeadConnection(socket: WebSocket) {
+    if (this.socket !== socket) return;
+
+    // Отвязываем до закрытия: `close`, который придёт когда-нибудь потом,
+    // не тронет новое соединение и не объявит обрыв второй раз.
+    this.socket = null;
+    socket.close();
+    eventBus.emit('socket:disconnected', undefined);
+
+    if (!this.shouldReconnect || !this.hasSession()) return;
+    // Новая попытка — сразу. Не удастся — дальше обычная пауза.
+    this.connect();
+  }
+
+  /**
+   * Проверить открытое соединение: ping и короткое ожидание. Ответ (или
+   * любое входящее) вернёт обычный таймер, тишина — оборвёт.
+   */
+  probeConnection() {
+    try {
+      this.send({ type: 'ping' });
+    } catch {
+      return;
+    }
+    this.armLivenessTimer(this.probeTimeout);
   }
 
   /**
@@ -211,6 +313,33 @@ export class WebSocketClient {
       this.reconnectTimer = null;
       this.connect();
     }, this.nextReconnectDelay());
+
+    if (this.reconnectAttempts % SESSION_CHECK_EVERY === 0) this.verifySession();
+  }
+
+  /**
+   * Сессию отозвали — переподключаться бессмысленно (#1070).
+   *
+   * Завершённые с другого устройства сеансы сервер закрывает и на новое
+   * рукопожатие отвечает 401, но браузер код не показывает: вкладка без
+   * действий человека бесконечно висела на «Подключаемся…». Проверка
+   * идёт по HTTP: на 401 клиент API сам уведёт на вход, здесь лишь
+   * перестаём пробовать.
+   */
+  verifySession() {
+    if (!this.checkSession || this.checkingSession) return;
+
+    this.checkingSession = true;
+    this.checkSession()
+      .then((alive) => {
+        if (!alive) this.disconnect();
+      })
+      .catch(() => {
+        // Проверка не удалась — пробуем дальше, как раньше.
+      })
+      .finally(() => {
+        this.checkingSession = false;
+      });
   }
 
   nextReconnectDelay() {
@@ -238,7 +367,13 @@ export class WebSocketClient {
    * человек видит, что сеть вернулась, а приложение — ещё нет.
    */
   reconnectNow() {
-    if (!this.shouldReconnect || this.isConnected || !this.hasSession()) return;
+    if (!this.shouldReconnect || !this.hasSession()) return;
+    // Открытое ещё не значит живое (#1069): после сна и смены сети
+    // соединение может висеть полуоткрытым. Проверяем его, а не выходим.
+    if (this.isConnected) {
+      this.probeConnection();
+      return;
+    }
 
     // Соединение могло зависнуть в попытке подключиться ещё тогда, когда
     // сети не было: мёртвым браузер признает его нескоро. Начинаем начисто.

@@ -9,8 +9,9 @@ import { GroupInfoModal } from '@/widgets/group-info';
 import { useCall } from '@/features/call';
 import { CALLS_ENABLED } from '@/shared/config';
 import { DeleteMessagesDialog, MessageActionsPopover } from '@/features/message-actions';
+import { useOpenOriginalMessage } from '@/features/jump-to-message';
 import { PinnedMessagesNavigator } from '@/features/pinned-messages';
-import { UserProfileModal } from '@/features/user-profile';
+import { SavedMessagesModal, UserProfileModal } from '@/features/user-profile';
 import { PhotoEditorModal } from '@/features/photo-editor';
 
 import { useOutletContext } from 'react-router-dom';
@@ -92,10 +93,14 @@ export function ChatThreadPage() {
     handleForward,
     handleCloseForwardModal,
     handleRetryMessage,
+    handleRetryMedia,
     handleCancelMessage,
   } = useChatThreadPage({ onProfileStateChange, profileCloseToken, profileMode });
 
   const currentUserId = useProfileStore((state) => state.user?.id);
+  // «Переслано от …» ведёт к оригиналу только в «Избранном» (#1076): в
+  // остальных чатах эта строка открывает профиль автора (#785).
+  const openOriginal = useOpenOriginalMessage();
 
   // Автор пересланного сообщения (#785). Стабильная ссылка: пузыри
   // мемоизированы и не должны перерисовываться всей лентой.
@@ -157,6 +162,8 @@ export function ChatThreadPage() {
             onMessagesSeen={markMessagesAsRead}
             onOpenProfile={openProfile}
             onReact={handleReact}
+            onOpenOriginal={chat?.type === 'self' ? openOriginal : undefined}
+            onRetryMedia={handleRetryMedia}
             onRetryMessage={handleRetryMessage}
             readMark={readMark}
             setOpenedImage={modals.setOpenedImage}
@@ -226,6 +233,7 @@ export function ChatThreadPage() {
           <DeleteMessagesDialog
             currentUserId={currentUserId}
             isGroup={chat?.type === 'group'}
+            isSavedMessages={chat?.type === 'self'}
             onConfirm={confirmDelete}
           />
           {selectionMode && (
@@ -245,14 +253,23 @@ export function ChatThreadPage() {
             />
           )}
 
-          {profileMode === 'modal' && profileModal.kind !== 'group' && (
-            <UserProfileModal
+          {profileMode === 'modal' && profileModal.kind === 'saved' && (
+            <SavedMessagesModal
+              isOpen={profileModal.isOpen}
               onClose={() => setProfileModal({ isOpen: false, userId: null })}
-              profileModal={profileModal}
-              renderActions={renderProfileActions}
-              startCall={startProfileCall}
             />
           )}
+
+          {profileMode === 'modal' &&
+            profileModal.kind !== 'group' &&
+            profileModal.kind !== 'saved' && (
+              <UserProfileModal
+                onClose={() => setProfileModal({ isOpen: false, userId: null })}
+                profileModal={profileModal}
+                renderActions={renderProfileActions}
+                startCall={startProfileCall}
+              />
+            )}
 
           {modals.photoEditorFile && (
             <PhotoEditorModal
