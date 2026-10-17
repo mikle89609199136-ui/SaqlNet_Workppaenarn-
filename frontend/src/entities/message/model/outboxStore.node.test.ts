@@ -18,6 +18,7 @@ describe('useOutboxStore', () => {
 
   it('should add and retrieve outbox items', () => {
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-1',
       chatId: 'chat-1',
       content: 'hello',
@@ -34,6 +35,7 @@ describe('useOutboxStore', () => {
 
   it('should update an existing outbox item', () => {
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-1',
       chatId: 'chat-1',
       content: 'hello',
@@ -53,6 +55,7 @@ describe('useOutboxStore', () => {
     globalThis.URL.revokeObjectURL = revokeMock;
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-media',
       chatId: 'chat-1',
       content: '',
@@ -69,6 +72,7 @@ describe('useOutboxStore', () => {
 
   it('should store and update retryCount and lastAttemptAt', () => {
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-retry',
       chatId: 'chat-1',
       content: 'msg',
@@ -91,6 +95,7 @@ describe('useOutboxStore', () => {
 
   it('should filter items by chat and retryable status', () => {
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-1',
       chatId: 'chat-1',
       content: 'msg 1',
@@ -99,6 +104,7 @@ describe('useOutboxStore', () => {
       createdAt: new Date('2026-09-07T00:00:00Z'),
     });
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-2',
       chatId: 'chat-1',
       content: 'msg 2',
@@ -107,6 +113,7 @@ describe('useOutboxStore', () => {
       createdAt: new Date('2026-09-07T00:00:01Z'),
     });
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-3',
       chatId: 'chat-2',
       content: 'msg 3',
@@ -131,6 +138,7 @@ describe('useOutboxStore', () => {
     globalThis.URL.revokeObjectURL = revokeMock;
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-media-1',
       chatId: 'chat-1',
       content: '',
@@ -140,6 +148,7 @@ describe('useOutboxStore', () => {
       createdAt: new Date('2026-09-07T00:00:00Z'),
     });
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-media-2',
       chatId: 'chat-1',
       content: '',

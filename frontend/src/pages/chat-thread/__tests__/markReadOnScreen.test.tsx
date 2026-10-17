@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chatKeys } from '@/entities/chat';
+import { addOutboxItem, clearOutbox } from '@/entities/message';
 import { fakeSocket } from '@/test/harness/fakeSocket';
 import { makeChat, makeMessage, makeUser, resetFixtures } from '@/test/fixtures';
 import { createTestQueryClient, renderChatThread } from '@/test/harness/renderChatThread';
@@ -166,5 +167,57 @@ describe('отметка прочтения по мере показа на эк
     act(() => setPageActive());
 
     await waitFor(() => expect(readRequests).toEqual([[incoming.id]]));
+  });
+});
+
+/* Неотправленное сообщение лежит в очереди, сервер его не знает (#1067).
+   Его временный id в отметке прочтения давал 400 на всю пачку, и
+   входящие рядом с ним не отмечались. А восстановленное из очереди без
+   автора рисовалось чужим, без «Повторить». */
+describe('неотправленное сообщение и отметка прочтения (#1067)', () => {
+  beforeEach(() => {
+    resetFixtures();
+    readRequests = [];
+    setPageActive();
+    clearOutbox();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setPageActive();
+    clearOutbox();
+  });
+
+  it('в отметку уходят только подтверждённые, а неотправленное остаётся своим', async () => {
+    mockThreadLayout({ viewport: 2000, row: 100 });
+    const chat = makeChat({ type: 'private', lastReadAt: at(0), unreadCount: 2 } as never);
+    const messages = history(chat, 2);
+    addOutboxItem({
+      tempId: 'temp-unsent',
+      chatId: chat.id,
+      senderId: ME,
+      content: 'не ушло',
+      type: 'text',
+      status: 'failed',
+      createdAt: new Date(at(3)),
+    });
+    open(chat, messages);
+
+    await waitFor(() => expect(readRequests.length).toBeGreaterThan(0));
+    expect(readRequests.flat().filter((id) => id.startsWith('temp-'))).toEqual([]);
+    expect(await screen.findByRole('button', { name: 'Повторить отправку' })).toBeInTheDocument();
+
+    const incoming = makeMessage({
+      chatId: chat.id,
+      senderId: PEER,
+      content: '[новое]',
+      createdAt: at(4),
+    } as never);
+    act(() => {
+      fakeSocket.emit('new_message', { chatId: chat.id, message: incoming });
+    });
+
+    await waitFor(() => expect(readRequests.flat()).toContain(incoming.id));
+    expect(readRequests.flat().filter((id) => id.startsWith('temp-'))).toEqual([]);
   });
 });

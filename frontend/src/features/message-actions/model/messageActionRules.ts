@@ -1,3 +1,4 @@
+import { isUnsent } from '@/entities/message';
 import type { IMediaItem, TMediaMessageType } from '@/types';
 
 /**
@@ -41,16 +42,6 @@ const EDITABLE = ['text', 'image', 'video', 'file'];
 
 /** У этих типов в content нет текста для человека. */
 const NO_TEXT = ['sticker', 'gif', 'voice', 'call'];
-
-export function isUnsent(message: IMediaItem): boolean {
-  return (
-    message.status === 'pending' ||
-    message.status === 'uploading' ||
-    message.status === 'failed' ||
-    Boolean(message.tempId) ||
-    message.id.startsWith('temp-')
-  );
-}
 
 export function messageMediaType(message: IMediaItem): TMediaMessageType | null {
   const type = message.mediaType || message.type;

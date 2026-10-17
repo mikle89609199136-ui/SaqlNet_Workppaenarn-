@@ -92,7 +92,7 @@ export function patchMessage(
         ...(outboxItem.voice ? { voice: outboxItem.voice } : {}),
         replyTo: outboxItem.replyToId ?? null,
         replyToMessageId: outboxItem.replyToId ?? null,
-        senderId: '',
+        senderId: outboxItem.senderId,
         senderFirstName: '',
         senderName: '',
         forwardedSenderName: '',

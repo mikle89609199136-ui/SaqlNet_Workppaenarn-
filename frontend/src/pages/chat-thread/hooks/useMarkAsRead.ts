@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { markChatRead } from '@/entities/chat';
-import { markThreadRead } from '@/entities/message';
+import { isUnsent, markThreadRead } from '@/entities/message';
 import { services } from '@/services/serviceContainer';
 import type { TMessagesList } from '@/types';
 
@@ -41,6 +41,9 @@ export function useMarkAsRead(chatId: string, currentUserId?: string) {
           (message) =>
             message?.id &&
             message.senderId !== currentUserId &&
+            // Последняя граница перед сервером: временный id он отклонит
+            // вместе со всей пачкой, и входящие не отметятся (#1067).
+            !isUnsent(message) &&
             !requestedRef.current.has(message.id)
         )
         .map((message) => message.id);

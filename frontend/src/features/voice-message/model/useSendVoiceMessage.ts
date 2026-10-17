@@ -67,6 +67,7 @@ export function useSendVoiceMessage(chatId: string) {
       const item: IOutboxItem = {
         tempId,
         chatId,
+        senderId,
         content: '',
         type: 'voice',
         file: recording.blob,

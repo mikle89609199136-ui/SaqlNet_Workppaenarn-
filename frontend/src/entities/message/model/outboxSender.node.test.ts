@@ -40,6 +40,7 @@ describe('outboxSender: пересжатие фото', () => {
       .mockRejectedValue(new Error('network'));
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-photo',
       chatId: 'chat-1',
       content: '',
@@ -67,6 +68,7 @@ describe('outboxSender: пересжатие фото', () => {
       .mockRejectedValue(new Error('network'));
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-original',
       chatId: 'chat-1',
       content: '',
@@ -109,6 +111,7 @@ describe('outboxSender', () => {
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Привет',
@@ -152,6 +155,7 @@ describe('outboxSender', () => {
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Упадёт',
@@ -188,6 +192,7 @@ describe('outboxSender', () => {
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Повтор',
@@ -227,6 +232,7 @@ describe('outboxSender', () => {
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Картинка',
@@ -257,6 +263,7 @@ describe('outboxSender', () => {
     vi.spyOn(services.messageService, 'sendMessage').mockResolvedValue(serverMessage);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-b1',
       chatId,
       content: 'msg1',
@@ -265,6 +272,7 @@ describe('outboxSender', () => {
       createdAt: new Date('2026-09-07T00:00:00Z'),
     });
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-b2',
       chatId,
       content: 'msg2',
@@ -306,6 +314,7 @@ describe('outboxSender', () => {
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'ок',
@@ -333,6 +342,7 @@ describe('outboxSender', () => {
     const chatId = 'chat-limit';
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Сообщение с лимитом',
@@ -366,6 +376,7 @@ describe('outboxSender', () => {
     });
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Отменяемое',

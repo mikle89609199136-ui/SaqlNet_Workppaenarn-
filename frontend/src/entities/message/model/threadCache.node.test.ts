@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeMessage } from '@/test/fixtures';
+import { addOutboxItem, clearOutbox } from './outboxStore';
 import {
   appendMessage,
   applyReceipt,
@@ -99,6 +100,29 @@ describe('добавление сообщения', () => {
 });
 
 describe('изменение сообщения', () => {
+  // Восстановленное из очереди — со своим автором, иначе оно рисовалось
+  // чужим, без «Повторить» (#1067).
+  it('сообщение из очереди восстанавливается со своим автором', () => {
+    addOutboxItem({
+      tempId: 'temp-restored',
+      chatId: 'chat-1',
+      senderId: 'user-1',
+      content: 'не ушло',
+      type: 'text',
+      status: 'failed',
+      createdAt: new Date(),
+    });
+
+    try {
+      const [restored] = flattenThread(
+        patchMessage(pages([]), 'temp-restored', { status: 'failed' })
+      );
+      expect(restored).toMatchObject({ id: 'temp-restored', senderId: 'user-1', status: 'failed' });
+    } finally {
+      clearOutbox();
+    }
+  });
+
   it('should patch the message wherever it lies', () => {
     const target = makeMessage({ content: 'до' });
     const data = pages([makeMessage()], [target]);

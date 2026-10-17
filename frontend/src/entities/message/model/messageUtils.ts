@@ -4,6 +4,23 @@ import type { IMessageDto, TMessagesList } from './types';
 
 export const hasMessageMedia = (msg: IMessageDto) => !!(msg.mediaUrl || msg.mediaUnavailable);
 
+/**
+ * Сообщение ещё не подтверждено сервером: в пути, грузится или не ушло.
+ *
+ * Его id временный, сервер такого не знает. Поэтому оно не пересылается и
+ * не закрепляется (меню действий, #655), не попадает в отметку прочтения
+ * (#1067) и не убирается из ленты, если его нет в ответе сервера.
+ */
+export function isUnsent(message: Pick<IMessageDto, 'id' | 'status' | 'tempId'>): boolean {
+  return (
+    message.status === 'pending' ||
+    message.status === 'uploading' ||
+    message.status === 'failed' ||
+    Boolean(message.tempId) ||
+    message.id.startsWith('temp-')
+  );
+}
+
 export const formatMessageTime = (value: Date | string) => {
   if (!value) return '';
   const date = value instanceof Date ? value : new Date(value);
