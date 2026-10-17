@@ -1,5 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
+import type { IReactionUpdatedEvent } from '@/types';
 import type { IMessageDto, IPinnedDto } from './types';
+import { mergeReactionEvent } from './reactionEvent';
 import { chatKeys } from '@/entities/chat';
 import type { IReceiptEvent } from '@/shared/lib';
 import {
@@ -154,6 +156,28 @@ export function putThreadMessages(
   } else {
     mutateThread(queryClient, chatId, merge);
   }
+  markChatListStale(queryClient);
+}
+
+/**
+ * Реакции из события `reaction_updated` (#1063).
+ *
+ * Отметка «моя» считается внутри мутации — по сообщению, которое лежит в
+ * ленте в момент применения. Так операция верно переигрывается журналом
+ * поверх снимка истории, который ещё грузится.
+ */
+export function applyThreadReactionEvent(
+  queryClient: QueryClient,
+  event: Pick<IReactionUpdatedEvent, 'chatId' | 'messageId' | 'actorId' | 'change' | 'reactions'>,
+  currentUserId: string | undefined
+): void {
+  mutateThread(queryClient, event.chatId, (current) => {
+    const cached = current.pages.flat().find((item) => item.id === event.messageId);
+    if (!cached) return current;
+    return patchMessage(current, event.messageId, {
+      reactions: mergeReactionEvent(cached.reactions, event, currentUserId),
+    });
+  });
   markChatListStale(queryClient);
 }
 

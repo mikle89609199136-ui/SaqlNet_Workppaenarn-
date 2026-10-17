@@ -4,10 +4,10 @@ import { WS_EVENTS } from '@/shared/config';
 import type { IWsEventMap } from '@/types';
 import { useRealtimeSocket } from '@/shared/api';
 import {
+  applyThreadReactionEvent,
   dropPinnedMessage,
   dropThreadMessages,
   isReactionChangePending,
-  patchThreadMessage,
   putPinnedMessage,
   putThreadMessage,
   putThreadReceipt,
@@ -114,9 +114,8 @@ export function useServerEvents(enabled: boolean): void {
           // Своя же операция ещё идёт — её промежуточные состояния
           // показывать нельзя, окончательное принесёт наш ответ.
           if (!isReactionChangePending(payload.messageId)) {
-            patchThreadMessage(queryClient, payload.chatId, payload.messageId, {
-              reactions: payload.reactions ?? [],
-            });
+            // «Моя ли реакция» в событии нет — её считает клиент (#1063).
+            applyThreadReactionEvent(queryClient, payload, useProfileStore.getState().user?.id);
           }
           return;
         }
