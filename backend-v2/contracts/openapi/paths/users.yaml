@@ -336,6 +336,8 @@
       omitted, null or empty object sections do not reset values. A provided folders array replaces the list
       (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for
       legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot.
+      Submitted textSize wins over submitted fontSize; otherwise a submitted fontSize sets textSize (#1040).
+      Both fields are validated, including the losing alias. Arbitrary accentColor stays compatibility data.
       Bulk and legacy section read-modify-write share a row-locked transaction (#1047), preserving disjoint
       concurrent patches. Row creation and all section changes roll back on update or commit failure.
       Strict root/section/leaf validation runs before SQL
@@ -381,8 +383,8 @@
     description: >-
       Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate
       objects; never another user's settings. Detailed legacy notification/sound/storage sections are not
-      included. Typed field contract is #453; shared read defaults are implemented in #451; migration remains
-      #1040/#1042.
+      included. Typed field contract is #453; shared read defaults are implemented in #451. Appearance compatibility (#1040) resolves a valid stored
+      textSize before legacy fontSize and the default, without backfill. Notification migration remains #1042.
     responses:
       '200': {description: Own account settings and privacy, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/SettingsResponse}}}}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
@@ -410,7 +412,8 @@
       not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge
       Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT
       /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is
-      normalized on reads; shared read defaults are implemented in #451; migration remains #1040/#1042.
+      normalized on reads; shared read defaults are implemented in #451. Appearance compatibility is
+      implemented in #1040; notification migration remains #1042.
       Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound
       aliases and read normalization require #1042; consumers apply effective policy in #725.
     requestBody:

@@ -587,7 +587,7 @@ export interface paths {
         /**
          * Partially update legacy settings sections
          * @deprecated
-         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Bulk and legacy section read-modify-write share a row-locked transaction (#1047), preserving disjoint concurrent patches. Row creation and all section changes roll back on update or commit failure. Strict root/section/leaf validation runs before SQL (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without writes.
+         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Submitted textSize wins over submitted fontSize; otherwise a submitted fontSize sets textSize (#1040). Both fields are validated, including the losing alias. Arbitrary accentColor stays compatibility data. Bulk and legacy section read-modify-write share a row-locked transaction (#1047), preserving disjoint concurrent patches. Row creation and all section changes roll back on update or commit failure. Strict root/section/leaf validation runs before SQL (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without writes.
          */
         put: operations["updateAllSettings"];
         post?: never;
@@ -606,12 +606,12 @@ export interface paths {
         };
         /**
          * Get own account settings and privacy
-         * @description Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate objects; never another user's settings. Detailed legacy notification/sound/storage sections are not included. Typed field contract is #453; shared read defaults are implemented in #451; migration remains #1040/#1042.
+         * @description Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate objects; never another user's settings. Detailed legacy notification/sound/storage sections are not included. Typed field contract is #453; shared read defaults are implemented in #451. Appearance compatibility (#1040) resolves a valid stored textSize before legacy fontSize and the default, without backfill. Notification migration remains #1042.
          */
         get: operations["getSettings"];
         /**
          * Partially update own account settings
-         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is normalized on reads; shared read defaults are implemented in #451; migration remains #1040/#1042. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
+         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is normalized on reads; shared read defaults are implemented in #451. Appearance compatibility is implemented in #1040; notification migration remains #1042. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
          */
         put: operations["updateSettings"];
         post?: never;
@@ -3002,10 +3002,10 @@ export interface components {
         sounds: boolean;
         /** @description Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated to conversation audio. Effective ringtone also requires notifications and an allowed call. Legacy callsSound becomes an alias after #1042. Missing on older accounts: read projection supplies true (#451) without persisting it before #1042. */
         callSounds: boolean;
-        /** @description Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown keys/null leaves rejected before SQL (#495). Stored unknown keys are hidden on reads; migration remains separate. It is not an extension point. */
+        /** @description Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown keys/null leaves rejected before SQL (#495). Appearance alias compatibility is implemented by #1040; reads resolve valid textSize, then valid legacy fontSize, then the shared default. Bulk/export fontSize projects the resolved value. Arbitrary accentColor remains compatibility data. Stored unknown keys are hidden on reads. It is not an extension point. */
         LegacyGeneralSettings: {
             /**
-             * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme. #728/#1040.
+             * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme (#728). Backend storage/compatibility is implemented by #1040.
              * @enum {string}
              */
             theme?: "light" | "dark" | "system";
@@ -3020,7 +3020,7 @@ export interface components {
              */
             accentPreset?: "violet" | "plum" | "orchid" | "indigo" | "amber" | "teal";
             /**
-             * @description Default medium. Relative UI text scale; exact CSS metrics belong to #728, not a stored pixel count.
+             * @description Default medium; valid stored textSize wins, otherwise a valid legacy fontSize is used (#1040). Relative UI scale; CSS metrics belong to #728.
              * @enum {string}
              */
             textSize?: "small" | "medium" | "large";
@@ -3050,10 +3050,10 @@ export interface components {
             notifications?: components["schemas"]["notifications"];
             sounds?: components["schemas"]["sounds"];
             callSounds?: components["schemas"]["callSounds"];
-            /** @description Deprecated legacy hex preference. Retained for compatibility; not a second MVP accent source. */
+            /** @description Deprecated arbitrary hex preference, preserved in bulk/export without conversion to a preset (#1040). It does not override accentPreset; missing accentPreset uses violet. */
             accentColor?: string;
             /**
-             * @description Deprecated alias data. New clients write textSize; migration is #1040.
+             * @description Deprecated textSize alias (#1040). Reads project resolved textSize. On bulk writes an explicitly submitted textSize wins; otherwise submitted fontSize sets textSize. Both values are validated before writes.
              * @enum {string}
              */
             fontSize?: "small" | "medium" | "large";
@@ -3252,10 +3252,10 @@ export interface components {
             /** @enum {string} */
             code?: "invalid_json" | "validation_failed";
         };
-        /** @description Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an old response; defaults are normalization rules, not patch values. Root and leaves must not be null, unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Shared read defaults are applied by #451; migration remains #1040/#1042. Animation/GIF controls are outside MVP. */
+        /** @description Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an old response; defaults are normalization rules, not patch values. Root and leaves must not be null, unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Shared read defaults are applied by #451. Appearance compatibility is implemented by #1040 without global backfill; notification migration remains #1042. Animation/GIF controls are outside MVP. */
         MvpSettings: {
             /**
-             * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme. #728/#1040.
+             * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme (#728). Backend storage/compatibility is implemented by #1040.
              * @enum {string}
              */
             theme?: "light" | "dark" | "system";
@@ -3270,7 +3270,7 @@ export interface components {
              */
             accentPreset?: "violet" | "plum" | "orchid" | "indigo" | "amber" | "teal";
             /**
-             * @description Default medium. Relative UI text scale; exact CSS metrics belong to #728, not a stored pixel count.
+             * @description Default medium; valid stored textSize wins, otherwise a valid legacy fontSize is used (#1040). Relative UI scale; CSS metrics belong to #728.
              * @enum {string}
              */
             textSize?: "small" | "medium" | "large";

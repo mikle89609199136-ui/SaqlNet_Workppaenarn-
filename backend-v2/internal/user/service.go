@@ -616,6 +616,8 @@ func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input Al
 		len(input.SoundSettings)+len(input.StorageSettings)+len(input.AdvancedSettings) == 0 && input.Folders == nil {
 		return nil
 	}
+	// Проверены оба поля, включая alias, проигравший canonical textSize.
+	input.Settings = appearancePatch(input.Settings)
 	_, err := s.mutateSettings(ctx, userID, input)
 	return err
 }

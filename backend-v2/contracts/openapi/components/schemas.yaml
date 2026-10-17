@@ -113,7 +113,7 @@ MvpSettings:
     theme:
       type: string
       enum: [light, dark, system]
-      description: 'Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme. #728/#1040.'
+      description: 'Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme (#728). Backend storage/compatibility is implemented by #1040.'
     palette:
       type: string
       enum: [graphite, midnight, warm]
@@ -125,7 +125,7 @@ MvpSettings:
     textSize:
       type: string
       enum: [small, medium, large]
-      description: 'Default medium. Relative UI text scale; exact CSS metrics belong to #728, not a stored pixel count.'
+      description: 'Default medium; valid stored textSize wins, otherwise a valid legacy fontSize is used (#1040). Relative UI scale; CSS metrics belong to #728.'
     chatDensity:
       type: string
       enum: [compact, normal, large]
@@ -159,7 +159,7 @@ MvpSettings:
   description: >-
     Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an
     old response; defaults are normalization rules, not patch values. Root and leaves must not be null,
-    unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Shared read defaults are applied by #451; migration remains #1040/#1042. Animation/GIF controls are outside MVP.
+    unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Shared read defaults are applied by #451. Appearance compatibility is implemented by #1040 without global backfill; notification migration remains #1042. Animation/GIF controls are outside MVP.
 Error:
   type: object
   required: [code, message]
@@ -1239,7 +1239,7 @@ LegacyGeneralSettings:
     theme:
       type: string
       enum: [light, dark, system]
-      description: 'Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme. #728/#1040.'
+      description: 'Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme (#728). Backend storage/compatibility is implemented by #1040.'
     palette:
       type: string
       enum: [graphite, midnight, warm]
@@ -1251,7 +1251,7 @@ LegacyGeneralSettings:
     textSize:
       type: string
       enum: [small, medium, large]
-      description: 'Default medium. Relative UI text scale; exact CSS metrics belong to #728, not a stored pixel count.'
+      description: 'Default medium; valid stored textSize wins, otherwise a valid legacy fontSize is used (#1040). Relative UI scale; CSS metrics belong to #728.'
     chatDensity:
       type: string
       enum: [compact, normal, large]
@@ -1285,15 +1285,17 @@ LegacyGeneralSettings:
     accentColor:
       type: string
       pattern: ^#[0-9a-fA-F]{6}$
-      description: Deprecated legacy hex preference. Retained for compatibility; not a second MVP accent source.
+      description: Deprecated arbitrary hex preference, preserved in bulk/export without conversion to a preset (#1040). It does not override accentPreset; missing accentPreset uses violet.
     fontSize:
       type: string
       enum: [small, medium, large]
-      description: 'Deprecated alias data. New clients write textSize; migration is #1040.'
+      description: 'Deprecated textSize alias (#1040). Reads project resolved textSize. On bulk writes an explicitly submitted textSize wins; otherwise submitted fontSize sets textSize. Both values are validated before writes.'
   description: >-
     Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown
-    keys/null leaves rejected before SQL (#495). Stored unknown keys are hidden on reads; migration remains separate. It
-    is not an extension point.
+    keys/null leaves rejected before SQL (#495). Appearance alias compatibility is implemented by #1040;
+    reads resolve valid textSize, then valid legacy fontSize, then the shared default. Bulk/export fontSize
+    projects the resolved value. Arbitrary accentColor remains compatibility data. Stored unknown keys
+    are hidden on reads. It is not an extension point.
 
 LegacyNotificationSettings:
   type: object
