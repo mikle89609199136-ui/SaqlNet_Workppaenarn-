@@ -26,10 +26,14 @@ describe('CallHistoryItem', () => {
     useCallStore.setState(useCallStore.getInitialState(), true);
   });
 
-  const renderItem = (item: ICallHistoryItemDto = baseItem, onOpenChat = vi.fn()) =>
+  const renderItem = (
+    item: ICallHistoryItemDto = baseItem,
+    onOpenChat = vi.fn(),
+    onOpenProfile = vi.fn()
+  ) =>
     render(
       <I18nextProvider i18n={testI18n}>
-        <CallHistoryItem item={item} onOpenChat={onOpenChat} />
+        <CallHistoryItem item={item} onOpenChat={onOpenChat} onOpenProfile={onOpenProfile} />
       </I18nextProvider>
     );
 
@@ -98,7 +102,7 @@ describe('CallHistoryItem', () => {
     const onOpenChat = vi.fn();
     renderItem(baseItem, onOpenChat);
 
-    fireEvent.click(screen.getByRole('button', { name: /Анна Смирнова/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Анна Смирнова/ }));
     expect(onOpenChat).toHaveBeenCalledWith('chat-42');
   });
 
@@ -110,7 +114,7 @@ describe('CallHistoryItem', () => {
     };
     renderItem(itemWithoutChat, onOpenChat);
 
-    const rowButton = screen.getByRole('button', { name: /Анна Смирнова/ });
+    const rowButton = screen.getByRole('button', { name: /^Анна Смирнова/ });
     expect(rowButton).toBeDisabled();
     fireEvent.click(rowButton);
     expect(onOpenChat).not.toHaveBeenCalled();
@@ -154,5 +158,40 @@ describe('CallHistoryItem', () => {
 
     const callButton = screen.getByRole('button', { name: 'Аудиозвонок' });
     expect(callButton).toBeDisabled();
+  });
+
+  // Профиль собеседника из строки истории (#1074).
+  it('аватар открывает профиль, а не чат', () => {
+    const onOpenChat = vi.fn();
+    const onOpenProfile = vi.fn();
+    renderItem(baseItem, onOpenChat, onOpenProfile);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Профиль: Анна Смирнова' }));
+
+    expect(onOpenProfile).toHaveBeenCalledWith('chat-42', baseItem.peerId);
+    expect(onOpenChat).not.toHaveBeenCalled();
+  });
+
+  it('строка по-прежнему открывает чат, а не профиль', () => {
+    const onOpenChat = vi.fn();
+    const onOpenProfile = vi.fn();
+    renderItem(baseItem, onOpenChat, onOpenProfile);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Анна Смирнова/ }));
+
+    expect(onOpenChat).toHaveBeenCalledWith('chat-42');
+    expect(onOpenProfile).not.toHaveBeenCalled();
+  });
+
+  it('без чата профиль недоступен', () => {
+    renderItem({ ...baseItem, chatId: undefined });
+
+    expect(screen.getByRole('button', { name: 'Профиль: Анна Смирнова' })).toBeDisabled();
+  });
+
+  it('у прошлого звонка видны и дата, и время', () => {
+    renderItem({ ...baseItem, startedAt: '2025-04-10T14:30:00Z' });
+
+    expect(screen.getByText(/, \d\d:\d\d$/, { selector: 'time' })).toBeInTheDocument();
   });
 });

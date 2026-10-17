@@ -123,20 +123,20 @@ describe('ChatsList widget', () => {
       queryClient.setQueryData(chatKeys.archived(), [archived]);
     });
 
-    it('показывает Чаты, Группы, Встречи и Архив; каналов пока нет', () => {
+    it('показывает Чаты, Группы, Звонки и Архив; каналов пока нет', () => {
       renderChatsList(vi.fn(), queryClient);
 
       const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
-      expect(tabs).toEqual(['Чаты', 'Группы', 'Встречи', 'Архив']);
+      expect(tabs).toEqual(['Чаты', 'Группы', 'Звонки', 'Архив']);
       expect(screen.getByRole('tab', { name: 'Чаты' })).toHaveAttribute('aria-selected', 'true');
     });
 
-    it('переключается на вкладку «Встречи» и отображает экран звонков', async () => {
+    it('переключается на вкладку «Звонки» и отображает экран звонков (#1074)', async () => {
       renderChatsList(vi.fn(), queryClient);
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Встречи' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Звонки' }));
 
-      expect(screen.getByRole('tabpanel', { name: 'Встречи' })).toBeInTheDocument();
+      expect(screen.getByRole('tabpanel', { name: 'Звонки' })).toBeInTheDocument();
       expect(await screen.findByText('Звонков пока нет')).toBeInTheDocument();
     });
 

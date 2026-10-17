@@ -9,9 +9,11 @@ import { CallHistorySkeleton } from './CallHistorySkeleton';
 
 export interface ICallHistoryListProps {
   onOpenChat: (chatId: string) => void;
+  /** Профиль собеседника из строки истории (#1074). */
+  onOpenProfile: (chatId: string, peerId: string) => void;
 }
 
-export function CallHistoryList({ onOpenChat }: ICallHistoryListProps) {
+export function CallHistoryList({ onOpenChat, onOpenProfile }: ICallHistoryListProps) {
   const { t } = useTranslation();
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -78,7 +80,12 @@ export function CallHistoryList({ onOpenChat }: ICallHistoryListProps) {
   return (
     <div className="flex flex-col gap-0.5" data-testid="call-history-list">
       {calls.map((call) => (
-        <CallHistoryItem item={call} key={call.id || call.roomId} onOpenChat={onOpenChat} />
+        <CallHistoryItem
+          item={call}
+          key={call.id || call.roomId}
+          onOpenChat={onOpenChat}
+          onOpenProfile={onOpenProfile}
+        />
       ))}
 
       {hasNextPage && (

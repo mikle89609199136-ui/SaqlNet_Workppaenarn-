@@ -3,6 +3,7 @@ import {
   ChatListItemSkeleton,
   chatsQuery,
   isConversationStarted,
+  useChatUiStore,
 } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
@@ -23,17 +24,18 @@ import { EmptyChatListPlaceholder } from './EmptyChatListPlaceholder';
 import { ErrorChatListPlaceholder } from './ErrorChatListPlaceholder';
 import { VirtualChatList } from './VirtualChatList';
 
-/* Разделы списка — вкладками, как в макете (#818). Каналы и встречи
-   спрятаны, пока нет самих функций (#815): вкладка без содержимого — та
-   же неработающая кнопка. Порядок — как в макете, чтобы открытая вкладка
-   встала на своё место без перестановки соседей. */
+/* Разделы списка — вкладками, как в макете (#818). Каналы спрятаны, пока
+   нет самой функции (#815): вкладка без содержимого — та же неработающая
+   кнопка. Порядок — как в макете, чтобы открытая вкладка встала на своё
+   место без перестановки соседей. Во вкладке «Звонки» — история звонков
+   (#722); ключ `meetings` прежний, сменилась только подпись (#1074). */
 type TListTab = 'chats' | 'channels' | 'groups' | 'meetings' | 'archive';
 
 const LIST_TABS: { key: TListTab; fallback: string; hidden?: boolean }[] = [
   { key: 'chats', fallback: 'Чаты' },
   { key: 'channels', fallback: 'Каналы', hidden: true },
   { key: 'groups', fallback: 'Группы' },
-  { key: 'meetings', fallback: 'Встречи' },
+  { key: 'meetings', fallback: 'Звонки' },
   { key: 'archive', fallback: 'Архив' },
 ];
 
@@ -53,6 +55,7 @@ interface Props {
 export function ChatsList({ onOpenCreateGroup }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const setProfileRequest = useChatUiStore((state) => state.setProfileRequest);
   const tabsId = useId();
   const me = useProfileStore((state) => state.user);
   const [tab, setTab] = useState<TListTab>('chats');
@@ -121,7 +124,17 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
       />
     );
   } else if (tab === 'meetings') {
-    content = <CallHistoryList onOpenChat={(chatId) => navigate(ROUTES.CHAT_BY_ID(chatId))} />;
+    content = (
+      <CallHistoryList
+        onOpenChat={(chatId) => navigate(ROUTES.CHAT_BY_ID(chatId))}
+        // Профиль открывается там же и так же, как из шапки чата: чат и
+        // его профиль поверх (#1074).
+        onOpenProfile={(chatId, peerId) => {
+          setProfileRequest({ chatId, userId: peerId });
+          navigate(ROUTES.CHAT_BY_ID(chatId));
+        }}
+      />
+    );
   } else if (isLoading) {
     content = <ChatListItemSkeleton />;
   } else if (error) {

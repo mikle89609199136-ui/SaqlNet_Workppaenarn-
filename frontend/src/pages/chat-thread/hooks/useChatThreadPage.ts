@@ -58,6 +58,8 @@ export function useChatThreadPage({
   const actionMenu = useChatUiStore((state) => state.actionMenu);
   const setActionMenu = useChatUiStore((state) => state.setActionMenu);
   const resetChatState = useChatUiStore((state) => state.resetChatState);
+  const profileRequest = useChatUiStore((state) => state.profileRequest);
+  const setProfileRequest = useChatUiStore((state) => state.setProfileRequest);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -157,6 +159,17 @@ export function useChatThreadPage({
     resetChatState();
     setProfileModal({ isOpen: false, userId: null });
   }, [chatId, resetChatState, setProfileModal]);
+
+  // Профиль, который попросили открыть из истории звонков (#1074). Эффект
+  // обязательно после сброса выше: эффекты выполняются в порядке
+  // объявления. При переходе в чат сброс закроет профиль и снимет запрос,
+  // а этот эффект откроет профиль по значению, взятому при отрисовке.
+  // Объявленный раньше, он открыл бы профиль, а сброс тут же закрыл бы.
+  useEffect(() => {
+    if (!profileRequest || profileRequest.chatId !== chatId) return;
+    setProfileRequest(null);
+    setProfileModal({ isOpen: true, userId: profileRequest.userId });
+  }, [chatId, profileRequest, setProfileModal, setProfileRequest]);
 
   useEscapeKey({ active: selectionMode, onClose: handleCancelSelection });
   useEscapeKey({ active: Boolean(actionMenu), onClose: () => setActionMenu(null) });
