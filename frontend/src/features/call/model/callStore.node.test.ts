@@ -928,6 +928,21 @@ describe('useCallStore', () => {
     expect(state.outgoingCall?.phase).toBe('failed');
   });
 
+  it('initiateCall сбрасывает состояние в idle при ошибке сервера calls_forbidden или 403 (#1043)', async () => {
+    vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce({
+      code: 'calls_forbidden',
+      status: 403,
+    });
+
+    await useCallStore
+      .getState()
+      .initiateCall('chat-1', 'p2p', 'Тест', 'audio', 'peer-1', null, 'Алиса');
+
+    const state = useCallStore.getState();
+    expect(state.fsm.state).toBe('idle');
+    expect(state.outgoingCall).toBeNull();
+  });
+
   describe('восстановление связи и реконнект (PR 1 / #775)', () => {
     beforeEach(() => {
       vi.useFakeTimers();
