@@ -496,3 +496,116 @@ describe('подключение по cookie сессии', () => {
     expect(FakeSocket.instances).toHaveLength(0);
   });
 });
+
+/* Соединение, которое молчит, мёртвое (#1069): браузер признаёт это
+   нескоро, а шапка всё это время показывала бы «на связи». */
+describe('сторожевой таймер соединения', () => {
+  const LIVENESS = 60_000;
+  const PROBE = 10_000;
+
+  /** Ещё не сработавшие таймеры тишины — по их длительности. */
+  const pending = (delay: number) =>
+    timers.filter((timer) => timer.delay === delay && !timer.cancelled && !timer.fired);
+
+  function connected() {
+    const client = makeClient({ livenessTimeout: LIVENESS, probeTimeout: PROBE });
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+    return { client, socket };
+  }
+
+  it('60 с тишины после открытия — старое закрыто, новое создано, обрыв объявлен один раз', () => {
+    const { socket } = connected();
+    const disconnected = vi.fn();
+    eventBus.on('socket:disconnected', disconnected);
+
+    expect(pending(LIVENESS)).toHaveLength(1);
+    pending(LIVENESS)[0].run();
+
+    expect(socket.closeCalls).toBe(1);
+    expect(FakeSocket.instances).toHaveLength(2);
+    expect(disconnected).toHaveBeenCalledTimes(1);
+  });
+
+  it('любое входящее перезаводит таймер', () => {
+    const { socket } = connected();
+    const [first] = pending(LIVENESS);
+
+    socket.deliver({ type: 'ping' });
+    expect(first.cancelled).toBe(true);
+    expect(pending(LIVENESS)).toHaveLength(1);
+
+    socket.deliver({ type: 'new_message', payload: {} });
+    expect(pending(LIVENESS)).toHaveLength(1);
+  });
+
+  it('после закрытия и после disconnect таймера нет', () => {
+    const { client, socket } = connected();
+    socket.finishClosing();
+    expect(pending(LIVENESS)).toHaveLength(0);
+
+    const next = client.connect() as unknown as FakeSocket;
+    next.open();
+    client.disconnect();
+    expect(pending(LIVENESS)).toHaveLength(0);
+  });
+
+  it('брошенное по таймеру соединение позже закрывается — новое остаётся текущим', () => {
+    const { client, socket } = connected();
+    const disconnected = vi.fn();
+    eventBus.on('socket:disconnected', disconnected);
+    pending(LIVENESS)[0].run();
+    const fresh = FakeSocket.instances.at(-1)!;
+    fresh.open();
+
+    socket.finishClosing();
+
+    expect(disconnected).toHaveBeenCalledTimes(1);
+    expect(client.isConnected).toBe(true);
+  });
+
+  it('возврат сети при открытом соединении — ping и короткое ожидание ответа', () => {
+    const { socket } = connected();
+
+    wake('online');
+
+    expect(socket.sent).toEqual([JSON.stringify({ type: 'ping' })]);
+    expect(pending(PROBE)).toHaveLength(1);
+    expect(FakeSocket.instances).toHaveLength(1);
+
+    socket.deliver({ type: 'pong' });
+    expect(pending(PROBE)).toHaveLength(0);
+    expect(pending(LIVENESS)).toHaveLength(1);
+    expect(FakeSocket.instances).toHaveLength(1);
+  });
+
+  it('на ping нет ответа — переподключение', () => {
+    const { socket } = connected();
+
+    wake('online');
+    pending(PROBE)[0].run();
+
+    expect(socket.closeCalls).toBe(1);
+    expect(FakeSocket.instances).toHaveLength(2);
+  });
+
+  it('возврат во вкладку — тоже проверка; скрытая вкладка — нет', () => {
+    const { socket } = connected();
+
+    visibility = 'hidden';
+    wake('visibilitychange');
+    expect(socket.sent).toEqual([]);
+
+    visibility = 'visible';
+    wake('visibilitychange');
+    expect(socket.sent).toEqual([JSON.stringify({ type: 'ping' })]);
+  });
+
+  it('сообщение без соединения таймеров не заводит', () => {
+    const client = makeClient({ livenessTimeout: LIVENESS });
+
+    client.handleMessage({ data: JSON.stringify({ type: 'ping' }) });
+
+    expect(pending(LIVENESS)).toHaveLength(0);
+  });
+});

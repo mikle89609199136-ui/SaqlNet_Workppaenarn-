@@ -173,10 +173,24 @@ export async function retryOutboxMessage(
  * последовательно для сохранения порядка сообщений с учетом лимита попыток
  * и экспоненциальной задержки.
  */
-export async function retryAllOutboxMessages(
-  queryClient: QueryClient,
-  chatId?: string
-): Promise<void> {
+/** Последний назначенный проход по очереди: следующий ждёт его. */
+let retryChain: Promise<void> = Promise.resolve();
+
+/**
+ * Повторить очередь — после переподключения, возврата сети и вкладки.
+ *
+ * Проходы идут строго один за другим (#1069). Два одновременных друг о
+ * друге не знали: второй пропускал сообщение, которое ещё отправлял
+ * первый, и отправлял следующее раньше него — у собеседника порядок
+ * нарушался. Вызов во время прохода ждёт его и делает свой.
+ */
+export function retryAllOutboxMessages(queryClient: QueryClient, chatId?: string): Promise<void> {
+  const pass = retryChain.then(() => retryOutboxPass(queryClient, chatId));
+  retryChain = pass.catch(() => {});
+  return pass;
+}
+
+async function retryOutboxPass(queryClient: QueryClient, chatId?: string): Promise<void> {
   const retryable = getRetryableOutboxItems(chatId);
   for (const item of retryable) {
     if ((item.retryCount ?? 0) >= MAX_AUTO_RETRIES) {
