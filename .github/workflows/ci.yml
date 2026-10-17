@@ -51,6 +51,7 @@ jobs:
             frontend:
               - 'frontend/**'
               - 'backend-v2/contracts/openapi/**'
+              - 'backend-v2/internal/platform/settingsdefaults/defaults.json'
               - 'scripts/**'
               - '.github/workflows/ci.yml'
             backend:

@@ -579,6 +579,10 @@ func (s *Service) readSettings(ctx context.Context, userID, section string) (map
 }
 
 func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, error) {
+	return s.readAllSettings(ctx, userID, true)
+}
+
+func (s *Service) readAllSettings(ctx context.Context, userID string, includeDefaults bool) (AllSettings, error) {
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return AllSettings{}, err
 	}
@@ -603,12 +607,19 @@ func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, 
 	)
 	out.Folders = []any(folders)
 	if err == nil {
-		out.Settings = normalizeStoredSettings("legacy_settings", rawSettings)
+		normalize := normalizeSettingsPatchBase
+		if includeDefaults {
+			normalize = normalizeStoredSettings
+		}
+		out.Settings = normalize("legacy_settings", rawSettings)
 		out.PrivacySettings = privacy.Parse(rawPrivacy).Map()
-		out.NotificationSettings = normalizeStoredSettings("notification_settings", rawNotifications)
-		out.SoundSettings = normalizeStoredSettings("sound_settings", rawSounds)
-		out.StorageSettings = normalizeStoredSettings("storage_settings", rawStorage)
-		out.AdvancedSettings = normalizeStoredSettings("advanced_settings", rawAdvanced)
+		out.NotificationSettings = normalize("notification_settings", rawNotifications)
+		out.SoundSettings = normalize("sound_settings", rawSounds)
+		out.StorageSettings = normalize("storage_settings", rawStorage)
+		out.AdvancedSettings = normalize("advanced_settings", rawAdvanced)
+		if out.Folders == nil {
+			out.Folders = []any{}
+		}
 	}
 	return out, err
 }
@@ -647,7 +658,7 @@ func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input Al
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return err
 	}
-	current, err := s.AllSettings(ctx, userID)
+	current, err := s.readAllSettings(ctx, userID, false)
 	if err != nil {
 		return err
 	}
@@ -716,16 +727,13 @@ func (s *Service) UpdatePrivacy(ctx context.Context, userID string, patch map[st
 	return next, err
 }
 
-func (s *Service) Preference(ctx context.Context, userID, column string, fallback map[string]any) (map[string]any, error) {
+func (s *Service) Preference(ctx context.Context, userID, column string) (map[string]any, error) {
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, err
 	}
 	current, err := s.jsonColumn(ctx, userID, column)
 	if err != nil {
 		return nil, err
-	}
-	if len(current) == 0 {
-		return fallback, nil
 	}
 	return current, nil
 }
@@ -742,17 +750,17 @@ func (s *Service) UpdatePreference(ctx context.Context, userID, column string, p
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, err
 	}
-	current, err := s.jsonColumn(ctx, userID, column)
+	current, err := s.readJSONColumn(ctx, userID, column, false)
 	if err != nil {
 		return nil, err
 	}
 	if len(patch) == 0 {
-		return current, nil
+		return withSettingsDefaults(column, current), nil
 	}
 	for key, value := range patch {
 		current[key] = value
 	}
-	return current, s.updateJsonColumn(ctx, userID, column, current)
+	return withSettingsDefaults(column, current), s.updateJsonColumn(ctx, userID, column, current)
 }
 
 func (s *Service) Folders(ctx context.Context, userID string) ([]any, error) {
@@ -1005,6 +1013,10 @@ func (s *Service) ensureSettings(ctx context.Context, userID string) error {
 }
 
 func (s *Service) jsonColumn(ctx context.Context, userID, column string) (map[string]any, error) {
+	return s.readJSONColumn(ctx, userID, column, true)
+}
+
+func (s *Service) readJSONColumn(ctx context.Context, userID, column string, includeDefaults bool) (map[string]any, error) {
 	var raw []byte
 	var q string
 	switch column {
@@ -1022,7 +1034,10 @@ func (s *Service) jsonColumn(ctx context.Context, userID, column string) (map[st
 	if err := s.db.QueryRowContext(ctx, q, userID).Scan(&raw); err != nil {
 		return nil, err
 	}
-	return normalizeStoredSettings(column, raw), nil
+	if includeDefaults {
+		return normalizeStoredSettings(column, raw), nil
+	}
+	return normalizeSettingsPatchBase(column, raw), nil
 }
 
 func (s *Service) updateJsonColumn(ctx context.Context, userID, column string, value map[string]any) error {

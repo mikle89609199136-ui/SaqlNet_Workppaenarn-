@@ -11,6 +11,7 @@ import (
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
+	"craneapp/backend-v2/internal/platform/settingsdefaults"
 	usernamepolicy "craneapp/backend-v2/internal/platform/username"
 	"github.com/lib/pq"
 )
@@ -130,21 +131,16 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 		return User{}, "", err
 	}
 
-	lang := language
-	if lang == "" {
-		lang = "ru"
+	defaults := settingsdefaults.Object("settings")
+	if language != "" {
+		defaults["language"] = language
 	}
-	langJSON, _ := json.Marshal(lang)
-	defaultSettings := `{"theme":"dark","notifications":true,"sounds":true,"language":` + string(langJSON) + `}`
-
+	defaultSettings, err := json.Marshal(defaults)
+	if err != nil {
+		return User{}, "", err
+	}
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO users.settings (user_id, settings, privacy_settings, notification_settings, sound_settings, storage_settings, advanced_settings, folders)
-		VALUES ($1, $2,
-			'{"lastSeen":"all","phoneVisibility":"contacts","photoVisibility":"all","messagesFromStrangers":true,"groupsAdd":"all","twoFactorAuth":false,"autoDeleteAccount":true}',
-			'{"privateChats":true,"groups":true,"channels":true,"calls":true,"videoCalls":true,"inAppNotifications":true,"messagePreview":true,"readReceipts":false,"reactions":true,"newContacts":true}',
-			'{"notificationsVolume":80,"mediaVolume":100,"notificationsSound":true,"messagesSound":true,"sendSound":true,"callsSound":true,"vibrateOnCall":true,"notificationSound":"default","messageSound":"default","ringtone":"default"}',
-			'{"autoDownloadMobile":true,"autoDownloadWifi":true,"autoDownloadRoaming":false,"deleteMediaAfter":"never"}',
-			'{"autoReconnect":true,"fastConnection":true,"connectionType":"auto","dataCompression":true,"saveDrafts":true,"analytics":false,"developerMode":false,"debugLog":false,"hardwareAcceleration":true,"autoplayGifs":true}', '[]')
+		INSERT INTO users.settings (user_id, settings) VALUES ($1, $2::jsonb)
 	`, user.ID, defaultSettings)
 	if err != nil {
 		return User{}, "", err

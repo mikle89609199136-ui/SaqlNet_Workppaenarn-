@@ -20,10 +20,10 @@
 | `privacySettings`                        | Нормализованные базовые privacy rules; в canonical GET поле называется privacy                                      |
 | `notificationSettings` / `soundSettings` | Legacy detailed objects; после #1042 sound aliases проецируются из canonical flags                                  |
 | `storageSettings` / `advancedSettings`   | Compatibility-only objects, не новые настройки MVP                                                                  |
-| `folders`                                | Массив legacy folders; текущий GET может вернуть null из сохранённого JSON null, нормализация в [] относится к #451 |
+| `folders`                                | Массив legacy folders; GET нормализует сохранённый JSON null в [] после #451 |
 | `passcodeEnabled` / `passcodeTimeout`    | Read-only сведения о passcode, не обновляемые этим PUT                                                              |
 
-Ключи snapshot обязательны, состав preference objects может быть неполным до единых defaults #451. [#453 фиксирует typed leaf schemas](user-api-contract.md); folders намеренно остаются opaque legacy JSON без обещания новой MVP-модели. Privacy exceptions, blocklist, push subscriptions, session/device state и key backup в snapshot не входят.
+Ключи snapshot обязательны; после [#451](settings-defaults.md) preference objects дополняются едиными defaults при чтении, без backfill и без подмешивания в writable patch. [#453 фиксирует typed leaf schemas](user-api-contract.md); folders намеренно остаются opaque legacy JSON без обещания новой MVP-модели. Privacy exceptions, blocklist, push subscriptions, session/device state и key backup в snapshot не входят.
 
 ## PUT: обязательность и правила по полям
 

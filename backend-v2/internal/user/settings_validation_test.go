@@ -176,19 +176,19 @@ func TestSettingsServiceCannotBypassValidation(t *testing.T) {
 	}), ErrInvalidSettings)
 }
 
-func TestStoredSettingsNormalization(t *testing.T) {
+func TestStoredSettingsPatchBaseNormalization(t *testing.T) {
 	for section, raw := range validSettingsPatches {
 		var expected map[string]any
 		require.NoError(t, json.Unmarshal([]byte(raw), &expected))
-		require.Equal(t, expected, normalizeStoredSettings(section, []byte(raw)))
+		require.Equal(t, expected, normalizeSettingsPatchBase(section, []byte(raw)))
 	}
 	require.Equal(t, map[string]any{"sounds": false, "notifications": false, "theme": "dark"},
-		normalizeStoredSettings("settings", []byte(`{"sounds":null,"notifications":"false","theme":"dark","palette":"bad","unknown":true}`)))
+		normalizeSettingsPatchBase("settings", []byte(`{"sounds":null,"notifications":"false","theme":"dark","palette":"bad","unknown":true}`)))
 	require.Equal(t, map[string]any{"mediaVolume": 0, "messagesSound": false},
-		normalizeStoredSettings("sound_settings", []byte(`{"mediaVolume":101,"messagesSound":[],"ringtone":3}`)))
+		normalizeSettingsPatchBase("sound_settings", []byte(`{"mediaVolume":101,"messagesSound":[],"ringtone":3}`)))
 	for _, data := range []string{`null`, `[]`, `1`, `"text"`, `{invalid`} {
 		for section := range validSettingsPatches {
-			out := normalizeStoredSettings(section, []byte(data))
+			out := normalizeSettingsPatchBase(section, []byte(data))
 			require.NotNil(t, out)
 			require.NoError(t, validateSettingsPatch(section, out))
 			for _, value := range out {
@@ -197,5 +197,5 @@ func TestStoredSettingsNormalization(t *testing.T) {
 		}
 	}
 	// Чтение не подставляет все defaults и не модифицирует sparse rows (#451).
-	require.Empty(t, normalizeStoredSettings("settings", []byte(`{}`)))
+	require.Empty(t, normalizeSettingsPatchBase("settings", []byte(`{}`)))
 }

@@ -26,6 +26,12 @@
 > devices с auth.sessions. Исходные наблюдения ниже относятся к указанному commit;
 > runtime validation/defaults/UI/sync остаются отдельными задачами.
 
+> **Продолжение 17 октября в #451:** [единый источник defaults](../settings-defaults.md)
+> используется регистрацией, восстановлением и read projection; SQL defaults обновлены
+> новой миграцией без backfill. Missing keys не становятся записанными flags при unrelated
+> patches, сохранённые false/0/theme/language приоритетны. AvatarShape=letter и callSounds=true
+> включены в общий набор; применение Appearance и alias migration остаются отдельными задачами.
+
 ## Основание и границы проверки
 
 > **Продолжение 17 октября в #495:** typed validation всех общих и detailed sections
