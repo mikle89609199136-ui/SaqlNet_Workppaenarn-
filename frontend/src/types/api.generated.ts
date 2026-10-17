@@ -587,7 +587,7 @@ export interface paths {
         /**
          * Partially update legacy settings sections
          * @deprecated
-         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Safe concurrent writes require a shared locked transaction for bulk and section read-modify-write; the current service can still lose parallel updates. Strict root/section validation requires #495. After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without writes.
+         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Safe concurrent writes require a shared locked transaction for bulk and section read-modify-write; the current service can still lose parallel updates. Strict root/section/leaf validation runs before SQL (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without writes.
          */
         put: operations["updateAllSettings"];
         post?: never;
@@ -611,7 +611,7 @@ export interface paths {
         get: operations["getSettings"];
         /**
          * Partially update own account settings
-         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys are fixed in #453; null/unknown-key validation and legacy normalization require #495/#451; the current generic settings handler does not enforce that validation yet. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
+         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is normalized on reads; unified defaults and migration remain #451/#1040/#1042. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
          */
         put: operations["updateSettings"];
         post?: never;
@@ -704,7 +704,7 @@ export interface paths {
         /**
          * Update notification settings
          * @deprecated
-         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
+         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior. Closed keys, types, ranges and null leaves are validated before SQL (#495).
          */
         put: operations["updateNotifications"];
         post?: never;
@@ -730,7 +730,7 @@ export interface paths {
         /**
          * Update sound settings
          * @deprecated
-         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
+         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior. Closed keys, types, ranges and null leaves are validated before SQL (#495).
          */
         put: operations["updateSounds"];
         post?: never;
@@ -756,7 +756,7 @@ export interface paths {
         /**
          * Update advanced settings
          * @deprecated
-         * @description Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or replacement for these fields is defined; do not copy arbitrary keys into /users/settings.
+         * @description Legacy advanced preferences, deprecated by #498. Kept for compatibility only. No MVP editor or replacement for these fields is defined; do not copy arbitrary keys into /users/settings. Closed keys, types, ranges and null leaves are validated before SQL (#495).
          */
         put: operations["updateAdvancedSettings"];
         post?: never;
@@ -823,7 +823,7 @@ export interface paths {
         /**
          * Update storage settings
          * @deprecated
-         * @description Legacy storage preferences, deprecated by #498. Kept for compatibility only. Storage preferences are outside the MVP settings surface; GET /users/storage also returns legacy storage settings, not canonical account preferences.
+         * @description Legacy storage preferences, deprecated by #498. Kept for compatibility only. Storage preferences are outside the MVP settings surface; GET /users/storage also returns legacy storage settings, not canonical account preferences. Closed keys, types, ranges and null leaves are validated before SQL (#495).
          */
         put: operations["updateStorageSettings"];
         post?: never;
@@ -3002,7 +3002,7 @@ export interface components {
         sounds: boolean;
         /** @description Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated to conversation audio. Effective ringtone also requires notifications and an allowed call. Legacy callsSound becomes an alias after #1042. Absent on older accounts: default true until backend normalization. */
         callSounds: boolean;
-        /** @description Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown keys/null leaves rejected by target validation (#495). Existing persisted unknown data needs migration; it is not an extension point. */
+        /** @description Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown keys/null leaves rejected before SQL (#495). Stored unknown keys are hidden on reads; migration remains separate. It is not an extension point. */
         LegacyGeneralSettings: {
             /**
              * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme. #728/#1040.
@@ -3078,7 +3078,7 @@ export interface components {
             /** @description Compatibility preference; chosen normalized default true, matching registration. Missing flags currently read false; unify in #451. Does not implement account erasure. */
             autoDeleteAccount?: boolean;
         };
-        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
         LegacyNotificationSettings: {
             /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
             privateChats?: boolean;
@@ -3101,7 +3101,7 @@ export interface components {
             /** @description Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md. */
             newContacts?: boolean;
         };
-        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
         LegacySoundSettings: {
             /** @description Compatibility percentage; fallback 80. */
             notificationsVolume?: number;
@@ -3124,7 +3124,7 @@ export interface components {
             /** @description Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support. */
             ringtone?: string;
         };
-        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
         LegacyStorageSettings: {
             /** @description Compatibility preference. */
             autoDownloadMobile?: boolean;
@@ -3135,7 +3135,7 @@ export interface components {
             /** @description Opaque legacy retention identifier; known fallback never. No other supported retention catalogue or enforcement is defined. */
             deleteMediaAfter?: string;
         };
-        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
+        /** @description Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema does not turn stored compatibility data into an implemented feature. */
         LegacyAdvancedSettings: {
             /** @description Compatibility-only stored data; not a new MVP control. */
             autoReconnect?: boolean;
@@ -3229,7 +3229,7 @@ export interface components {
         LegacyStorageSettingsBulkSection: components["schemas"]["LegacyStorageSettings"] | components["schemas"]["LegacyNullSection"];
         /** @description Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyAdvancedSettings; invalid leaves and unknown keys reject the complete command (#495). */
         LegacyAdvancedSettingsBulkSection: components["schemas"]["LegacyAdvancedSettings"] | components["schemas"]["LegacyNullSection"];
-        /** @description Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data. Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495); common locked mutation path is #1047. Correctly typed passcode fields are ignored. Canonical flags beat valid legacy sound aliases (#496/#1042). Unknown root fields and null root are invalid under target validation. */
+        /** @description Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data. Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495); common locked mutation path is #1047. Correctly typed passcode fields are ignored. Canonical flags beat valid legacy sound aliases (#496/#1042). Unknown root fields and null root are rejected before SQL (#495). */
         LegacySettingsBulkPatch: {
             settings?: components["schemas"]["LegacyGeneralSettingsBulkSection"];
             privacySettings?: components["schemas"]["PrivacySettingsPatchBulkSection"];
@@ -3252,7 +3252,7 @@ export interface components {
             /** @enum {string} */
             code?: "invalid_json" | "validation_failed";
         };
-        /** @description Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an old response; defaults are normalization rules, not patch values. Root and leaves must not be null, unknown keys are rejected, and validation is atomic (400 validation_failed). Runtime enforcement/normalization remains #495/#451/#1040/#1042. Animation/GIF controls are outside MVP. */
+        /** @description Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an old response; defaults are normalization rules, not patch values. Root and leaves must not be null, unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Unified defaults/migration remain #451/#1040/#1042. Animation/GIF controls are outside MVP. */
         MvpSettings: {
             /**
              * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme. #728/#1040.

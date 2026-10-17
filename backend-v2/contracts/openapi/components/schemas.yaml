@@ -6,8 +6,7 @@ LegacySettingsBulkPatch:
     Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data.
     Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495);
     common locked mutation path is #1047. Correctly typed passcode fields are ignored. Canonical flags beat
-    valid legacy sound aliases (#496/#1042). Unknown root fields and null root are invalid under target
-    validation.
+    valid legacy sound aliases (#496/#1042). Unknown root fields and null root are rejected before SQL (#495).
   properties:
     settings:
       $ref: '#/LegacyGeneralSettingsBulkSection'
@@ -83,7 +82,7 @@ NotificationPreferences:
     Defaults describe normalized reads/new accounts, not resetting a patch.
     These are stored preferences, not effective delivery decisions. Detailed
     legacy objects are compatibility data, with sound aliases mapped in #1042.
-    Runtime validation/default normalization require #495/#451/#1042.
+    Runtime validation is enforced by #495; default normalization/migration remain #451/#1042.
   properties:
     notifications:
       type: boolean
@@ -159,8 +158,7 @@ MvpSettings:
   description: >-
     Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an
     old response; defaults are normalization rules, not patch values. Root and leaves must not be null,
-    unknown keys are rejected, and validation is atomic (400 validation_failed). Runtime
-    enforcement/normalization remains #495/#451/#1040/#1042. Animation/GIF controls are outside MVP.
+    unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Unified defaults/migration remain #451/#1040/#1042. Animation/GIF controls are outside MVP.
 Error:
   type: object
   required: [code, message]
@@ -1293,7 +1291,7 @@ LegacyGeneralSettings:
       description: 'Deprecated alias data. New clients write textSize; migration is #1040.'
   description: >-
     Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown
-    keys/null leaves rejected by target validation (#495). Existing persisted unknown data needs migration; it
+    keys/null leaves rejected before SQL (#495). Stored unknown keys are hidden on reads; migration remains separate. It
     is not an extension point.
 
 LegacyNotificationSettings:
@@ -1332,7 +1330,7 @@ LegacyNotificationSettings:
       description: Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md.
   description: >-
     Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys
-    fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema
+    are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema
     does not turn stored compatibility data into an implemented feature.
 
 LegacySoundSettings:
@@ -1375,7 +1373,7 @@ LegacySoundSettings:
       description: Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support.
   description: >-
     Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys
-    fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema
+    are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema
     does not turn stored compatibility data into an implemented feature.
 
 LegacyStorageSettings:
@@ -1396,7 +1394,7 @@ LegacyStorageSettings:
       description: Opaque legacy retention identifier; known fallback never. No other supported retention catalogue or enforcement is defined.
   description: >-
     Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys
-    fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema
+    are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema
     does not turn stored compatibility data into an implemented feature.
 
 LegacyAdvancedSettings:
@@ -1435,7 +1433,7 @@ LegacyAdvancedSettings:
       description: Opaque legacy connection identifier; known fallback auto. No other supported connection catalogue is defined.
   description: >-
     Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys
-    fail atomically under #495. Stored/default fallback objects may currently be sparse (#451); this schema
+    are rejected before SQL by #495. Stored/default fallback objects may currently be sparse (#451); this schema
     does not turn stored compatibility data into an implemented feature.
 
 LegacyFolderValue:
