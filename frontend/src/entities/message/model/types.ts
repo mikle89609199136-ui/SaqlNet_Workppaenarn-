@@ -1,6 +1,7 @@
 import type { IMessageEntity } from '@/shared/lib/richText';
 import type { IVoiceMeta } from '@/shared/lib/voice';
 import type { IEncryptedMedia } from '@/types/encryption.types';
+import type { ILastMessageDto } from '@/entities/chat';
 
 export type TMessageType =
   'text' | 'image' | 'audio' | 'video' | 'voice' | 'sticker' | 'gif' | 'file' | 'call';
@@ -59,6 +60,12 @@ export interface IMessageDto {
   replyToMessageId: string | null;
   replySenderName: string | null;
   replyToSenderName: string | null;
+  /**
+   * Превью исходного сообщения от сервера — для цитаты, когда самого
+   * исходника нет в загруженной ленте (#1065). Схема та же, что у
+   * последнего сообщения в списке чатов; сервис отдаёт его расшифрованным.
+   */
+  replyPreview?: ILastMessageDto;
   metadata?: IForwardedMetadata | IMediaMetadata;
   forwardedSenderName: string;
   /** Автор оригинала — чтобы открыть его профиль. Нет, если он запретил ссылку (#785). */

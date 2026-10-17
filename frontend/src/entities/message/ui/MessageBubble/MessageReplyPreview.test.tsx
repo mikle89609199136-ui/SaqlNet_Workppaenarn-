@@ -113,3 +113,70 @@ describe('MessageReplyPreview', () => {
     expect(onJumpToMessage).toHaveBeenCalledTimes(3);
   });
 });
+
+/* Исходника нет в загруженной ленте — текст берётся из превью, которое
+   сервер присылает вместе с ответом (#1065). */
+describe('цитата на сообщение вне ленты', () => {
+  const preview = (extra: Record<string, unknown> = {}) => ({
+    id: 'msg-old',
+    content: 'давнее сообщение',
+    type: 'text' as const,
+    senderId: 'user-2',
+    senderName: 'Анна',
+    reactions: [],
+    ...extra,
+  });
+
+  it('показывает текст из превью сервера', () => {
+    const message = makeMessage({ replyTo: 'msg-old', replyPreview: preview() });
+
+    renderPreview(<MessageReplyPreview message={message} />);
+
+    expect(screen.getByText('давнее сообщение')).toBeInTheDocument();
+    expect(screen.getByText('Анна')).toBeInTheDocument();
+  });
+
+  it('фото с подписью — тип словами: миниатюры у превью нет', () => {
+    const message = makeMessage({
+      replyTo: 'msg-old',
+      replyPreview: preview({ type: 'image', content: 'закат' }),
+    });
+
+    renderPreview(<MessageReplyPreview message={message} />);
+
+    expect(screen.getByText('Фотография: закат')).toBeInTheDocument();
+  });
+
+  it('нерасшифрованное превью — строкой с замком', () => {
+    const message = makeMessage({
+      replyTo: 'msg-old',
+      replyPreview: preview({ content: '', undecryptable: 'beforeJoin' }),
+    });
+
+    renderPreview(<MessageReplyPreview message={message} />);
+
+    expect(screen.getByText(/^🔒/)).toBeInTheDocument();
+  });
+
+  it('звонок — подпись типа, без служебного JSON', () => {
+    const message = makeMessage({
+      replyTo: 'msg-old',
+      replyPreview: preview({ type: 'call', content: '{"callKind":"audio"}' }),
+    });
+
+    renderPreview(<MessageReplyPreview message={message} />);
+
+    expect(screen.getByText('Звонок')).toBeInTheDocument();
+    expect(screen.queryByText(/callKind/)).toBeNull();
+  });
+
+  it('исходник в ленте важнее превью: в нём свежая правка', () => {
+    const message = makeMessage({ replyTo: 'msg-old', replyPreview: preview() });
+    const replied = makeMessage({ id: 'msg-old', content: 'исправленный текст' });
+
+    renderPreview(<MessageReplyPreview message={message} repliedMessage={replied} />);
+
+    expect(screen.getByText('исправленный текст')).toBeInTheDocument();
+    expect(screen.queryByText('давнее сообщение')).toBeNull();
+  });
+});

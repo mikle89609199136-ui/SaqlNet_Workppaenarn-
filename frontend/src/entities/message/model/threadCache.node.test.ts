@@ -5,6 +5,7 @@ import {
   applyReceipt,
   canAppendToThread,
   flattenThread,
+  forgetReplyPreviews,
   patchMessage,
   removeMessage,
   replaceMessage,
@@ -119,6 +120,32 @@ describe('изменение сообщения', () => {
 });
 
 describe('удаление сообщения', () => {
+  // Превью исходника пришло с ответом: после удаления у всех оно не должно
+  // оставаться в цитате (#1065).
+  it('снимает превью цитаты у ответов на удалённое', () => {
+    const preview = {
+      id: 'msg-old',
+      content: 'удалённый текст',
+      type: 'text' as const,
+      senderId: 'user-2',
+      senderName: 'Анна',
+      reactions: [],
+    };
+    const reply = makeMessage({ replyTo: 'msg-old', replyPreview: preview });
+    const other = makeMessage({
+      replyTo: 'msg-kept',
+      replyPreview: { ...preview, id: 'msg-kept' },
+    });
+    const data = pages([reply, other]);
+
+    const next = forgetReplyPreviews(data, ['msg-old']);
+    const [first, second] = flattenThread(next);
+
+    expect(first.replyPreview).toBeUndefined();
+    expect(second.replyPreview?.id).toBe('msg-kept');
+    expect(forgetReplyPreviews(data, ['msg-unknown'])).toBe(data);
+  });
+
   it('should drop the message from its page', () => {
     const kept = makeMessage();
     const removed = makeMessage();

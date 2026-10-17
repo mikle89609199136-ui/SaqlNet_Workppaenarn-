@@ -153,6 +153,28 @@ export function removeMessage(data: IThreadPages, messageId: string): IThreadPag
   };
 }
 
+/**
+ * Цитаты на удалённые сообщения (#1065).
+ *
+ * Превью исходника приходит от сервера вместе с ответом. После удаления
+ * у всех или скрытия у себя его текст иначе оставался бы в плашке до
+ * перезагрузки — а после неё сервер его уже не отдаёт.
+ */
+export function forgetReplyPreviews(data: IThreadPages, removedIds: string[]): IThreadPages {
+  const removed = new Set(removedIds);
+  let changed = false;
+  const pages = data.pages.map((page) =>
+    page.map((message) => {
+      const target = message.replyTo || message.replyToMessageId;
+      if (!message.replyPreview || !target || !removed.has(target)) return message;
+      changed = true;
+      return { ...message, replyPreview: undefined };
+    })
+  );
+
+  return changed ? { ...data, pages } : data;
+}
+
 export function replaceMessage(
   data: IThreadPages,
   targetId: string,

@@ -194,7 +194,36 @@ export class MessageService {
     );
 
     const sent = response.data.messages;
-    return Promise.all(prepared.map(({ toDisplay }, index) => toDisplay(sent[index])));
+    return Promise.all(
+      prepared.map(async ({ toDisplay }, index) =>
+        // Ответ сервера несёт превью цитаты зашифрованным (#1065).
+        this.decryptReplyPreview(chatId, await toDisplay(sent[index]))
+      )
+    );
+  }
+
+  /**
+   * Цитата ответа (#1065).
+   *
+   * Сервер кладёт в сообщение-ответ превью исходного — в шифрованном чате
+   * это конверт. Оно расшифровывается тем же путём, что последнее
+   * сообщение в списке чатов, и ни одним путём наружу шифрованным не
+   * уходит: иначе плашка показала бы конверт. Звонок не шифруется — в нём
+   * служебный JSON, текстом его не показываем.
+   */
+  private async decryptReplyPreview<T extends IMessageDto>(
+    chatId: string,
+    message: T,
+    chatContext: IChatContext | null = null
+  ): Promise<T> {
+    const preview = message.replyPreview;
+    if (!preview) return message;
+    if (preview.type === 'call') return { ...message, replyPreview: { ...preview, content: '' } };
+
+    return {
+      ...message,
+      replyPreview: await this.processLastMessageForDisplay(chatId, preview, chatContext),
+    };
   }
 
   /** Текст: шифруется ключом чата, показывается у нас как есть. */
@@ -449,15 +478,19 @@ export class MessageService {
     }
 
     const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
-    return {
-      ...item,
-      content,
-      entities,
-      senderVerified,
-      undecryptable,
-      ...(voice ? { voice } : {}),
-      ...mediaPatch,
-    };
+    return this.decryptReplyPreview(
+      chatId,
+      {
+        ...item,
+        content,
+        entities,
+        senderVerified,
+        undecryptable,
+        ...(voice ? { voice } : {}),
+        ...mediaPatch,
+      },
+      context
+    );
   }
 
   async processPinnedMessageForDisplay(
@@ -695,7 +728,7 @@ export class MessageService {
       entities: plain.entities,
     };
 
-    return message;
+    return this.decryptReplyPreview(chatId, message, chatContext);
   }
 
   /**

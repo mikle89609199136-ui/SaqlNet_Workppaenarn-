@@ -817,6 +817,118 @@ describe('MessageService: ошибки скачивания вложения (#1
   });
 });
 
+/* Превью исходного сообщения в ответе (#1065): в шифрованном чате это
+   конверт, и ни одним путём он не должен уйти в интерфейс шифрованным. */
+describe('MessageService: превью ответа (#1065)', () => {
+  afterEach(() => setChatResolver(null));
+
+  /** «Шифрование»: `sealed:<текст>` открывается, `broken` — нет. */
+  const sealedCrypto = {
+    ...passthroughCrypto,
+    encryptMessage: async (_chatId: string, content: string) => `sealed:${content}`,
+    decryptMessage: vi.fn(async (_chatId: string, content: string) =>
+      content === 'broken'
+        ? { text: '', undecryptable: 'beforeJoin' }
+        : {
+            text: content.replace(/^sealed:/, ''),
+            entities: [{ type: 'bold', offset: 0, length: 3 }],
+          }
+    ),
+  };
+
+  function serviceIn(type: 'private' | 'channel') {
+    setChatResolver(async (chatId) => ({ id: chatId, type }) as never);
+    sealedCrypto.decryptMessage.mockClear();
+    return new MessageService(createApiClient(), sealedCrypto as never);
+  }
+
+  const preview = (content: string, type = 'text') => ({
+    id: 'm-old',
+    content,
+    type,
+    senderId: 'user-2',
+    senderName: 'Анна',
+    reactions: [],
+  });
+
+  const reply = (replyPreview?: ReturnType<typeof preview>) =>
+    ({
+      ...message('m-reply', TARGET_CHAT, 'sealed:ответ'),
+      replyTo: 'm-old',
+      ...(replyPreview ? { replyPreview } : {}),
+    }) as unknown as IMessageDto;
+
+  it('история: превью расшифровано тем же ключом чата, с форматированием', async () => {
+    const shown = await serviceIn('private').processMessageForDisplay(
+      TARGET_CHAT,
+      reply(preview('sealed:давнее'))
+    );
+
+    expect(shown.content).toBe('ответ');
+    expect(shown.replyPreview).toMatchObject({
+      content: 'давнее',
+      entities: [{ type: 'bold', offset: 0, length: 3 }],
+    });
+  });
+
+  it('нерасшифрованное превью помечено, а сам ответ расшифрован', async () => {
+    const shown = await serviceIn('private').processMessageForDisplay(
+      TARGET_CHAT,
+      reply(preview('broken'))
+    );
+
+    expect(shown.content).toBe('ответ');
+    expect(shown.replyPreview).toMatchObject({ undecryptable: 'beforeJoin' });
+  });
+
+  it('превью звонка не расшифровывается и без служебного JSON', async () => {
+    const shown = await serviceIn('private').processMessageForDisplay(
+      TARGET_CHAT,
+      reply(preview('{"callKind":"audio"}', 'call'))
+    );
+
+    expect(shown.replyPreview).toMatchObject({ type: 'call', content: '' });
+    expect(sealedCrypto.decryptMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('без превью — лишних расшифровок нет', async () => {
+    const shown = await serviceIn('private').processMessageForDisplay(TARGET_CHAT, reply());
+
+    expect(shown).not.toHaveProperty('replyPreview');
+    expect(sealedCrypto.decryptMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('ответ на отправку и на правку отдаёт открытое превью', async () => {
+    const service = serviceIn('private');
+    server.use(
+      http.post(api(`/messages/${TARGET_CHAT}`), () =>
+        HttpResponse.json({
+          messages: [{ ...reply(preview('sealed:давнее')), content: 'sealed:новый' }],
+        })
+      ),
+      http.put(api('/messages/m-reply'), () =>
+        HttpResponse.json({ ...reply(preview('sealed:давнее')), content: 'sealed:правка' })
+      )
+    );
+
+    const sent = await service.sendMessage(TARGET_CHAT, 'новый', 'text', 'm-old');
+    const edited = await service.editMessage('m-reply', TARGET_CHAT, 'правка');
+
+    expect(sent.replyPreview?.content).toBe('давнее');
+    expect(edited.replyPreview?.content).toBe('давнее');
+  });
+
+  it('канал: превью открытое, отдаётся как есть', async () => {
+    const shown = await serviceIn('channel').processMessageForDisplay(
+      TARGET_CHAT,
+      reply(preview('открытый текст'))
+    );
+
+    expect(shown.replyPreview?.content).toBe('открытый текст');
+    expect(sealedCrypto.decryptMessage).not.toHaveBeenCalled();
+  });
+});
+
 describe('MessageService: стикеры и GIF (#593, #871, #973, #1003)', () => {
   const validStickerUrl = '/api/v2/media/11111111-1111-4111-8111-111111111111';
   const validGifUrl = '/api/v2/media/22222222-2222-4222-8222-222222222222';

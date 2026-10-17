@@ -8,6 +8,7 @@ import {
   appendMessage,
   applyReceipt,
   canAppendToThread,
+  forgetReplyPreviews,
   patchMessage,
   removeMessage,
   replaceMessage,
@@ -260,7 +261,10 @@ export function dropThreadMessages(
 ): void {
   if (messageIds.length === 0) return;
   mutateThread(queryClient, chatId, (current) =>
-    messageIds.reduce((thread, id) => removeMessage(thread, id), current)
+    forgetReplyPreviews(
+      messageIds.reduce((thread, id) => removeMessage(thread, id), current),
+      messageIds
+    )
   );
   void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
   markChatListStale(queryClient);
