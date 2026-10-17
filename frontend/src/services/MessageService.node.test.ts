@@ -611,6 +611,131 @@ describe('MessageService: пересылка файла (#1060)', () => {
   });
 });
 
+/* Стикер и GIF сервер принимает только ссылкой на каталог: шифрованную
+   копию он отклоняет (#1061). А звонок и вложение без файла не уйдут
+   вовсе — пачка с ними не должна ничего загружать. */
+describe('MessageService: пересылка стикеров, GIF и непересылаемого (#1061)', () => {
+  const stickerUrl = '/api/v2/media/11111111-1111-4111-8111-111111111111';
+  const gifUrl = '/api/v2/media/22222222-2222-4222-8222-222222222222';
+
+  afterEach(() => setChatResolver(null));
+
+  /** Сервис со счётчиками загрузок и шифрования файлов. */
+  function forwarding() {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    const uploads: unknown[] = [];
+    server.use(
+      http.post(api('/media'), async ({ request }) => {
+        uploads.push(await request.json());
+        return HttpResponse.json({ url: '/api/v2/media/00000000-0000-4000-8000-0000000002a0' });
+      })
+    );
+    const requests = serveSend();
+    const crypto = {
+      ...passthroughCrypto,
+      encryptMedia: vi.fn(async () => ({ encrypted: true })),
+      decryptMedia: vi.fn(async () => new Blob(['x'])),
+    };
+    const service = new MessageService(createApiClient(), crypto as never);
+    return { uploads, requests, crypto, service };
+  }
+
+  /** Стикер или GIF в том виде, в каком его держит лента. */
+  const catalog = (id: string, type: 'sticker' | 'gif', url: string | null, extra = {}) =>
+    ({
+      ...message(id, 'chat-source', ''),
+      type,
+      mediaUrl: url,
+      mediaOriginalUrl: url ?? undefined,
+      mediaEncrypted: false,
+      mediaUnavailable: !url,
+      ...extra,
+    }) as unknown as IMessageDto;
+
+  it.each([
+    ['стикер', 'sticker', stickerUrl],
+    ['GIF', 'gif', gifUrl],
+  ] as const)('%s пересылается ссылкой на каталог, без загрузки', async (_name, type, url) => {
+    const { uploads, requests, crypto, service } = forwarding();
+
+    await service.forwardMessages(TARGET_CHAT, [catalog('m-catalog', type, url)]);
+
+    expect(uploads).toHaveLength(0);
+    expect(crypto.encryptMedia).not.toHaveBeenCalled();
+    expect(requests[0].messages[0]).toEqual({
+      content: '',
+      type,
+      replyTo: null,
+      mediaUrl: url,
+      mediaType: type,
+      mediaEncrypted: false,
+      forwardedFrom: 'm-catalog',
+    });
+  });
+
+  it('стикер не из каталога не пересылается и запросов нет', async () => {
+    const { uploads, requests, service } = forwarding();
+
+    await expect(
+      service.forwardMessages(TARGET_CHAT, [
+        catalog('m-foreign', 'sticker', null, { mediaUnavailableReason: 'foreign' }),
+      ])
+    ).rejects.toThrow();
+
+    expect(uploads).toHaveLength(0);
+    expect(requests).toHaveLength(0);
+  });
+
+  it('звонок не пересылается', async () => {
+    const { requests, service } = forwarding();
+    const call = { ...message('m-call', 'chat-source', '{"status":"missed"}'), type: 'call' };
+
+    await expect(service.forwardMessages(TARGET_CHAT, [call as IMessageDto])).rejects.toThrow();
+
+    expect(requests).toHaveLength(0);
+  });
+
+  it.each(['', 'подпись'])('фото без файла не пересылается (подпись: «%s»)', async (caption) => {
+    const { uploads, requests, service } = forwarding();
+    const photo = {
+      ...message('m-photo', 'chat-source', caption),
+      type: 'image',
+      mediaUrl: null,
+      mediaUnavailable: true,
+    } as unknown as IMessageDto;
+
+    await expect(service.forwardMessages(TARGET_CHAT, [photo])).rejects.toThrow();
+
+    expect(uploads).toHaveLength(0);
+    expect(requests).toHaveLength(0);
+  });
+
+  it('пачка [фото, звонок] не загружает и фото', async () => {
+    const { uploads, requests, crypto, service } = forwarding();
+    const photoUrl = await resolveMediaObjectUrl(
+      '/api/v2/media/00000000-0000-4000-8000-0000000002a1',
+      async () => new Blob(['photo'])
+    );
+    const photo = {
+      ...message('m-photo', 'chat-source', ''),
+      type: 'image',
+      mediaUrl: photoUrl,
+      metadata: { mediaUrl: '/api/v2/media/00000000-0000-4000-8000-0000000002a1' },
+    } as unknown as IMessageDto;
+    const call = { ...message('m-call', 'chat-source', '{}'), type: 'call' } as IMessageDto;
+
+    try {
+      await expect(service.forwardMessages(TARGET_CHAT, [photo, call])).rejects.toThrow();
+    } finally {
+      clearMediaObjectUrls();
+    }
+
+    expect(crypto.encryptMedia).not.toHaveBeenCalled();
+    expect(uploads).toHaveLength(0);
+    expect(requests).toHaveLength(0);
+  });
+});
+
 describe('MessageService: стикеры и GIF (#593, #871, #973, #1003)', () => {
   const validStickerUrl = '/api/v2/media/11111111-1111-4111-8111-111111111111';
   const validGifUrl = '/api/v2/media/22222222-2222-4222-8222-222222222222';

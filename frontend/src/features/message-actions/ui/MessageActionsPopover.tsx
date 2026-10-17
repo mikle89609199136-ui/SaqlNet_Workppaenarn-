@@ -3,7 +3,11 @@ import { ContextMenu, Icon, NotoEmoji } from '@/shared/ui';
 import { QUICK_REACTIONS } from '@/shared/config';
 import { cn, formatReceipt } from '@/shared/lib';
 import { useMessageActions } from '../model/useMessageActions';
-import { availableMessageActions, type TMessageActionPlace } from '../model/messageActionRules';
+import {
+  availableMessageActions,
+  canForwardMessage,
+  type TMessageActionPlace,
+} from '../model/messageActionRules';
 import { canCopyImageToClipboard } from '../model/mediaActions';
 import { saveFilePicker } from '@/entities/media';
 import { pinsQuery } from '@/entities/message';
@@ -155,6 +159,9 @@ export const MessageActionsPopover = ({
   // Окно «Сохранить как» есть не везде: где его нет, пункт честно
   // называется «Скачать».
   const canPickLocation = saveFilePicker() !== null;
+  // В режиме выделения пересылаются все отмеченные: одно непересылаемое
+  // среди них сорвало бы всю пачку (#1061).
+  const forwardsSelection = !selectionMode || selectedMessages.every(canForwardMessage);
 
   // Список пересобирается только когда меняется то, от чего он зависит:
   // само сообщение, режим выделения и признак закрепления. Иначе десяток
@@ -222,7 +229,7 @@ export const MessageActionsPopover = ({
         action: () => actions.handleUnpinMessage(message),
       },
       {
-        show: available.has('forward'),
+        show: available.has('forward') && forwardsSelection,
         icon: 'forward',
         key: 'forward',
         def: t('messageActions.forward', 'Переслать'),
@@ -251,6 +258,7 @@ export const MessageActionsPopover = ({
       available,
       canPickLocation,
       copiesImage,
+      forwardsSelection,
       isSelected,
       message,
       onSelection,

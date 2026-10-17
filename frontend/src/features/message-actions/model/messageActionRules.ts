@@ -67,6 +67,16 @@ function hasAvailableMedia(message: IMediaItem): boolean {
   return Boolean(message.mediaUrl) && !message.mediaUnavailable;
 }
 
+/**
+ * Можно ли переслать (#1061): отправленное и расшифрованное, не звонок —
+ * его сервер от клиента не принимает, — а вложение только с открывшимся
+ * файлом: без него пересылать нечего.
+ */
+export function canForwardMessage(message: IMediaItem): boolean {
+  if (isUnsent(message) || message.undecryptable || message.type === 'call') return false;
+  return messageMediaType(message) === null || hasAvailableMedia(message);
+}
+
 export function availableMessageActions(
   message: IMediaItem,
   { mine, place, isPinned, canCopyImage }: IMessageActionContext
@@ -102,7 +112,7 @@ export function availableMessageActions(
     actions.add('edit');
   }
   actions.add(isPinned ? 'unpin' : 'pin');
-  if (!message.undecryptable) actions.add('forward');
+  if (canForwardMessage(message)) actions.add('forward');
 
   return actions;
 }
