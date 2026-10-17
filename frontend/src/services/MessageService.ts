@@ -1,6 +1,6 @@
 import { API_ENDPOINTS, ApiClient } from '@/shared/api';
 import { toPlayableVoiceBlob, type IVoiceMeta } from '@/shared/lib/voice';
-import { resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
+import { mediaBlobByUrl, resolveMediaObjectUrl } from '@/entities/media/model/mediaObjectUrls';
 import { resolveChat } from '@/entities/chat/model/chatResolver';
 import type {
   IChatContext,
@@ -714,8 +714,7 @@ export class MessageService {
     const media = (message as IMessageDto & { mediaUrl?: string | null }).mediaUrl;
 
     if (MEDIA_MESSAGE_TYPES.has(message.type) && media) {
-      // Файл уже расшифрован и лежит в памяти вкладки по адресу blob:.
-      const blob = await fetch(media).then((response) => response.blob());
+      const blob = await this.forwardedMediaBlob(message, media);
 
       return this.prepareMedia(
         targetChatId,
@@ -740,6 +739,29 @@ export class MessageService {
       chatContext,
       message.entities ?? []
     );
+  }
+
+  /**
+   * Файл пересылаемого сообщения — расшифрованный, из реестра.
+   *
+   * Читать его по адресу blob: через fetch нельзя: такой запрос подчиняется
+   * CSP `connect-src`, а edge схему blob: там не разрешает
+   * (backend-v2/internal/platform/httpx/httpx.go). На прод-сборке пересылка
+   * файлов из-за этого падала, а dev-сервер CSP не ставит (#1060).
+   *
+   * Пока пересылка ждёт над полем ввода, реестр мог отпустить файл ради
+   * места. Тогда он скачивается и расшифровывается заново, ключом исходного
+   * чата, — тем же путём, что при показе в ленте.
+   */
+  private async forwardedMediaBlob(message: IMessageDto, objectUrl: string): Promise<Blob> {
+    const held = mediaBlobByUrl(objectUrl);
+    if (held) return held;
+
+    const restored = await this.resolveMediaForDisplay(message.chatId, message);
+    const blob = restored.mediaUrl ? mediaBlobByUrl(restored.mediaUrl) : undefined;
+    if (blob) return blob;
+
+    throw new Error('Файл пересылаемого сообщения недоступен');
   }
 
   async listReactions(messageId: string) {
