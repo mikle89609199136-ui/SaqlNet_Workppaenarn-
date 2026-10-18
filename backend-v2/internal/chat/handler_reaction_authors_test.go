@@ -44,6 +44,12 @@ var (
 // the access and page queries share a leading SELECT prefix; the equal matcher
 // would require the exact literal SQL, which is intentionally not duplicated
 // here.
+//
+// Since ListReactionAuthors now reads total and the page inside a single
+// REPEATABLE READ transaction, every case that reaches the service must
+// declare Begin and either Commit (success) or Rollback (early return). Cases
+// that fail validation before the service is called expect no database
+// traffic at all.
 func TestHandler_ListReactionAuthors(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -151,8 +157,8 @@ func TestHandler_ListReactionAuthors(t *testing.T) {
 			wantErrorCode: "validation_failed",
 		},
 		{
-			// Cursor decoding happens in the service, before the first query,
-			// so a malformed cursor produces no database traffic.
+			// Cursor decoding happens in the service, before BeginTx, so a
+			// malformed cursor produces no database traffic.
 			name:          "malformed_cursor_400",
 			method:        http.MethodGet,
 			messageID:     reactionAuthorsMessageID,
@@ -163,31 +169,37 @@ func TestHandler_ListReactionAuthors(t *testing.T) {
 		},
 		{
 			// An empty result set from the access query means the message does
-			// not exist or is soft-deleted; both map to 404.
+			// not exist or is soft-deleted; both map to 404. The transaction is
+			// opened and then rolled back on the early return.
 			name:      "message_not_found_404",
 			method:    http.MethodGet,
 			messageID: reactionAuthorsMessageID,
 			rawQuery:  "emoji=%F0%9F%91%8D",
 			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
 				mock.ExpectQuery(raAccessQueryPattern).
 					WithArgs(reactionAuthorsMessageID, handlerActorID, "👍").
 					WillReturnRows(sqlmock.NewRows(raAccessColumns))
+				mock.ExpectRollback()
 			},
 			wantStatus:    http.StatusNotFound,
 			wantErrorCode: "not_found",
 		},
 		{
 			// is_member = false signals a caller who is not (or is no longer)
-			// a member of the chat.
+			// a member of the chat. The transaction is rolled back on the
+			// early return.
 			name:      "not_a_member_403",
 			method:    http.MethodGet,
 			messageID: reactionAuthorsMessageID,
 			rawQuery:  "emoji=%F0%9F%91%8D",
 			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
 				mock.ExpectQuery(raAccessQueryPattern).
 					WithArgs(reactionAuthorsMessageID, handlerActorID, "👍").
 					WillReturnRows(sqlmock.NewRows(raAccessColumns).
 						AddRow(handlerChatID, false, 3))
+				mock.ExpectRollback()
 			},
 			wantStatus:    http.StatusForbidden,
 			wantErrorCode: "access_denied",
@@ -195,27 +207,32 @@ func TestHandler_ListReactionAuthors(t *testing.T) {
 		{
 			// sql.ErrConnDone is the sentinel other service tests already use
 			// for "database unreachable"; reusing it here keeps the mock error
-			// vocabulary of the package consistent.
+			// vocabulary of the package consistent. The transaction is rolled
+			// back on the early return.
 			name:      "db_error_500",
 			method:    http.MethodGet,
 			messageID: reactionAuthorsMessageID,
 			rawQuery:  "emoji=%F0%9F%91%8D",
 			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
 				mock.ExpectQuery(raAccessQueryPattern).
 					WithArgs(reactionAuthorsMessageID, handlerActorID, "👍").
 					WillReturnError(sql.ErrConnDone)
+				mock.ExpectRollback()
 			},
 			wantStatus:    http.StatusInternalServerError,
 			wantErrorCode: "internal_error",
 		},
 		{
 			// The handler must emit an empty JSON array, not null, so the
-			// client never has to distinguish the two.
+			// client never has to distinguish the two. Both queries run in
+			// one transaction, which is committed after the empty page.
 			name:      "empty_page_200",
 			method:    http.MethodGet,
 			messageID: reactionAuthorsMessageID,
 			rawQuery:  "emoji=%F0%9F%94%A5",
 			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
 				mock.ExpectQuery(raAccessQueryPattern).
 					WithArgs(reactionAuthorsMessageID, handlerActorID, "🔥").
 					WillReturnRows(sqlmock.NewRows(raAccessColumns).
@@ -223,6 +240,7 @@ func TestHandler_ListReactionAuthors(t *testing.T) {
 				mock.ExpectQuery(raPageQueryPattern).
 					WithArgs(reactionAuthorsMessageID, handlerActorID, "🔥", nil, nil, 51).
 					WillReturnRows(sqlmock.NewRows(raPageColumns))
+				mock.ExpectCommit()
 			},
 			wantStatus: http.StatusOK,
 			checkBody: func(t *testing.T, body []byte) {
@@ -242,6 +260,7 @@ func TestHandler_ListReactionAuthors(t *testing.T) {
 			messageID: reactionAuthorsMessageID,
 			rawQuery:  "emoji=%F0%9F%91%8D",
 			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
 				mock.ExpectQuery(raAccessQueryPattern).
 					WithArgs(reactionAuthorsMessageID, handlerActorID, "👍").
 					WillReturnRows(sqlmock.NewRows(raAccessColumns).
@@ -253,6 +272,7 @@ func TestHandler_ListReactionAuthors(t *testing.T) {
 							time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC), nil, false, nil).
 						AddRow(handlerActorID, "bob", "Bob", "B", "",
 							time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC), nil, false, nil))
+				mock.ExpectCommit()
 			},
 			wantStatus: http.StatusOK,
 			checkBody: func(t *testing.T, body []byte) {
@@ -275,6 +295,7 @@ func TestHandler_ListReactionAuthors(t *testing.T) {
 			messageID: reactionAuthorsMessageID,
 			rawQuery:  "emoji=%F0%9F%91%8D&limit=1",
 			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
 				mock.ExpectQuery(raAccessQueryPattern).
 					WithArgs(reactionAuthorsMessageID, handlerActorID, "👍").
 					WillReturnRows(sqlmock.NewRows(raAccessColumns).
@@ -286,6 +307,7 @@ func TestHandler_ListReactionAuthors(t *testing.T) {
 							time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC), nil, false, nil).
 						AddRow(handlerActorID, "bob", "Bob", "B", "",
 							time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC), nil, false, nil))
+				mock.ExpectCommit()
 			},
 			wantStatus: http.StatusOK,
 			checkBody: func(t *testing.T, body []byte) {

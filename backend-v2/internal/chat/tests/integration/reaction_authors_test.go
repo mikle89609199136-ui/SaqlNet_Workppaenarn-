@@ -83,6 +83,25 @@ func TestListReactionAuthors_Access(t *testing.T) {
 		_, err := svc.ListReactionAuthors(ctx, strangerID, randomUUID(t), emojiThumbsUp, "", 0)
 		require.ErrorIs(t, err, chat.ErrNotFound)
 	})
+
+	t.Run("hidden message is not found", func(t *testing.T) {
+		svc, ownerID, peerID, _, messageID, ctx := setupReactionFixture(t)
+		seedReaction(t, TestDB, ctx, messageID, ownerID, emojiThumbsUp)
+
+		_, err := TestDB.ExecContext(ctx,
+			`INSERT INTO messages.hidden_messages (message_id, user_id) VALUES ($1, $2)`,
+			messageID, peerID)
+		require.NoError(t, err)
+
+		_, err = svc.ListReactionAuthors(ctx, peerID, messageID, emojiThumbsUp, "", 0)
+		require.ErrorIs(t, err, chat.ErrNotFound)
+
+		// Тот же messageId, но не скрывший его участник — страница доступна.
+		page, err := svc.ListReactionAuthors(ctx, ownerID, messageID, emojiThumbsUp, "", 0)
+		require.NoError(t, err)
+		assert.Equal(t, 1, page.Total)
+	})
+
 }
 
 // -----------------------------------------------------------------------------
