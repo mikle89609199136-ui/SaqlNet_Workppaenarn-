@@ -3,10 +3,14 @@ import { ContextMenu, Icon, NotoEmoji } from '@/shared/ui';
 import { QUICK_REACTIONS } from '@/shared/config';
 import { cn, formatReceipt } from '@/shared/lib';
 import { useMessageActions } from '../model/useMessageActions';
-import { availableMessageActions, type TMessageActionPlace } from '../model/messageActionRules';
+import {
+  availableMessageActions,
+  canForwardMessage,
+  type TMessageActionPlace,
+} from '../model/messageActionRules';
 import { canCopyImageToClipboard } from '../model/mediaActions';
 import { saveFilePicker } from '@/entities/media';
-import { pinsQuery } from '@/entities/message';
+import { formatEditedAt, pinsQuery } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
@@ -137,6 +141,9 @@ export const MessageActionsPopover = ({
   const isPinned = pinnedMessages.some((p) => p.messageId === message.id);
   const isSelected = selectedMessages.some((m) => m.id === message.id);
   const receipt = mine && showReceipt ? formatReceipt(message, t) : null;
+  // Время правки — у своих и у чужих (#1066): на телефоне наведения нет,
+  // и подсказка у «изменено» там не видна.
+  const editedAt = formatEditedAt(message, t);
   // Что вообще можно сделать с этим сообщением (#655): недоступное
   // скрывается, а не отключается.
   const available = useMemo(
@@ -155,6 +162,9 @@ export const MessageActionsPopover = ({
   // Окно «Сохранить как» есть не везде: где его нет, пункт честно
   // называется «Скачать».
   const canPickLocation = saveFilePicker() !== null;
+  // В режиме выделения пересылаются все отмеченные: одно непересылаемое
+  // среди них сорвало бы всю пачку (#1061).
+  const forwardsSelection = !selectionMode || selectedMessages.every(canForwardMessage);
 
   // Список пересобирается только когда меняется то, от чего он зависит:
   // само сообщение, режим выделения и признак закрепления. Иначе десяток
@@ -222,7 +232,7 @@ export const MessageActionsPopover = ({
         action: () => actions.handleUnpinMessage(message),
       },
       {
-        show: available.has('forward'),
+        show: available.has('forward') && forwardsSelection,
         icon: 'forward',
         key: 'forward',
         def: t('messageActions.forward', 'Переслать'),
@@ -251,6 +261,7 @@ export const MessageActionsPopover = ({
       available,
       canPickLocation,
       copiesImage,
+      forwardsSelection,
       isSelected,
       message,
       onSelection,
@@ -269,14 +280,31 @@ export const MessageActionsPopover = ({
       x={actionMenu?.x}
       y={actionMenu?.y}
     >
+      {/* Две строки — «Прочитано…», затем «Изменено…» — под одной чертой. */}
       {receipt && (
         <div
           aria-label={receipt}
-          className="mb-1 flex items-center gap-1.5 border-b border-divider px-2 pt-1 pb-1.75 text-meta text-ink-3"
+          className={cn(
+            'flex items-center gap-1.5 px-2 pt-1 text-meta text-ink-3',
+            editedAt ? 'pb-1' : 'mb-1 border-b border-divider pb-1.75'
+          )}
           role="group"
         >
           <Icon aria-hidden="true" className="size-4 shrink-0 stroke-2" name="checkCheck" />
           <span aria-hidden="true">{receipt}</span>
+        </div>
+      )}
+      {editedAt && (
+        <div
+          aria-label={editedAt}
+          className={cn(
+            'mb-1 flex items-center gap-1.5 border-b border-divider px-2 pb-1.75 text-meta text-ink-3',
+            !receipt && 'pt-1'
+          )}
+          role="group"
+        >
+          <Icon aria-hidden="true" className="size-4 shrink-0 stroke-2" name="edit" />
+          <span aria-hidden="true">{editedAt}</span>
         </div>
       )}
 

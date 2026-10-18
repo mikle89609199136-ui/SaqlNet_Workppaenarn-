@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -12,15 +12,23 @@ import {
 } from '@/shared/ui';
 import { sessionsQuery } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
-import { disconnectRealtimeSocket } from '@/shared/api';
+import { REACT_ROUTES } from '@/shared/config';
 import type { components } from '@/types/api.generated';
 
 type AuthSession = components['schemas']['AuthSession'];
 
-export function SessionsManager() {
+interface Props {
+  /**
+   * Очистить вкладку после выхода со всех устройств. Это сценарий входа и
+   * выхода, а не управления сеансами, — его передаёт тот, кто собирает
+   * экран: фича не импортирует фичу (#863, #1072).
+   */
+  onSignedOut: () => void;
+}
+
+export function SessionsManager({ onSignedOut }: Props) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const sessions = useQuery(sessionsQuery());
 
   const [asked, setAsked] = useState(false);
@@ -36,16 +44,14 @@ export function SessionsManager() {
       // Завершение всех сеансов стирает и ключи шифрования: это тот самый
       // случай, ради которого кнопку нажимают — чужой или потерянный
       // компьютер. История не пропадает: она в резервной копии (#739).
+      // Ключи стираются до очистки вкладки: аккаунт находится по профилю и
+      // ключам в памяти, а очистка убирает и то и другое.
       await services.cryptoService.wipeDevice().catch(() => {});
 
-      disconnectRealtimeSocket();
-
-      /* Запрет из docs/frontend-data-architecture.md: без этого после
-         входа другим пользователем в той же вкладке в памяти остаются
-         чужие сообщения — расшифрованные. */
-      queryClient.clear();
-
-      navigate('/login');
+      // Очистка всей вкладки — сокет, кеш, черновики, ключи в памяти.
+      // Прежде здесь чистились только кеш и сокет (#1072).
+      onSignedOut();
+      navigate(REACT_ROUTES.LOGIN, { replace: true });
     } catch {
       // Do not wipe this device or claim success when the server did not revoke
       // the other tokens (for example while a safe rollout gate is disabled).

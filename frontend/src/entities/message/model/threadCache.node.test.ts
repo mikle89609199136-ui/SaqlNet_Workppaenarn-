@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { makeMessage } from '@/test/fixtures';
+import { addOutboxItem, clearOutbox } from './outboxStore';
 import {
   appendMessage,
   applyReceipt,
   canAppendToThread,
+  dropMissingFromHead,
   flattenThread,
+  forgetReplyPreviews,
   patchMessage,
   removeMessage,
   replaceMessage,
@@ -27,6 +30,44 @@ describe('склейка страниц истории', () => {
     const data = pages([newer], [older]);
 
     expect(flattenThread(data).map((message) => message.id)).toEqual([older.id, newer.id]);
+  });
+
+  /* Страница по смещению после новых сообщений начинается с тех, что уже
+     лежат в первой (#1064). */
+  it('сообщение с двух страниц попадает в ленту один раз', () => {
+    const older = makeMessage();
+    const shared = makeMessage();
+    const newer = makeMessage();
+
+    const ids = flattenThread(pages([shared, newer], [older, shared])).map((m) => m.id);
+
+    expect(ids).toEqual([older.id, shared.id, newer.id]);
+  });
+
+  it('из двух копий остаётся правленная позже, на какой бы странице она ни была', () => {
+    const base = makeMessage({ content: 'до правки', updatedAt: new Date('2026-10-17T10:00:00Z') });
+    const edited = {
+      ...base,
+      content: 'после правки',
+      updatedAt: new Date('2026-10-17T10:05:00Z'),
+    };
+
+    expect(flattenThread(pages([base], [edited]))[0].content).toBe('после правки');
+    expect(flattenThread(pages([edited], [base]))[0].content).toBe('после правки');
+  });
+
+  it('при равной правке остаётся копия из первой страницы', () => {
+    const shown = makeMessage({
+      updatedAt: new Date('2026-10-17T10:00:00Z'),
+      reactions: [{ emoji: '👍', count: 1, myReaction: true }],
+    });
+    const stale = { ...shown, reactions: [] };
+
+    expect(flattenThread(pages([shown], [stale]))[0].reactions).toHaveLength(1);
+  });
+
+  it('пустые страницы дают пустой список', () => {
+    expect(flattenThread(pages([], []))).toEqual([]);
   });
 });
 
@@ -60,6 +101,29 @@ describe('добавление сообщения', () => {
 });
 
 describe('изменение сообщения', () => {
+  // Восстановленное из очереди — со своим автором, иначе оно рисовалось
+  // чужим, без «Повторить» (#1067).
+  it('сообщение из очереди восстанавливается со своим автором', () => {
+    addOutboxItem({
+      tempId: 'temp-restored',
+      chatId: 'chat-1',
+      senderId: 'user-1',
+      content: 'не ушло',
+      type: 'text',
+      status: 'failed',
+      createdAt: new Date(),
+    });
+
+    try {
+      const [restored] = flattenThread(
+        patchMessage(pages([]), 'temp-restored', { status: 'failed' })
+      );
+      expect(restored).toMatchObject({ id: 'temp-restored', senderId: 'user-1', status: 'failed' });
+    } finally {
+      clearOutbox();
+    }
+  });
+
   it('should patch the message wherever it lies', () => {
     const target = makeMessage({ content: 'до' });
     const data = pages([makeMessage()], [target]);
@@ -81,6 +145,32 @@ describe('изменение сообщения', () => {
 });
 
 describe('удаление сообщения', () => {
+  // Превью исходника пришло с ответом: после удаления у всех оно не должно
+  // оставаться в цитате (#1065).
+  it('снимает превью цитаты у ответов на удалённое', () => {
+    const preview = {
+      id: 'msg-old',
+      content: 'удалённый текст',
+      type: 'text' as const,
+      senderId: 'user-2',
+      senderName: 'Анна',
+      reactions: [],
+    };
+    const reply = makeMessage({ replyTo: 'msg-old', replyPreview: preview });
+    const other = makeMessage({
+      replyTo: 'msg-kept',
+      replyPreview: { ...preview, id: 'msg-kept' },
+    });
+    const data = pages([reply, other]);
+
+    const next = forgetReplyPreviews(data, ['msg-old']);
+    const [first, second] = flattenThread(next);
+
+    expect(first.replyPreview).toBeUndefined();
+    expect(second.replyPreview?.id).toBe('msg-kept');
+    expect(forgetReplyPreviews(data, ['msg-unknown'])).toBe(data);
+  });
+
   it('should drop the message from its page', () => {
     const kept = makeMessage();
     const removed = makeMessage();
@@ -202,5 +292,46 @@ describe('галочки по событию receipts (#657)', () => {
         at,
       })
     ).toBe(data);
+  });
+});
+
+/* Пропущенные за время обрыва удаления — по свежей странице (#1068). */
+describe('пропавшие из свежей страницы', () => {
+  const at = (minute: number) => new Date(Date.UTC(2026, 9, 17, 12, minute)).toISOString();
+  const msg = (id: string, minute: number, extra = {}) =>
+    makeMessage({ id, createdAt: at(minute), ...extra } as never);
+
+  it('новее самого старого в странице и пропало — удаляется', () => {
+    const data = pages([msg('a', 1), msg('b', 2), msg('c', 3)]);
+
+    const next = dropMissingFromHead(data, [msg('a', 1), msg('c', 3)]);
+
+    expect(flattenThread(next).map((m) => m.id)).toEqual(['a', 'c']);
+  });
+
+  it('старше страницы — прокрученная история, не трогается', () => {
+    const data = pages([msg('new-1', 10), msg('new-2', 11)], [msg('old', 1)]);
+
+    const next = dropMissingFromHead(data, [msg('new-1', 10), msg('new-2', 11)]);
+
+    expect(next).toBe(data);
+  });
+
+  it('с тем же временем, что самое старое в странице, — не трогается', () => {
+    const data = pages([msg('twin', 5), msg('a', 5), msg('b', 6)]);
+
+    expect(dropMissingFromHead(data, [msg('a', 5), msg('b', 6)])).toBe(data);
+  });
+
+  it('неотправленное не трогается', () => {
+    const data = pages([msg('a', 1), msg('temp-x', 2, { tempId: 'temp-x', status: 'failed' })]);
+
+    expect(dropMissingFromHead(data, [msg('a', 1)])).toBe(data);
+  });
+
+  it('пустая страница ничего не удаляет', () => {
+    const data = pages([msg('a', 1)]);
+
+    expect(dropMissingFromHead(data, [])).toBe(data);
   });
 });

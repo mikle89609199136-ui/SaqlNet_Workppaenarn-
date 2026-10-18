@@ -3,6 +3,7 @@ export * from './chatListTime';
 export * from './clamp';
 export * from './cn';
 export * from './dateGroup';
+export * from './dayTime';
 export * from './device';
 export * from './downscaleImage';
 export * from './encodeImage';

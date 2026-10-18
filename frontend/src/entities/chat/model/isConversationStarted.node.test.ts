@@ -22,4 +22,14 @@ describe('началась ли переписка', () => {
   it('пустая группа остаётся: её создали, а не заглянули', () => {
     expect(isConversationStarted(makeChat({ type: 'group' }))).toBe(true);
   });
+
+  // «Избранное» — как личный: пустое в списке не висит (#1075).
+  it('пустое «Избранное» — не в списке, с сообщением — в списке', () => {
+    expect(isConversationStarted(makeChat({ type: 'self' }))).toBe(false);
+    expect(
+      isConversationStarted(
+        makeChat({ type: 'self', lastMessage: { content: 'заметка' } as never })
+      )
+    ).toBe(true);
+  });
 });

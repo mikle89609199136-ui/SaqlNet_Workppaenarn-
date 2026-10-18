@@ -1,14 +1,12 @@
 import { useChatUiStore } from '@/entities/chat';
 import type { TPinnedList } from '@/types';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 const MAX_VISIBLE_SEGMENTS = 4;
-const HIGHLIGHT_DURATION_MS = 1500;
 
 export function usePinnedNavigator(messages: TPinnedList) {
   const trackRef = useRef<HTMLDivElement>(null);
-  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const setHighlightedMessageId = useChatUiStore((state) => state.setHighlightedMessageId);
+  const setJumpRequest = useChatUiStore((state) => state.setJumpRequest);
 
   const [currentPinnedMessageIndex, setCurrentPinnedMessageIndex] = useState<number | null>(null);
 
@@ -23,20 +21,13 @@ export function usePinnedNavigator(messages: TPinnedList) {
     setCurrentPinnedMessageIndex(messages.length ? messages.length - 1 : null);
   }
 
-  useEffect(() => {
-    return () => {
-      if (highlightTimerRef.current) {
-        clearTimeout(highlightTimerRef.current);
-      }
-    };
-  }, []);
-
   const totalSegments = messages.length;
   const safeIndex = Math.min(
     currentPinnedMessageIndex ?? totalSegments - 1,
     Math.max(totalSegments - 1, 0)
   );
-  const currentMessage = messages[safeIndex]?.message;
+  const currentItem = messages[safeIndex];
+  const currentMessage = currentItem?.message;
 
   const visibleSegments = Math.min(totalSegments, MAX_VISIBLE_SEGMENTS);
   const isFilling = totalSegments <= MAX_VISIBLE_SEGMENTS;
@@ -46,18 +37,8 @@ export function usePinnedNavigator(messages: TPinnedList) {
   const handleClick = () => {
     if (!currentMessage) return;
 
-    requestAnimationFrame(() => {
-      const el = document.getElementById(currentMessage.id);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    });
-
-    setHighlightedMessageId(currentMessage.id);
-    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-    highlightTimerRef.current = setTimeout(() => {
-      setHighlightedMessageId(null);
-    }, HIGHLIGHT_DURATION_MS);
+    const chatId = currentItem.chatId || currentMessage.chatId;
+    setJumpRequest({ chatId, messageId: currentMessage.id });
 
     if (safeIndex === 0 && trackRef.current) {
       trackRef.current.style.transition = 'none';

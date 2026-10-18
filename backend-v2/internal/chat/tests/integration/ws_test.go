@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"craneapp/backend-v2/internal/chat"
+	"craneapp/backend-v2/internal/platform/authctx"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 
 	"github.com/stretchr/testify/require"
@@ -48,6 +49,15 @@ func TestWSChatMessage_Unsupported(t *testing.T) {
 
 	ownerID := seedUser(t, db, ctx)
 	memberID := seedUser(t, db, ctx)
+	// Проверка доступа требует активную сессию и для токена-заглушки.
+	for _, userID := range []string{ownerID, memberID} {
+		_, err := db.ExecContext(ctx, `
+			INSERT INTO auth.sessions (user_id, access_token_hash, token_generation, expires_at)
+			SELECT id, $2, token_generation, NOW() + INTERVAL '1 hour'
+			FROM auth.users WHERE id = $1
+		`, userID, authctx.TokenHash(userID))
+		require.NoError(t, err)
+	}
 	chatID := seedChat(t, db, ctx, "group", ownerID, map[string]string{
 		ownerID:  "owner",
 		memberID: "member",

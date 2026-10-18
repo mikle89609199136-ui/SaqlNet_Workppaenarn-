@@ -2,7 +2,15 @@ import type { ILastMessageDto } from './types';
 import type { TFunction } from 'i18next';
 import { formatCallPreview } from '@/shared/lib';
 
-export function getLastMessageText(lastMessage: ILastMessageDto | undefined, t: TFunction) {
+/**
+ * `viewerId` — кто смотрит: звонок от него исходящий, от собеседника —
+ * входящий или пропущенный (#1073).
+ */
+export function getLastMessageText(
+  lastMessage: ILastMessageDto | undefined,
+  t: TFunction,
+  viewerId?: string
+) {
   if (!lastMessage) return t('noMessages', 'Нет сообщений');
 
   /* Нечитаемое сообщение подписывается здесь: причину назвал слой
@@ -12,9 +20,11 @@ export function getLastMessageText(lastMessage: ILastMessageDto | undefined, t: 
     return `🔒 ${t(`undecryptable.${lastMessage.undecryptable}`, lastMessage.content)}`;
   }
 
-  /* Звонок хранит в содержимом служебный JSON (длительность) — подпись
-     собирается здесь, на языке интерфейса. */
-  if (lastMessage.type === 'call') return formatCallPreview(lastMessage.content, t);
+  /* Звонок хранит в содержимом служебный JSON (вид, итог, длительность) —
+     подпись собирается здесь, на языке интерфейса. */
+  if (lastMessage.type === 'call') {
+    return formatCallPreview(lastMessage.content, t, { senderId: lastMessage.senderId, viewerId });
+  }
 
   if (lastMessage.content) return lastMessage.content;
 

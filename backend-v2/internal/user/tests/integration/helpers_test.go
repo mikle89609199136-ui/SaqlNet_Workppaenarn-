@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
+	"time"
 
 	"craneapp/backend-v2/internal/user"
 )
@@ -111,73 +112,68 @@ func newService(db *sql.DB) *user.Service {
 }
 
 // createTestUser inserts a minimal auth.users row and returns its UUID as
-// text. Extend the column list if your schema requires additional NOT NULL
-// fields without defaults (e.g. email, password_hash).
+// text. Column list mirrors the NOT NULL constraints introduced by
+// migrations 0001_auth.sql (username, password_hash, first_name) and
+// extended by 0025_username_changes.sql (trigger auth.ensure_username_claim
+// auto-populates auth.username_registry on insert).
 func createTestUser(t *testing.T, db *sql.DB, username string) string {
 	t.Helper()
 	var id string
 	err := db.QueryRowContext(context.Background(), `
-		INSERT INTO auth.users (username)
-		VALUES ($1)
+		INSERT INTO auth.users (username, password_hash, first_name)
+		VALUES ($1, $2, $3)
 		RETURNING id::text
-	`, username).Scan(&id)
+	`, username, "test-password-hash", "Test").Scan(&id)
 	if err != nil {
 		t.Fatalf("insert test user %q: %v", username, err)
 	}
 	return id
 }
 
-// sessionRow mirrors the user_sessions columns integration tests assert on.
+// sessionRow contains canonical metadata; current is relative to the requesting token.
 type sessionRow struct {
-	ID         string
-	UserID     string
-	DeviceName string
-	DeviceType string
-	IPAddress  string
-	Location   string
-	UserAgent  string
-	IsCurrent  bool
+	ID, UserID, DeviceName, DeviceType, IPAddress, Location, UserAgent string
+	CreatedAt, LastActive                                              time.Time
 }
 
-// loadSession reads a single session by ID and fails the test on any error.
-func loadSession(t *testing.T, db *sql.DB, sessionID string) sessionRow {
+type authSessionOpts struct {
+	UserID          string
+	AccessTokenHash string
+	Revoked         bool
+	ExpiresAt       time.Time
+}
+
+func createAuthSession(t *testing.T, db *sql.DB, opts authSessionOpts) string {
+	t.Helper()
+	if opts.ExpiresAt.IsZero() {
+		opts.ExpiresAt = time.Now().Add(time.Hour)
+	}
+	var revokedAt sql.NullTime
+	if opts.Revoked {
+		revokedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	}
+	var id string
+	err := db.QueryRowContext(context.Background(), `
+		INSERT INTO auth.sessions (user_id, access_token_hash, revoked_at, expires_at)
+		VALUES ($1, $2, $3, $4) RETURNING id::text
+	`, opts.UserID, opts.AccessTokenHash, revokedAt, opts.ExpiresAt).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert auth session: %v", err)
+	}
+	return id
+}
+
+func sessionByID(t *testing.T, db *sql.DB, id string) sessionRow {
 	t.Helper()
 	var row sessionRow
 	err := db.QueryRowContext(context.Background(), `
-		SELECT id::text,
-		       user_id::text,
-		       device_name,
-		       device_type,
-		       ip_address::text,
-		       location,
-		       user_agent,
-		       is_current
-		FROM public.user_sessions
-		WHERE id = $1
-	`, sessionID).Scan(
-		&row.ID, &row.UserID,
-		&row.DeviceName, &row.DeviceType,
-		&row.IPAddress, &row.Location,
-		&row.UserAgent, &row.IsCurrent,
-	)
+		SELECT id::text, user_id::text, device_name, device_type, ip_address,
+		       location, user_agent, created_at, last_active
+		FROM auth.sessions WHERE id = $1
+	`, id).Scan(&row.ID, &row.UserID, &row.DeviceName, &row.DeviceType,
+		&row.IPAddress, &row.Location, &row.UserAgent, &row.CreatedAt, &row.LastActive)
 	if err != nil {
-		t.Fatalf("load session %s: %v", sessionID, err)
+		t.Fatalf("select session %s: %v", id, err)
 	}
 	return row
-}
-
-// countSessions returns the number of sessions for a user and how many of
-// them are flagged as current.
-func countSessions(t *testing.T, db *sql.DB, userID string) (total, current int) {
-	t.Helper()
-	err := db.QueryRowContext(context.Background(), `
-		SELECT COUNT(*),
-		       COUNT(*) FILTER (WHERE is_current)
-		FROM public.user_sessions
-		WHERE user_id = $1
-	`, userID).Scan(&total, &current)
-	if err != nil {
-		t.Fatalf("count sessions for %s: %v", userID, err)
-	}
-	return total, current
 }

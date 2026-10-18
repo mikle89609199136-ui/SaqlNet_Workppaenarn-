@@ -155,7 +155,7 @@ describe('MessagesList', () => {
       renderComponent({ messages: [call], trackUnread: false });
 
       expect(article('call-1')).toHaveAccessibleName(
-        `Тестовый, Звонок завершен · 28 сек, ${formatMessageTime(call.createdAt)}`
+        `Тестовый, Входящий видеозвонок · 28 сек, ${formatMessageTime(call.createdAt)}`
       );
     });
 

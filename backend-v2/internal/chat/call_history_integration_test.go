@@ -157,8 +157,10 @@ func TestCallHistoryOnRealSchema(t *testing.T) {
 		invite(mc, igor, roomID)
 		require.Eventually(t, func() bool {
 			var reason *string
-			_ = db.QueryRow(`SELECT end_reason FROM calls.rooms WHERE id = $1`, roomID).Scan(&reason)
-			return reason != nil && *reason == callEndNoAnswer
+			var ended bool
+			// Комната исчезает из памяти до recordCallEnded: история читает БД.
+			err := db.QueryRow(`SELECT end_reason, ended_at IS NOT NULL FROM calls.rooms WHERE id = $1`, roomID).Scan(&reason, &ended)
+			return err == nil && reason != nil && *reason == callEndNoAnswer && ended
 		}, 3*time.Second, 20*time.Millisecond)
 		require.Eventually(t, func() bool { return ws.callRooms.GetRoom(roomID) == nil }, 3*time.Second, 20*time.Millisecond)
 		drain(mc, ic)

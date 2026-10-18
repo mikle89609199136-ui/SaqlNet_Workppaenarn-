@@ -1,5 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
 import { useChatUiStore } from '@/entities/chat';
 import { makeChatScenario, makeMessage } from '@/test/fixtures';
@@ -81,5 +81,55 @@ describe('переход к сообщению из профиля', () => {
     });
     // Раньше лента бросала поиск после пяти страниц.
     expect(offsets.length).toBe(6);
+  });
+});
+
+/* Переход в другой чат держался на том, что его история уже в кеше: лента
+   снимала запрос, пока ещё грузилась, а смена чата его сбрасывала (#1076). */
+describe('переход к сообщению другого чата', () => {
+  afterEach(() => {
+    useChatUiStore.setState({ jumpRequest: null, highlightedMessageId: null });
+  });
+
+  function serveChat(chat: { id: string }, messages: unknown[], wait = 0) {
+    server.use(
+      http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
+      http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
+      http.get(api(`/messages/${chat.id}`), async () => {
+        if (wait) await delay(wait);
+        return HttpResponse.json({ messages });
+      })
+    );
+  }
+
+  it('лента нового чата ещё грузится — переход выполняется после загрузки', async () => {
+    const a = makeChatScenario({ messages: 1 });
+    const b = makeChatScenario({ messages: 3 });
+    serveChat(b.chat, b.messages, 100);
+    const { router } = renderChatThread({ chat: a.chat, messages: a.messages });
+    await screen.findByText('сообщение 1');
+
+    useChatUiStore.getState().setJumpRequest({ chatId: b.chat.id, messageId: b.messages[0].id });
+    await router.navigate(`/chats/${b.chat.id}`);
+
+    await waitFor(() =>
+      expect(useChatUiStore.getState().highlightedMessageId).toBe(b.messages[0].id)
+    );
+    expect(screen.queryByText(/выше в истории/)).toBeNull();
+  });
+
+  it('запрос к одному чату, а переход в другой — запрос сброшен', async () => {
+    const a = makeChatScenario({ messages: 1 });
+    const b = makeChatScenario({ messages: 1 });
+    const c = makeChatScenario({ messages: 1 });
+    serveChat(c.chat, c.messages);
+    const { router } = renderChatThread({ chat: a.chat, messages: a.messages });
+    await screen.findByText('сообщение 1');
+
+    useChatUiStore.getState().setJumpRequest({ chatId: b.chat.id, messageId: b.messages[0].id });
+    await router.navigate(`/chats/${c.chat.id}`);
+
+    await waitFor(() => expect(useChatUiStore.getState().jumpRequest).toBeNull());
+    expect(useChatUiStore.getState().highlightedMessageId).toBeNull();
   });
 });

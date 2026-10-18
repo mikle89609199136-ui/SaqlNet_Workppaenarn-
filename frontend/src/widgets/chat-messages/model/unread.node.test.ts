@@ -151,4 +151,19 @@ describe('что отметить прочитанным по показу на 
   it('чат ещё не читали — всё чужое до видимого', () => {
     expect(ids(selectReadUpTo(items, 5, null, ME))).toEqual(['old', 'a', 'b', 'c']);
   });
+
+  /* Временного id сервер не знает и отклоняет всю пачку (#1067). Пустой
+     автор — так выглядело сообщение, восстановленное из очереди. */
+  it('неподтверждённые сервером не отмечаются, даже без автора', () => {
+    const unsent = [
+      message({ ...msg('temp-1', 3, ''), tempId: 'temp-1' }),
+      message({ ...msg('temp-2', 4, '') }),
+      message({ ...msg('x-pending', 5, ''), status: 'pending' }),
+      message({ ...msg('x-uploading', 6, ''), status: 'uploading' }),
+      message({ ...msg('x-failed', 7, ''), status: 'failed' }),
+      message(msg('peer-ok', 8)),
+    ];
+
+    expect(ids(selectReadUpTo(unsent, 5, null, ME))).toEqual(['peer-ok']);
+  });
 });

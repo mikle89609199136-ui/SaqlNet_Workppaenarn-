@@ -177,7 +177,7 @@ func TestLogoutAndLogoutAllRevocationLifecycle(t *testing.T) {
 	assertAuthenticatedHTTPStatus(t, httpHandler, newToken1, http.StatusNoContent)
 	assertAuthenticatedHTTPStatus(t, httpHandler, newToken2, http.StatusNoContent)
 
-	assertSingleLogoutOnlyChangesLinkedDeviceSession(t, db, service, userID, newToken1, time.Unix(newClaims1.Expires, 0).UTC())
+	assertSingleLogoutPreservesOtherSession(t, service, userID, newToken1, time.Unix(newClaims1.Expires, 0).UTC())
 	assertRevocation(t, checker, newToken1, newClaims1, true)
 	assertRevocation(t, checker, newToken2, newClaims2, false)
 	assertSessionCount(t, service, userID, newToken2, 1)
@@ -187,76 +187,27 @@ func TestLogoutAndLogoutAllRevocationLifecycle(t *testing.T) {
 	assertWebSocketHandshakeStatus(t, wsHTTPServer.URL, newToken2, http.StatusSwitchingProtocols)
 }
 
-type deviceSessionState struct {
-	ID         string
-	LastActive string
-	IsCurrent  bool
-}
-
-func assertSingleLogoutOnlyChangesLinkedDeviceSession(t *testing.T, db *sql.DB, service *auth.Service, userID, token string, expiresAt time.Time) {
+func assertSingleLogoutPreservesOtherSession(t *testing.T, service *auth.Service, userID, token string, expiresAt time.Time) {
 	t.Helper()
-	const currentDeviceID = "22222222-2222-4222-8222-222222222222"
-	const otherDeviceID = "33333333-3333-4333-8333-333333333333"
-	if _, err := db.Exec(`
-		INSERT INTO public.user_sessions (id, user_id, device_name, last_active, is_current)
-		VALUES
-			($2, $1, 'current-device', NOW() - INTERVAL '1 minute', TRUE),
-			($3, $1, 'other-device', NOW() - INTERVAL '2 minutes', FALSE)
-	`, userID, currentDeviceID, otherDeviceID); err != nil {
-		t.Fatalf("seed device sessions: %v", err)
-	}
-	result, err := db.Exec(`
-		UPDATE auth.sessions SET device_session_id = $3
-		WHERE user_id = $1 AND access_token_hash = $2
-	`, userID, authctx.TokenHash(token), currentDeviceID)
+	before, err := service.Sessions(t.Context(), userID, "other-token")
 	if err != nil {
-		t.Fatalf("link current credential to device session: %v", err)
+		t.Fatal(err)
 	}
-	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
-		t.Fatalf("linked auth sessions = %d, want 1 (err=%v)", affected, err)
-	}
-
-	before := readDeviceSessionStates(t, db, userID)
 	if err := service.Logout(t.Context(), userID, token, expiresAt); err != nil {
-		t.Fatalf("logout current token: %v", err)
+		t.Fatal(err)
 	}
-	after := readDeviceSessionStates(t, db, userID)
-	if len(before) != 2 || len(after) != 2 {
-		t.Fatalf("unexpected device sessions: before=%+v after=%+v", before, after)
-	}
-	if after[0].ID != currentDeviceID || after[0].IsCurrent || after[0].LastActive == before[0].LastActive {
-		t.Fatalf("linked device session was not terminated: before=%+v after=%+v", before[0], after[0])
-	}
-	if after[1].ID != otherDeviceID || !reflect.DeepEqual(after[1], before[1]) {
-		t.Fatalf("unrelated device session changed: before=%+v after=%+v", before[1], after[1])
-	}
-}
-
-func readDeviceSessionStates(t *testing.T, db *sql.DB, userID string) []deviceSessionState {
-	t.Helper()
-	rows, err := db.Query(`
-		SELECT id::text, last_active::text, is_current
-		FROM public.user_sessions
-		WHERE user_id = $1
-		ORDER BY id
-	`, userID)
+	after, err := service.Sessions(t.Context(), userID, "other-token")
 	if err != nil {
-		t.Fatalf("read device sessions: %v", err)
+		t.Fatal(err)
 	}
-	defer rows.Close()
-
-	var states []deviceSessionState
-	for rows.Next() {
-		var state deviceSessionState
-		if err := rows.Scan(&state.ID, &state.LastActive, &state.IsCurrent); err != nil {
-			t.Fatalf("scan device session: %v", err)
+	if len(before) != 2 || len(after) != 1 {
+		t.Fatalf("before=%+v after=%+v", before, after)
+	}
+	for _, item := range before {
+		if item.ID == after[0].ID && !reflect.DeepEqual(item, after[0]) {
+			t.Fatalf("unrelated session changed: before=%+v after=%+v", item, after[0])
 		}
-		states = append(states, state)
 	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("iterate device sessions: %v", err)
-	}
-	return states
 }
 
 func assertSessionCount(t *testing.T, service *auth.Service, userID, currentToken string, want int) {

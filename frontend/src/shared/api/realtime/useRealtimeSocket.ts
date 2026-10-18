@@ -1,5 +1,5 @@
 import { config } from '@/shared/config';
-import { hasStoredSession } from '../session';
+import { hasStoredSession, isSessionAlive } from '../session';
 import { eventBus } from '@/shared/lib/event-bus';
 import { WebSocketClient } from '@/services/WebSocketClient';
 import { useEffect } from 'react';
@@ -20,6 +20,7 @@ function sharedRealtimeSocket(): WebSocketClient {
   if (!sharedSocket) {
     sharedSocket = new WebSocketClient(config.socketUrl, {
       hasSession: hasStoredSession,
+      checkSession: () => isSessionAlive(),
       reconnectDelay: config.reconnectDelay,
       maxReconnectDelay: config.maxReconnectDelay,
     });

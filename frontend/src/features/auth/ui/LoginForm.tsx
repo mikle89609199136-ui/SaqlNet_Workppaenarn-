@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Icon, Input, showToast } from '@/shared/ui';
-import { ROUTES } from '@/shared/config/routes';
+import { safeReturnPath } from '../model/safeReturnPath';
 import { fetchUserSettings, saveAuthSession } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
 import { rememberLoginPassword } from '@/shared/crypto';
@@ -172,18 +172,4 @@ export function LoginForm() {
       </Button>
     </form>
   );
-}
-
-/**
- * Куда вернуть человека после входа.
- *
- * `AuthGuard`, выкидывая на вход, дописывает `?from=` — чтобы после
- * входа человек оказался там, где его прервали. Значение приходит из
- * адресной строки, поэтому проверяется: внутренний путь начинается с
- * одной косой черты. `//example.com` — это уже чужой сайт, и переход
- * туда был бы открытым перенаправлением.
- */
-function safeReturnPath(from: string | null): string {
-  if (!from || !from.startsWith('/') || from.startsWith('//')) return ROUTES.CHATS;
-  return from;
 }

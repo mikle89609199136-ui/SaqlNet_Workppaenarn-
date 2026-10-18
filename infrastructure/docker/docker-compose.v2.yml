@@ -132,7 +132,7 @@ services:
       MINIO_SECRET_KEY: craneapp-local-secret
       MINIO_REGION: us-east-1
       MEDIA_BUCKET: crane-media
-      MAX_FILE_SIZE: ${MAX_FILE_SIZE:?MAX_FILE_SIZE is required}
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-104857600}
     depends_on:
       migrate:
         condition: service_completed_successfully

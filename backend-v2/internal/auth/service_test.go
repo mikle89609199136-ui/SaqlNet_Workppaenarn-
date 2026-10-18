@@ -52,7 +52,7 @@ func expectTokenGeneration(mock sqlmock.Sqlmock, userID string, generation int64
 
 func expectSessionRecord(mock sqlmock.Sqlmock, userID string, generation int64) {
 	mock.ExpectExec("INSERT INTO auth.sessions").
-		WithArgs(userID, sqlmock.AnyArg(), generation, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs(userID, sqlmock.AnyArg(), generation, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 }
 
@@ -74,9 +74,6 @@ func TestLogoutAllIncrementsGenerationAndRevokesSessionsAtomically(t *testing.T)
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", revocationPayload{userID: userID, generation: 1}).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
-	mock.ExpectExec("UPDATE public.user_sessions").
-		WithArgs(userID).
-		WillReturnResult(sqlmock.NewResult(0, 2))
 	// Отозванные устройства больше не получают push (#717).
 	mock.ExpectExec("DELETE FROM users.push_subscriptions").
 		WithArgs(userID).
@@ -112,7 +109,7 @@ func TestLogoutAllRollsBackWhenSessionUpdateFails(t *testing.T) {
 	}
 }
 
-func TestLogoutAllKeepsRevocationCommittedWhenLegacyCleanupFails(t *testing.T) {
+func TestLogoutAllKeepsRevocationWhenPushCleanupFails(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
@@ -129,15 +126,12 @@ func TestLogoutAllKeepsRevocationCommittedWhenLegacyCleanupFails(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", revocationPayload{userID: userID, generation: 1}).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
-	mock.ExpectExec("UPDATE public.user_sessions").
-		WithArgs(userID).
-		WillReturnError(errors.New("legacy table unavailable"))
 	mock.ExpectExec("DELETE FROM users.push_subscriptions").
 		WithArgs(userID).
-		WillReturnResult(sqlmock.NewResult(0, 3))
+		WillReturnError(errors.New("push cleanup failed"))
 
 	if err := auth.NewService(db, &mockCrypto{}).LogoutAll(t.Context(), userID); err != nil {
-		t.Fatalf("credential revocation must survive legacy cleanup failure: %v", err)
+		t.Fatalf("credential revocation must survive push cleanup failure: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -158,47 +152,14 @@ func TestLogoutOnlyUpdatesTheCredentialForTheCurrentToken(t *testing.T) {
 	mock.ExpectExec("INSERT INTO auth.revoked_tokens").
 		WithArgs(sqlmock.AnyArg(), userID, expiresAt).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	deviceSessionID := "22222222-2222-4222-8222-222222222222"
-	mock.ExpectQuery("UPDATE auth.sessions").
+	mock.ExpectExec("UPDATE auth.sessions").
 		WithArgs(userID, sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(deviceSessionID))
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", revocationPayload{userID: userID, token: "access-token"}).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
-	mock.ExpectExec("UPDATE public.user_sessions").
-		WithArgs(deviceSessionID, userID).
-		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	if err := auth.NewService(db, &mockCrypto{}).Logout(t.Context(), userID, token, expiresAt); err != nil {
 		t.Fatalf("logout current credential: %v", err)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestLogoutKeepsRevocationCommittedWhenLinkedDeviceCleanupFails(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	userID := "11111111-1111-4111-8111-111111111111"
-	expiresAt := time.Unix(2_000_000_000, 0).UTC()
-	deviceSessionID := "22222222-2222-4222-8222-222222222222"
-	mock.ExpectBegin()
-	mock.ExpectExec("INSERT INTO auth.revoked_tokens").
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery("UPDATE auth.sessions").
-		WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(deviceSessionID))
-	mock.ExpectExec("SELECT pg_notify").WithArgs("auth_token_revoked", revocationPayload{userID: userID, token: "access-token"}).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
-	mock.ExpectExec("UPDATE public.user_sessions").
-		WithArgs(deviceSessionID, userID).
-		WillReturnError(errors.New("legacy table unavailable"))
-
-	if err := auth.NewService(db, &mockCrypto{}).Logout(t.Context(), userID, "access-token", expiresAt); err != nil {
-		t.Fatalf("credential revocation must survive linked device cleanup failure: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -395,7 +356,7 @@ func TestLogin_FindsUserByExactUsername(t *testing.T) {
 			AddRow(false, nil, 4))
 	expectTokenGeneration(mock, "user-id", 4)
 	mock.ExpectExec("INSERT INTO auth.sessions").
-		WithArgs("user-id", sqlmock.AnyArg(), int64(4), expectedExpiry, "Firefox on Linux", "desktop", "203.0.113.7").
+		WithArgs("user-id", sqlmock.AnyArg(), int64(4), expectedExpiry, "Firefox on Linux", "desktop", "203.0.113.7", "").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	user, _, err := svc.Login(context.Background(), "ivan", "password", "", auth.SessionMetadata{
@@ -421,9 +382,9 @@ func TestSessionsFiltersRevokedAndOldGenerationRowsAndPutsCurrentFirst(t *testin
 	now := time.Now().UTC()
 	mock.ExpectQuery(`FROM auth\.sessions s.*JOIN auth\.users.*s\.token_generation = u\.token_generation.*NOT EXISTS.*ORDER BY COALESCE\(s\.access_token_hash = \$2, FALSE\) DESC`).
 		WithArgs("user-id", sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "device_name", "device_type", "ip_address", "last_active", "created_at", "is_current"}).
-			AddRow("current-session", "Firefox on Linux", "desktop", "203.0.113.7", now, now.Add(-time.Hour), true).
-			AddRow("other-session", "Safari on iPhone", "mobile", "198.51.100.8", now.Add(-time.Minute), now.Add(-2*time.Hour), false))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "device_name", "device_type", "ip_address", "last_active", "created_at", "location", "user_agent", "is_current"}).
+			AddRow("current-session", "Firefox on Linux", "desktop", "203.0.113.7", now, now.Add(-time.Hour), "", "", true).
+			AddRow("other-session", "Safari on iPhone", "mobile", "198.51.100.8", now.Add(-time.Minute), now.Add(-2*time.Hour), "", "", false))
 
 	svc := auth.NewService(db, &mockCrypto{})
 	sessions, err := svc.Sessions(t.Context(), "user-id", "current-token")
@@ -941,7 +902,7 @@ func TestLogoutRollsBackIfRevocationNotificationFails(t *testing.T) {
 				mock.ExpectExec("UPDATE auth.sessions").WillReturnResult(sqlmock.NewResult(0, 2))
 			} else {
 				mock.ExpectExec("INSERT INTO auth.revoked_tokens").WillReturnResult(sqlmock.NewResult(0, 1))
-				mock.ExpectQuery("UPDATE auth.sessions").WillReturnRows(sqlmock.NewRows([]string{"device_session_id"}).AddRow(nil))
+				mock.ExpectExec("UPDATE auth.sessions").WillReturnResult(sqlmock.NewResult(0, 1))
 			}
 			failure := errors.New("notification failed")
 			mock.ExpectExec("SELECT pg_notify").WillReturnError(failure)

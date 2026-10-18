@@ -44,7 +44,7 @@ export function messagesQuery(chatId: string) {
             mediaUrl: item.blobUrl,
             replyTo: item.replyToId ?? null,
             replyToMessageId: item.replyToId ?? null,
-            senderId: '',
+            senderId: item.senderId,
             senderFirstName: '',
             senderName: '',
             forwardedSenderName: '',

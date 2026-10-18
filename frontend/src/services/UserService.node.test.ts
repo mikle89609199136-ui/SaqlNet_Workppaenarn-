@@ -68,3 +68,74 @@ describe('UserService: новые эндпоинты (#598)', () => {
     });
   });
 });
+
+describe('UserService: канонический Settings API (#498)', () => {
+  it('читает settings и privacy одним GET, сохраняя оба раздела ответа', async () => {
+    const payload = {
+      settings: { theme: 'light', notifications: false },
+      privacy: { calls: 'nobody', lastSeen: 'all' },
+    };
+    let credentials: RequestCredentials | undefined;
+    server.use(
+      http.get(api('/users/settings'), ({ request }) => {
+        credentials = request.credentials;
+        return HttpResponse.json(payload);
+      })
+    );
+
+    await expect(services.userService.getSettings()).resolves.toEqual(payload);
+    expect(credentials).toBe('same-origin');
+  });
+
+  it('отправляет flat patch settings и возвращает итоговый раздел сервера', async () => {
+    let requestBody: unknown;
+    const resultingSettings = { theme: 'light', language: 'en', notifications: false };
+    server.use(
+      http.put(api('/users/settings'), async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({ settings: resultingSettings });
+      })
+    );
+
+    await expect(services.userService.updateSettings({ theme: 'light' })).resolves.toEqual(
+      resultingSettings
+    );
+    expect(requestBody).toEqual({ theme: 'light' });
+  });
+
+  it('пишет privacy отдельным flat patch и возвращает итоговые правила', async () => {
+    let requestBody: unknown;
+    const resultingPrivacy = { calls: 'nobody', lastSeen: 'all' };
+    server.use(
+      http.put(api('/users/privacy'), async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({ privacy: resultingPrivacy });
+      })
+    );
+
+    await expect(services.userService.updatePrivacy({ calls: 'nobody' })).resolves.toEqual(
+      resultingPrivacy
+    );
+    expect(requestBody).toEqual({ calls: 'nobody' });
+  });
+
+  it.each([
+    { status: 400, code: 'validation_failed' },
+    { status: 403, code: 'cross_site_request' },
+  ])('сохраняет HTTP $status и code $code при отказе записи', async ({ status, code }) => {
+    server.use(
+      http.put(api('/users/privacy'), () =>
+        HttpResponse.json(
+          { code, message: 'request failed', requestId: 'settings-498' },
+          { status }
+        )
+      )
+    );
+
+    await expect(services.userService.updatePrivacy({ calls: 'nobody' })).rejects.toMatchObject({
+      status,
+      code,
+      data: { requestId: 'settings-498' },
+    });
+  });
+});

@@ -7,6 +7,11 @@ import type { IMessageDto } from '@/types';
 interface Props {
   /** Тип открытого чата: подпись галочки в группе и в личном чате своя. */
   isGroup: boolean;
+  /**
+   * «Избранное» (#1075): всё своё, собеседника нет — без галочки, и
+   * сообщение удаляется совсем, чтобы пропало и из общего.
+   */
+  isSavedMessages?: boolean;
   currentUserId?: string;
   /** Удаляет выбранное; `false` — не вышло, диалог остаётся открытым. */
   onConfirm: (targets: IMessageDto[], forEveryone: boolean) => Promise<boolean>;
@@ -22,7 +27,12 @@ interface Props {
  * Что удалить, лежит в chatUiStore: меню сообщения закрывается сразу после
  * нажатия и унесло бы выбор с собой.
  */
-export function DeleteMessagesDialog({ isGroup, currentUserId, onConfirm }: Props) {
+export function DeleteMessagesDialog({
+  isGroup,
+  isSavedMessages = false,
+  currentUserId,
+  onConfirm,
+}: Props) {
   const { t } = useTranslation();
   const targets = useChatUiStore((state) => state.deleteTargets);
   const setDeleteTargets = useChatUiStore((state) => state.setDeleteTargets);
@@ -39,7 +49,7 @@ export function DeleteMessagesDialog({ isGroup, currentUserId, onConfirm }: Prop
   const allOwn = Boolean(
     targets?.length && targets.every((item) => item.senderId === currentUserId)
   );
-  const everyone = allOwn && forEveryone;
+  const everyone = isSavedMessages || (allOwn && forEveryone);
 
   const close = () => {
     if (!deleting) setDeleteTargets(null);
@@ -55,11 +65,16 @@ export function DeleteMessagesDialog({ isGroup, currentUserId, onConfirm }: Prop
     }
   };
 
-  const text = !everyone
-    ? t('deleteMessages.onlyMe', 'Сообщения исчезнут только у вас.')
-    : isGroup
-      ? t('deleteMessages.everyoneGroup', 'Сообщения исчезнут у всех участников.')
-      : t('deleteMessages.everyonePrivate', 'Сообщения исчезнут и у вас, и у собеседника.');
+  const text = isSavedMessages
+    ? t(
+        'deleteMessages.everyoneSelf',
+        'Сообщения исчезнут из Избранного на всех ваших устройствах.'
+      )
+    : !everyone
+      ? t('deleteMessages.onlyMe', 'Сообщения исчезнут только у вас.')
+      : isGroup
+        ? t('deleteMessages.everyoneGroup', 'Сообщения исчезнут у всех участников.')
+        : t('deleteMessages.everyonePrivate', 'Сообщения исчезнут и у вас, и у собеседника.');
 
   return (
     <ConfirmDialog
@@ -76,7 +91,7 @@ export function DeleteMessagesDialog({ isGroup, currentUserId, onConfirm }: Prop
     >
       <span className="flex flex-col gap-3.5">
         <span>{text}</span>
-        {allOwn && (
+        {allOwn && !isSavedMessages && (
           <Checkbox
             checked={forEveryone}
             label={

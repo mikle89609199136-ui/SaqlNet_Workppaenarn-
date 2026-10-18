@@ -1,7 +1,8 @@
 import type { IMessageEntity, TLastSeenApprox } from '@/shared/lib';
 import type { TMediaMessageType, TMessageType, TReactionsList } from '@/types';
 
-export type TChatType = 'private' | 'group' | 'channel';
+/** `self` — «Избранное»: чат с самим собой (#719, #1075). */
+export type TChatType = 'private' | 'group' | 'channel' | 'self';
 
 export type TChatRole = 'member' | 'admin' | 'owner';
 
@@ -62,10 +63,12 @@ export interface IChatDto {
   lastReadAt?: string;
   lastMessage?: ILastMessageDto;
   /**
-   * Звук чата выключен (#559, #467): приглушённый счётчик и значок после
-   * имени. Сервер в списке чатов его пока не присылает.
+   * Персональные уведомления сообщений выключены (#559): приглушённый
+   * счётчик и значок. Сервер учитывает срок при чтении списка/деталей.
    */
   isMuted?: boolean;
+  /** Будущий UTC-срок mute; отсутствует при бессрочном mute или isMuted=false. */
+  mutedUntil?: string;
   /**
    * Отмечен непрочитанным вручную — пустой кружок вместо числа. Функции
    * пока нет, строка к ней готова (#819).

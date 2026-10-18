@@ -269,6 +269,7 @@
   get:
     tags: [Auth]
     summary: List authenticated sessions
+    description: Canonical active credential sessions, sharing stable IDs with /users/devices. isCurrent belongs to the request cookie. Unregistered legacy tokens require a fresh login.
     operationId: listAuthSessions
     security: [{ sessionCookie: [] }]
     responses:

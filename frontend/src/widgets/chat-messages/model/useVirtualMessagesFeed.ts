@@ -1,7 +1,7 @@
 import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
 import { formatDateDivider, isDifferentDay, usePageActive } from '@/shared/lib';
 import { estimateMessageItemSize } from '@/entities/message';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { elementScroll, useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -15,6 +15,10 @@ import {
   type IReadMark,
   type IUnreadSnapshot,
 } from './unread';
+
+function easeInOutCubic(t: number) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 
 export type TFeedItem =
   | { id: string; type: 'date'; label: string }
@@ -214,6 +218,59 @@ export function useVirtualMessagesFeed({
     return items;
   }, [messages, t, firstUnreadId]);
 
+  const scrollAnimRef = useRef<number | null>(null);
+
+  const scrollToFn = useCallback<
+    (
+      offset: number,
+      defaultOptions: { adjustments?: number; behavior?: ScrollBehavior },
+      instance: any
+    ) => void
+  >((offset, defaultOptions, instance) => {
+    if (scrollAnimRef.current !== null) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
+    }
+
+    if (defaultOptions?.behavior !== 'smooth') {
+      elementScroll(offset, defaultOptions, instance);
+      return;
+    }
+
+    const start = instance.scrollOffset ?? 0;
+    const target = offset + (defaultOptions.adjustments ?? 0);
+    const distance = target - start;
+
+    if (Math.abs(distance) < 1) {
+      elementScroll(offset, { ...defaultOptions, behavior: 'auto' }, instance);
+      return;
+    }
+
+    const duration = 400;
+    const startTime = performance.now();
+
+    const frame = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeInOutCubic(progress);
+      const currentOffset = start + distance * eased;
+
+      elementScroll(
+        currentOffset,
+        { ...defaultOptions, adjustments: 0, behavior: 'auto' },
+        instance
+      );
+
+      if (progress < 1) {
+        scrollAnimRef.current = requestAnimationFrame(frame);
+      } else {
+        scrollAnimRef.current = null;
+      }
+    };
+
+    scrollAnimRef.current = requestAnimationFrame(frame);
+  }, []);
+
   const virtualizer = useVirtualizer({
     count: feedItems.length,
     getScrollElement: () => internalContainerRef.current,
@@ -228,6 +285,7 @@ export function useVirtualMessagesFeed({
     gap: 4,
     overscan: 8,
     useFlushSync: false,
+    scrollToFn,
   });
 
   const triggerDateVisibility = useCallback(() => {
@@ -236,6 +294,16 @@ export function useVirtualMessagesFeed({
     dateTimerRef.current = setTimeout(() => {
       setIsScrollingState(false);
     }, DATE_HIDE_DELAY_MS);
+  }, []);
+
+  // Очистка анимации плавного скролла при размонтировании
+  useEffect(() => {
+    return () => {
+      if (scrollAnimRef.current !== null) {
+        cancelAnimationFrame(scrollAnimRef.current);
+        scrollAnimRef.current = null;
+      }
+    };
   }, []);
 
   // Показ плашки даты на 1.5с при первой загрузке сообщений
@@ -250,6 +318,13 @@ export function useVirtualMessagesFeed({
     const container = internalContainerRef.current;
     if (!container) return undefined;
 
+    const cancelAnim = () => {
+      if (scrollAnimRef.current !== null) {
+        cancelAnimationFrame(scrollAnimRef.current);
+        scrollAnimRef.current = null;
+      }
+    };
+
     const handleScroll = () => {
       const distanceFromBottom =
         container.scrollHeight - container.scrollTop - container.clientHeight;
@@ -261,8 +336,13 @@ export function useVirtualMessagesFeed({
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
+    container.addEventListener('wheel', cancelAnim, { passive: true });
+    container.addEventListener('touchmove', cancelAnim, { passive: true });
+
     return () => {
       container.removeEventListener('scroll', handleScroll);
+      container.removeEventListener('wheel', cancelAnim);
+      container.removeEventListener('touchmove', cancelAnim);
       if (dateTimerRef.current) clearTimeout(dateTimerRef.current);
     };
   }, [triggerDateVisibility]);

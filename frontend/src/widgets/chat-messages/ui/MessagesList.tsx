@@ -37,6 +37,10 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /** Скачать ещё раз вложение, которое не скачалось (#1062). */
+  onRetryMedia?: (message: IMessageDto) => Promise<void> | void;
+  /** К исходному сообщению пересланного — в «Избранном» (#1076). */
+  onOpenOriginal?: (messageId: string) => void;
   /** Профиль автора пересланного сообщения (#785). */
   onOpenProfile?: (userId: string) => void;
   /**
@@ -60,6 +64,7 @@ interface Props {
    */
   readMark?: IReadMark;
   onMessagesSeen?: (messages: IMessageDto[]) => void;
+  chatId?: string;
 }
 
 export const MessagesList = memo(
@@ -77,12 +82,15 @@ export const MessagesList = memo(
     onRetryMessage,
     onOpenProfile,
     onCancelMessage,
+    onRetryMedia,
+    onOpenOriginal,
     showDeliveryStatus = false,
     isGroupChat = false,
     trackUnread = true,
     handleJumpRequests = false,
     readMark,
     onMessagesSeen,
+    chatId,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
@@ -129,24 +137,35 @@ export const MessagesList = memo(
         ? activeMessageId
         : renderedMessageIds.at(-1);
 
-    // Чат ленты — по её сообщениям: у пустой ленты переходить некуда.
-    const threadChatId = messages.find((message) => message.chatId)?.chatId;
+    // Чат ленты — по переданному пропу или сообщениям
+    const activeChatId = chatId || messages.find((message) => message.chatId)?.chatId;
     const { jumpToMessage: handleJumpToMessage } = useJumpToMessage({
       onScrollToMessage: jumpToMessage,
       loadOlder,
       hasMoreOlder: hasOlder,
-      chatId: threadChatId,
+      chatId: activeChatId,
     });
 
     /* Переход, запрошенный из другой части экрана — из общего в профиле
-       (#842). Запрос чужого чата не трогаем: его выполнит своя лента. */
+       (#842) или закреплений. Запрос чужого чата не трогаем: его выполнит своя лента. */
     const jumpRequest = useChatUiStore((state) => state.jumpRequest);
     const setJumpRequest = useChatUiStore((state) => state.setJumpRequest);
     useEffect(() => {
-      if (!handleJumpRequests || !jumpRequest || jumpRequest.chatId !== threadChatId) return;
+      if (!handleJumpRequests || !jumpRequest) return;
+      if (jumpRequest.chatId && activeChatId && jumpRequest.chatId !== activeChatId) return;
+      // Пока лента грузится, искать не в чем: переход в другой чат искал
+      // сообщение в пустом списке и сдавался (#1076).
+      if (isLoading) return;
       setJumpRequest(null);
       void handleJumpToMessage(jumpRequest.messageId);
-    }, [handleJumpRequests, handleJumpToMessage, jumpRequest, setJumpRequest, threadChatId]);
+    }, [
+      handleJumpRequests,
+      handleJumpToMessage,
+      jumpRequest,
+      setJumpRequest,
+      activeChatId,
+      isLoading,
+    ]);
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -226,6 +245,8 @@ export const MessagesList = memo(
                         onReact={onReact}
                         onRetryMessage={onRetryMessage}
                         onCancelMessage={onCancelMessage}
+                        onRetryMedia={onRetryMedia}
+                        onOpenOriginal={onOpenOriginal}
                         onSelection={toggleMessageSelection}
                         repliedMessage={replyId ? messagesById.get(replyId) : undefined}
                         showDeliveryStatus={showDeliveryStatus}

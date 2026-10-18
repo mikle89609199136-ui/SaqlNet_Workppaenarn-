@@ -781,6 +781,51 @@ x-secure: &secure [{ sessionCookie: [] }]
               internalError:
                 value: { code: internal_error, message: 'failed to leave chat' }
 
+/chats/{chatId}/mute:
+  post:
+    tags: [Chats]
+    summary: Mute personal message notifications for a chat
+    description: >-
+      Persists only the authenticated member's personal mute (#559), independently of moderator member mute.
+      A future mutedUntil sets an expiry; {} or null/omitted mutedUntil mutes indefinitely. Read effective
+      isMuted and optional mutedUntil in chat details and lists, including archived chats. Repeating the
+      request is safe. Expiry is evaluated at read/delivery time, without a scheduled cleanup job.
+      Message Web Push is suppressed on every subscribed device; call and missed-call notifications are
+      independent. History, unread counts, other members and other personal preferences are preserved.
+      Frontend actions and browser fallback/sound gating are implemented separately in #725.
+    operationId: muteChat
+    security: *secure
+    parameters: [*chatId]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../components/schemas.yaml#/PersonalChatMuteRequest' }
+    responses:
+      '200': { description: Personal mute saved, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Success' } } } }
+      '400': { description: Invalid JSON (invalid_json), UUID/root/key/type/timestamp or non-future expiry (validation_failed) }
+      '401': { description: Authentication required }
+      '403': { description: Not a member or chat does not exist (access_denied) }
+      '405': { description: Method not allowed (method_not_allowed) }
+      '500': { description: Database error (internal_error) }
+  delete:
+    tags: [Chats]
+    summary: Unmute personal message notifications for a chat
+    description: >-
+      Clears only the authenticated member's personal mute. Repeating is safe; global notifications,
+      pin/archive/preview, unread counts and moderator restrictions are unchanged. Global notifications=false
+      can still suppress push after this operation. No request body is required or read.
+    operationId: unmuteChat
+    security: *secure
+    parameters: [*chatId]
+    responses:
+      '200': { description: Personal mute cleared, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Success' } } } }
+      '400': { description: Invalid UUID (validation_failed) }
+      '401': { description: Authentication required }
+      '403': { description: Not a member or chat does not exist (access_denied) }
+      '405': { description: Method not allowed (method_not_allowed) }
+      '500': { description: Database error (internal_error) }
+
 /chats/{chatId}/notification-settings:
   put:
     tags: [Chats]

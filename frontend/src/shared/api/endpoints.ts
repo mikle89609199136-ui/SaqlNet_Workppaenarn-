@@ -50,12 +50,7 @@ export const API_ENDPOINTS = {
   USER_PROFILE: (userId: string) => `/users/${userId}/profile`,
   USER_SETTINGS: '/users/settings',
   USER_PRIVACY: '/users/privacy',
-  USER_NOTIFICATIONS: '/users/notifications',
-  USER_SOUNDS: '/users/sounds',
-  USER_ADVANCED_SETTINGS: '/users/advanced-settings',
-  USER_FOLDERS: '/users/folders',
   USER_STORAGE: '/users/storage',
-  USER_STORAGE_SETTINGS: '/users/storage/settings',
   USER_STORAGE_CACHE: '/users/storage/cache',
   USER_STORAGE_ALL: '/users/storage/all',
   USER_EXPORT: '/users/export',
@@ -84,6 +79,7 @@ export const API_ENDPOINTS = {
   CHAT_SHARED: (chatId: string) => `/chats/${chatId}/shared`,
   MESSAGE_POSITION: (chatId: string, messageId: string) =>
     `/chats/${chatId}/messages/${messageId}/position`,
+  MESSAGE_LOCATION: (messageId: string) => `/messages/${messageId}/location`,
   CHAT_PIN_MESSAGE: (chatId: string, messageId: string) => `/chats/${chatId}/pins/${messageId}`,
 
   ENCRYPTION_KEYS: '/encryption/keys',

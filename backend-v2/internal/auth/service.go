@@ -11,6 +11,7 @@ import (
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
+	"craneapp/backend-v2/internal/platform/settingsdefaults"
 	usernamepolicy "craneapp/backend-v2/internal/platform/username"
 	"github.com/lib/pq"
 )
@@ -37,16 +38,17 @@ type Session struct {
 	LastActive time.Time `json:"lastActive"`
 	CreatedAt  time.Time `json:"createdAt"`
 	IsCurrent  bool      `json:"isCurrent"`
+	Location   string    `json:"location"`
+	UserAgent  string    `json:"userAgent"`
 }
 
 // SessionMetadata describes the client that receives a newly issued token.
-// It is deliberately separate from public.user_sessions: that legacy table
-// tracks presence/device API state, while auth.sessions is the credential
-// lifecycle source used by GET /auth/sessions and logout.
+// auth.sessions owns both credential lifecycle and device metadata.
 type SessionMetadata struct {
 	DeviceName string
 	DeviceType string
 	IPAddress  string
+	UserAgent  string
 }
 
 type User struct {
@@ -129,21 +131,16 @@ func (s *Service) Register(ctx context.Context, username, password, firstName, l
 		return User{}, "", err
 	}
 
-	lang := language
-	if lang == "" {
-		lang = "ru"
+	defaults := settingsdefaults.Object("settings")
+	if language != "" {
+		defaults["language"] = language
 	}
-	langJSON, _ := json.Marshal(lang)
-	defaultSettings := `{"theme":"dark","notifications":true,"sounds":true,"language":` + string(langJSON) + `}`
-
+	defaultSettings, err := json.Marshal(defaults)
+	if err != nil {
+		return User{}, "", err
+	}
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO users.settings (user_id, settings, privacy_settings, notification_settings, sound_settings, storage_settings, advanced_settings, folders)
-		VALUES ($1, $2,
-			'{"lastSeen":"all","phoneVisibility":"contacts","photoVisibility":"all","messagesFromStrangers":true,"groupsAdd":"all","twoFactorAuth":false,"autoDeleteAccount":true}',
-			'{"privateChats":true,"groups":true,"channels":true,"calls":true,"videoCalls":true,"inAppNotifications":true,"messagePreview":true,"readReceipts":false,"reactions":true,"newContacts":true}',
-			'{"notificationsVolume":80,"mediaVolume":100,"notificationsSound":true,"messagesSound":true,"sendSound":true,"callsSound":true,"vibrateOnCall":true,"notificationSound":"default","messageSound":"default","ringtone":"default"}',
-			'{"autoDownloadMobile":true,"autoDownloadWifi":true,"autoDownloadRoaming":false,"deleteMediaAfter":"never"}',
-			'{"autoReconnect":true,"fastConnection":true,"connectionType":"auto","dataCompression":true,"saveDrafts":true,"analytics":false,"developerMode":false,"debugLog":false,"hardwareAcceleration":true,"autoplayGifs":true}', '[]')
+		INSERT INTO users.settings (user_id, settings) VALUES ($1, $2::jsonb)
 	`, user.ID, defaultSettings)
 	if err != nil {
 		return User{}, "", err
@@ -342,9 +339,9 @@ func recordSession(ctx context.Context, executor sessionExecutor, userID string,
 	_, err := executor.ExecContext(ctx, `
 		INSERT INTO auth.sessions (
 			user_id, access_token_hash, token_generation, expires_at,
-			device_name, device_type, ip_address, last_active
+			device_name, device_type, ip_address, last_active, user_agent
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
 		ON CONFLICT (access_token_hash) WHERE access_token_hash IS NOT NULL
 		DO UPDATE SET
 			token_generation = EXCLUDED.token_generation,
@@ -352,9 +349,10 @@ func recordSession(ctx context.Context, executor sessionExecutor, userID string,
 			device_name = EXCLUDED.device_name,
 			device_type = EXCLUDED.device_type,
 			ip_address = EXCLUDED.ip_address,
+			user_agent = EXCLUDED.user_agent,
 			last_active = NOW()
 	`, userID, authctx.TokenHash(issuedToken.Token), tokenGeneration, issuedToken.ExpiresAt,
-		metadata.DeviceName, metadata.DeviceType, metadata.IPAddress)
+		metadata.DeviceName, metadata.DeviceType, metadata.IPAddress, metadata.UserAgent)
 	return err
 }
 
@@ -364,9 +362,7 @@ func (s *Service) IsTokenRevoked(ctx context.Context, token string, claims crypt
 	return authctx.NewDBTokenChecker(s.db).IsTokenRevoked(ctx, token, claims)
 }
 
-// Logout revokes only the given credential. A linked legacy device record is
-// updated by its explicit ID; pre-rollout records without a reliable token
-// mapping are deliberately left untouched.
+// Logout revokes only the session belonging to this credential.
 func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -384,14 +380,11 @@ func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt ti
 	`, hash, userID, expiresAt); err != nil {
 		return err
 	}
-	var deviceSessionID sql.NullString
-	err = tx.QueryRowContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE auth.sessions
 		SET revoked_at = COALESCE(revoked_at, NOW()), last_active = NOW()
 		WHERE user_id = $1 AND access_token_hash = $2
-		RETURNING device_session_id::text
-	`, userID, hash).Scan(&deviceSessionID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	`, userID, hash); err != nil {
 		return err
 	}
 	if err := authctx.NotifyRevocation(ctx, tx, authctx.RevocationEvent{UserID: userID, TokenHash: hash}); err != nil {
@@ -401,25 +394,6 @@ func (s *Service) Logout(ctx context.Context, userID, token string, expiresAt ti
 		return err
 	}
 
-	// Device state is not credential state: failure here cannot undo a token
-	// revocation that has already committed. The explicit link is the only safe
-	// selector; pre-rollout sessions without it leave legacy rows untouched.
-	if deviceSessionID.Valid {
-		if _, err := s.db.ExecContext(ctx, `
-			UPDATE public.user_sessions d
-			SET is_current = FALSE, last_active = NOW()
-			WHERE d.id = $1 AND d.user_id = $2
-				AND NOT EXISTS (
-					SELECT 1 FROM auth.sessions s
-					WHERE s.device_session_id = d.id
-						AND s.user_id = d.user_id
-						AND s.revoked_at IS NULL
-						AND s.expires_at > NOW()
-				)
-		`, deviceSessionID.String, userID); err != nil {
-			log.Printf("auth: linked device cleanup failed after logout for user %s: %v", userID, err)
-		}
-	}
 	return nil
 }
 
@@ -455,16 +429,9 @@ func (s *Service) LogoutAll(ctx context.Context, userID string) error {
 		return err
 	}
 
-	// Presence and push delivery are cleanup concerns, not authorization.
-	// Once the generation increment commits, their failure must not restore old
+	// Push delivery is a cleanup concern, not authorization.
+	// Once the generation increment commits, cleanup failure must not restore old
 	// credentials or make a successful security operation look unsuccessful.
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE public.user_sessions
-		SET is_current = FALSE, last_active = NOW() - INTERVAL '6 minutes'
-		WHERE user_id = $1
-	`, userID); err != nil {
-		log.Printf("auth: legacy session cleanup failed after logout-all for user %s: %v", userID, err)
-	}
 	// Вышли со всех устройств — push на них больше не идёт (#717).
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM users.push_subscriptions WHERE user_id = $1`, userID); err != nil {
 		log.Printf("auth: push cleanup failed after logout-all for user %s: %v", userID, err)
@@ -562,7 +529,7 @@ func (s *Service) Sessions(ctx context.Context, userID, currentToken string) ([]
 		currentTokenHash = authctx.TokenHash(currentToken)
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT s.id::text, s.device_name, s.device_type, s.ip_address, s.last_active, s.created_at,
+		SELECT s.id::text, s.device_name, s.device_type, s.ip_address, s.last_active, s.created_at, s.location, s.user_agent,
 			COALESCE(s.access_token_hash = $2, FALSE) AS is_current
 		FROM auth.sessions s
 		JOIN auth.users u ON u.id = s.user_id
@@ -571,7 +538,7 @@ func (s *Service) Sessions(ctx context.Context, userID, currentToken string) ([]
 			AND s.expires_at > NOW()
 			AND s.token_generation = u.token_generation
 			AND (
-				s.access_token_hash IS NULL OR NOT EXISTS (
+				s.access_token_hash IS NOT NULL AND NOT EXISTS (
 					SELECT 1 FROM auth.revoked_tokens rt
 					WHERE rt.token_hash = s.access_token_hash AND rt.expires_at > NOW()
 				)
@@ -587,7 +554,7 @@ func (s *Service) Sessions(ctx context.Context, userID, currentToken string) ([]
 	var sessions []Session
 	for rows.Next() {
 		var s Session
-		if err := rows.Scan(&s.ID, &s.DeviceName, &s.DeviceType, &s.IPAddress, &s.LastActive, &s.CreatedAt, &s.IsCurrent); err != nil {
+		if err := rows.Scan(&s.ID, &s.DeviceName, &s.DeviceType, &s.IPAddress, &s.LastActive, &s.CreatedAt, &s.Location, &s.UserAgent, &s.IsCurrent); err != nil {
 			return nil, err
 		}
 		sessions = append(sessions, s)

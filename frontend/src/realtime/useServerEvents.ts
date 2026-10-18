@@ -4,10 +4,10 @@ import { WS_EVENTS } from '@/shared/config';
 import type { IWsEventMap } from '@/types';
 import { useRealtimeSocket } from '@/shared/api';
 import {
+  applyThreadReactionEvent,
   dropPinnedMessage,
   dropThreadMessages,
   isReactionChangePending,
-  patchThreadMessage,
   putPinnedMessage,
   putThreadMessage,
   putThreadReceipt,
@@ -19,6 +19,7 @@ import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
 import { IGNORED_EVENTS, INVALIDATION_MAP, resolveInvalidations } from './invalidationMap';
 import { resyncAfterReconnect } from './resyncAfterReconnect';
+import { startOutboxWakeRetry } from './retryOutboxOnWake';
 
 /**
  * Единственный подписчик на события сервера.
@@ -114,9 +115,8 @@ export function useServerEvents(enabled: boolean): void {
           // Своя же операция ещё идёт — её промежуточные состояния
           // показывать нельзя, окончательное принесёт наш ответ.
           if (!isReactionChangePending(payload.messageId)) {
-            patchThreadMessage(queryClient, payload.chatId, payload.messageId, {
-              reactions: payload.reactions ?? [],
-            });
+            // «Моя ли реакция» в событии нет — её считает клиент (#1063).
+            applyThreadReactionEvent(queryClient, payload, useProfileStore.getState().user?.id);
           }
           return;
         }
@@ -212,6 +212,8 @@ export function useServerEvents(enabled: boolean): void {
     // Состояние связи отслеживается здесь, а не там, где показывается:
     // обрыв случается и на экране без индикатора.
     const stopConnectionWatch = startConnectionWatch();
+    // Неотправленное досылается и без переподключения сокета (#1069).
+    const stopOutboxWakeRetry = startOutboxWakeRetry(queryClient);
 
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
@@ -223,6 +225,7 @@ export function useServerEvents(enabled: boolean): void {
       unsubscribeMemberAdded();
       unsubscribeMemberRemoved();
       stopConnectionWatch();
+      stopOutboxWakeRetry();
     };
   }, [enabled, eventBus, queryClient, setTyping, clearTyping]);
 }

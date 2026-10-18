@@ -3,11 +3,12 @@ import {
   ChatListItemSkeleton,
   chatsQuery,
   isConversationStarted,
+  useChatUiStore,
 } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { ChatsSearchField, ChatsSearchResults, useChatsSearch } from '@/features/search';
 import { AppUpdateBanner } from '@/features/app-update';
-import { useStartPrivateChat } from '@/features/chat-actions';
+import { useOpenSavedMessages, useStartPrivateChat } from '@/features/chat-actions';
 import { PushPrompt } from '@/features/push-notifications';
 import { ROUTES } from '@/shared/config/routes';
 import { useConnectionStatus } from '@/shared/lib';
@@ -23,17 +24,18 @@ import { EmptyChatListPlaceholder } from './EmptyChatListPlaceholder';
 import { ErrorChatListPlaceholder } from './ErrorChatListPlaceholder';
 import { VirtualChatList } from './VirtualChatList';
 
-/* Разделы списка — вкладками, как в макете (#818). Каналы и встречи
-   спрятаны, пока нет самих функций (#815): вкладка без содержимого — та
-   же неработающая кнопка. Порядок — как в макете, чтобы открытая вкладка
-   встала на своё место без перестановки соседей. */
+/* Разделы списка — вкладками, как в макете (#818). Каналы спрятаны, пока
+   нет самой функции (#815): вкладка без содержимого — та же неработающая
+   кнопка. Порядок — как в макете, чтобы открытая вкладка встала на своё
+   место без перестановки соседей. Во вкладке «Звонки» — история звонков
+   (#722); ключ `meetings` прежний, сменилась только подпись (#1074). */
 type TListTab = 'chats' | 'channels' | 'groups' | 'meetings' | 'archive';
 
 const LIST_TABS: { key: TListTab; fallback: string; hidden?: boolean }[] = [
   { key: 'chats', fallback: 'Чаты' },
   { key: 'channels', fallback: 'Каналы', hidden: true },
   { key: 'groups', fallback: 'Группы' },
-  { key: 'meetings', fallback: 'Встречи' },
+  { key: 'meetings', fallback: 'Звонки' },
   { key: 'archive', fallback: 'Архив' },
 ];
 
@@ -53,6 +55,7 @@ interface Props {
 export function ChatsList({ onOpenCreateGroup }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const setProfileRequest = useChatUiStore((state) => state.setProfileRequest);
   const tabsId = useId();
   const me = useProfileStore((state) => state.user);
   const [tab, setTab] = useState<TListTab>('chats');
@@ -83,6 +86,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
   const search = useChatsSearch(visibleChats);
   // Найденный человек — начать с ним чат (#863: действие передаётся поиску).
   const startChat = useStartPrivateChat();
+  const openSaved = useOpenSavedMessages();
 
   /* Архив живёт в том же кеше, что и основной список; запрос лёгкий. */
   const { data: archivedChats = [] } = useQuery(chatsQuery({ archived: true }));
@@ -121,7 +125,17 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
       />
     );
   } else if (tab === 'meetings') {
-    content = <CallHistoryList onOpenChat={(chatId) => navigate(ROUTES.CHAT_BY_ID(chatId))} />;
+    content = (
+      <CallHistoryList
+        onOpenChat={(chatId) => navigate(ROUTES.CHAT_BY_ID(chatId))}
+        // Профиль открывается там же и так же, как из шапки чата: чат и
+        // его профиль поверх (#1074).
+        onOpenProfile={(chatId, peerId) => {
+          setProfileRequest({ chatId, userId: peerId });
+          navigate(ROUTES.CHAT_BY_ID(chatId));
+        }}
+      />
+    );
   } else if (isLoading) {
     content = <ChatListItemSkeleton />;
   } else if (error) {
@@ -201,6 +215,21 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
           {connection !== 'connected' && <Spinner className="size-3.5 border-2" tone="current" />}
           <span className="truncate">{title}</span>
         </h1>
+        {/* Вход в «Избранное» (#1075): себя в поиске людей не найти. */}
+        <button
+          aria-label={t('savedMessages.title', 'Избранное')}
+          className={buttonStyles({
+            variant: 'secondary',
+            iconOnly: true,
+            className: 'text-ink-2',
+          })}
+          disabled={openSaved.isPending}
+          onClick={() => openSaved.mutate()}
+          title={t('savedMessages.title', 'Избранное')}
+          type="button"
+        >
+          <Icon name="bookmark" size="md" />
+        </button>
         <Link
           aria-label={t('settings.menu.title', 'Настройки')}
           className={buttonStyles({

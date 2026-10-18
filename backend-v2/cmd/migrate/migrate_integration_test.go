@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -295,5 +296,80 @@ func TestFailedMigrationIsNotRecorded(t *testing.T) {
 	}
 	if halfDone.Valid {
 		t.Fatal("broken migration left half_done behind")
+	}
+}
+
+func TestCanonicalSessionsMigrationBackfillsOnlyExplicitLinks(t *testing.T) {
+	db := startPostgres(t)
+	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(files)
+	for _, file := range files {
+		if strings.Contains(file, "0039_") {
+			break
+		}
+		body, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(string(body)); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+	}
+	const owner = "11111111-0706-4706-8706-111111111111"
+	const linked = "22222222-0706-4706-8706-222222222222"
+	const session = "33333333-0706-4706-8706-333333333333"
+	_, err = db.Exec(`
+  INSERT INTO auth.users (id, username, password_hash, first_name) VALUES ($1, 'migration_device', 'hash', 'Migration');
+ `, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO public.user_sessions (id, user_id, device_name, device_type, ip_address, location, user_agent, is_current)
+  VALUES ($1, $2, 'Migrated device', 'desktop', '203.0.113.7', 'Location', 'SameBrowser', TRUE)`, linked, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO auth.sessions (id, user_id, access_token_hash, expires_at, device_session_id)
+  VALUES ($1, $2, 'known-token-hash', NOW() + INTERVAL '1 day', $3)`, session, owner, linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO auth.sessions (user_id, refresh_token_hash, expires_at) VALUES ($1, 'refresh-only', NOW() + INTERVAL '1 day')`, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(migrationsDir, "0039_canonical_device_sessions.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := db.Exec(string(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var id, name, agent, location string
+	var revoked bool
+	if err := db.QueryRow(`SELECT id::text, device_name, user_agent, location, revoked_at IS NOT NULL FROM auth.sessions WHERE access_token_hash = 'known-token-hash'`).Scan(&id, &name, &agent, &location, &revoked); err != nil {
+		t.Fatal(err)
+	}
+	if id != session || name != "Migrated device" || agent != "SameBrowser" || location != "Location" || revoked {
+		t.Fatalf("bad backfill: %s %s %s %s revoked=%v", id, name, agent, location, revoked)
+	}
+	if err := db.QueryRow(`SELECT revoked_at IS NOT NULL FROM auth.sessions WHERE refresh_token_hash = 'refresh-only'`).Scan(&revoked); err != nil || !revoked {
+		t.Fatalf("refresh-only session not revoked: %v", err)
+	}
+	// Replaying the earlier link migration must not erase canonical metadata.
+	earlier, err := os.ReadFile(filepath.Join(migrationsDir, "0036_auth_device_session_link.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(earlier)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(body)); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -25,6 +25,7 @@ var (
 	ErrInvalidInput    = errors.New("invalid input")
 	ErrUserNotFound    = errors.New("user not found")
 	ErrBlockedByUser   = errors.New("blocked by user")
+	ErrCallsForbidden  = errors.New("calls forbidden by privacy")
 	ErrInvalidChatType = errors.New("invalid chat type")
 	// ErrGroupCallsUnavailable — в MVP звонки только один на один (#715).
 	ErrGroupCallsUnavailable     = errors.New("group calls are not available")
@@ -71,6 +72,9 @@ type Chat struct {
 
 	// Personal preference of the authenticated member (#560).
 	HideNotificationPreview bool `json:"hideNotificationPreview"`
+	// Personal message alerts, independent of moderator member mute (#559).
+	IsMuted    bool   `json:"isMuted"`
+	MutedUntil string `json:"mutedUntil,omitempty"`
 }
 
 type LastMessagePreview struct {
@@ -139,6 +143,8 @@ type Service struct {
 	push pushNotifier
 	// presence — единый источник online-состояния (Redis Store); nil, если presence не используется.
 	presence presence.Store
+	// mls — лимиты MLS; nil только в тестах.
+	mls *mlsLimits
 }
 
 type realtimeServer interface {
@@ -272,7 +278,7 @@ func (s *Service) ValidateCatalogMedia(ctx context.Context, mediaType, mediaURL 
 }
 
 func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service {
-	return &Service{db: db, ws: ws, presence: presence}
+	return &Service{db: db, ws: ws, presence: presence, mls: newMLSLimitsFromEnv()}
 }
 
 // hydrateMessageFields дополняет сообщение для зрителя viewerID: цитата
@@ -470,7 +476,12 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.entities, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
 		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions,
 		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions,
-		       COALESCE(cs.hide_notification_preview, FALSE)
+		       COALESCE(cs.hide_notification_preview, FALSE),
+		       COALESCE(cs.notifications_muted_at IS NOT NULL AND
+		         (cs.notifications_muted_until IS NULL OR cs.notifications_muted_until > NOW()), FALSE),
+		       CASE WHEN cs.notifications_muted_at IS NOT NULL AND cs.notifications_muted_until > NOW()
+		         THEN to_char(cs.notifications_muted_until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+		         ELSE '' END
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -516,7 +527,7 @@ func (s *Service) List(ctx context.Context, userID string, archived bool) ([]Cha
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
 		LEFT JOIN users.profiles lm_up ON lm_up.user_id = lm.sender_id
 			WHERE COALESCE(cs.is_archived, FALSE) = $2
-			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at, cs.hide_notification_preview,
+			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at, cs.hide_notification_preview, cs.notifications_muted_at, cs.notifications_muted_until,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
 			         peer.viewer_privacy, peer.viewer_blocks, peer.viewer_exceptions,
@@ -565,7 +576,12 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		       COALESCE(lm.id::text, ''), COALESCE(lm.sender_id::text, ''), lm.content, lm.entities, lm.type, COALESCE(lm_up.first_name, lm_au.first_name, lm_au.username, ''),
 		       peer.privacy, COALESCE(peer.blocks_viewer, FALSE), peer.exceptions,
 		       peer.viewer_privacy, COALESCE(peer.viewer_blocks, FALSE), peer.viewer_exceptions,
-		       COALESCE(cs.hide_notification_preview, FALSE)
+		       COALESCE(cs.hide_notification_preview, FALSE),
+		       COALESCE(cs.notifications_muted_at IS NOT NULL AND
+		         (cs.notifications_muted_until IS NULL OR cs.notifications_muted_until > NOW()), FALSE),
+		       CASE WHEN cs.notifications_muted_at IS NOT NULL AND cs.notifications_muted_until > NOW()
+		         THEN to_char(cs.notifications_muted_until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+		         ELSE '' END
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $1
 		LEFT JOIN chats.user_chat_settings cs ON cs.chat_id = c.id AND cs.user_id = $1
@@ -611,7 +627,7 @@ func (s *Service) Get(ctx context.Context, userID, chatID string) (Chat, error) 
 		LEFT JOIN auth.users lm_au ON lm_au.id = lm.sender_id
 		LEFT JOIN users.profiles lm_up ON lm_up.user_id = lm.sender_id
 			WHERE c.id = $2
-			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at, cs.hide_notification_preview,
+			GROUP BY c.id, cm.role, cs.is_pinned, cs.is_archived, cs.last_read_at, cs.hide_notification_preview, cs.notifications_muted_at, cs.notifications_muted_until,
 			         peer.peer_id, peer.first_name, peer.last_name, peer.avatar_url, peer.display_username,
 			         peer.is_online, peer.last_seen, peer.privacy, peer.blocks_viewer, peer.exceptions,
 			         peer.viewer_privacy, peer.viewer_blocks, peer.viewer_exceptions,
@@ -2062,7 +2078,7 @@ func scanChats(rows *sql.Rows) ([]Chat, error) {
 			&chat.PeerID, &chat.PeerIsOnline, &chat.PeerLastSeen,
 			&unreadCount, &lmID, &lmSenderID, &lmContent, &lmEntities, &lmType, &lmSender,
 			&peerPrivacy, &peerBlocksViewer, &peerExceptions,
-			&viewerPrivacy, &viewerBlocksPeer, &viewerExceptions, &chat.HideNotificationPreview,
+			&viewerPrivacy, &viewerBlocksPeer, &viewerExceptions, &chat.HideNotificationPreview, &chat.IsMuted, &chat.MutedUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -3876,22 +3892,17 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 }
 
 func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, callKind, title string) (string, error) {
-	var chatType string
-	var blockedByPeer bool
+	var chatType, peerID string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT c.type,
-		       -- Собеседник по личному чату заблокировал звонящего (#912) —
-		       -- как у сообщений (sendPermissionQuery).
-		       EXISTS(
-		         SELECT 1
-		         FROM chats.members peer
-		         JOIN users.blocked_users b ON b.user_id = peer.user_id AND b.blocked_user_id = cm.user_id
-		         WHERE peer.chat_id = c.id AND peer.user_id <> cm.user_id AND c.type = 'private'
-		       )
+		SELECT c.type, COALESCE((
+		  SELECT peer.user_id::text FROM chats.members peer
+		  WHERE peer.chat_id = c.id AND peer.user_id <> cm.user_id
+		  LIMIT 1
+		), '')
 		FROM chats.chats c
 		JOIN chats.members cm ON cm.chat_id = c.id AND cm.user_id = $2
 		WHERE c.id = $1
-	`, chatID, userID).Scan(&chatType, &blockedByPeer)
+	`, chatID, userID).Scan(&chatType, &peerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrForbidden
 	}
@@ -3906,9 +3917,12 @@ func (s *Service) CreateCallRoom(ctx context.Context, userID, chatID, callType, 
 	if chatType != "private" {
 		return "", ErrGroupCallsUnavailable
 	}
-	// Ни в базу, ни в память: заблокировавший его звонка не получит.
-	if blockedByPeer {
-		return "", ErrBlockedByUser
+	// Проверка до любых записей и создания комнаты в памяти (#714).
+	if peerID == "" {
+		return "", ErrCallsForbidden
+	}
+	if err := checkCallPrivacy(ctx, s.db, peerID, userID); err != nil {
+		return "", err
 	}
 	dbCallType := "video"
 	if callKind == "audio" || callType == "voice" {
