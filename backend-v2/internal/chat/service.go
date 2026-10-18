@@ -3392,11 +3392,14 @@ func decodeReactionAuthorsCursor(cursor string) (time.Time, string, error) {
 // overall counter of reactions with this emoji (== Reaction.Count from the
 // aggregate).
 //
-// Access: the message exists and is not deleted, and the viewer is a current
-// member of the chat. Otherwise ErrNotFound / ErrForbidden.
+// Access: the message exists, is not deleted, and is not hidden,
+// and the viewer is a current member of the chat. Otherwise
+// ErrNotFound / ErrForbidden.
 //
-// Everything the page needs is fetched with two queries: access+total and
-// the page itself. There is no N+1.
+// Everything the page needs is fetched with two queries inside a single
+// REPEATABLE READ transaction: access+total and the page itself. Reading
+// both in one snapshot keeps total consistent with the page under
+// concurrent reaction writes. There is no N+1.
 func (s *Service) ListReactionAuthors(
 	ctx context.Context,
 	viewerID, messageID, emoji, cursor string,
@@ -3436,14 +3439,31 @@ func (s *Service) ListReactionAuthors(
 		cursorUserID = &uid
 	}
 
+	// Оба запроса — total и страница — читаются в одной транзакции со
+	// снимком REPEATABLE READ: при READ COMMITTED между ними конкурентная
+	// реакция могла добавиться или исчезнуть, и тогда total расходился бы
+	// со списком (total: 0 при непустом users либо завышенный total без
+	// следующей страницы). Контракт messages.yaml требует, чтобы total
+	// совпадал с Reaction.count и не зависел от страницы.
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		return ReactionAuthorsPage{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	// Query #1: access check + total. The LEFT JOIN lets us distinguish
 	// "message not found" from "not a member" without revealing the chat type.
+	//
+	// NOT EXISTS (hidden_messages) makes a message the viewer hid
+	// indistinguishable from one that never existed: other read endpoints
+	// (ListMessages, SearchMessages, ListFavorites, ListPins) do the same,
+	// and a hidden message must not leak authors through this path.
 	var (
 		chatID   string
 		isMember bool
 		total    int
 	)
-	err := s.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		SELECT m.chat_id::text,
 		       (cm.user_id IS NOT NULL) AS is_member,
 		       (SELECT COUNT(*) FROM messages.reactions r
@@ -3452,6 +3472,10 @@ func (s *Service) ListReactionAuthors(
 		LEFT JOIN chats.members cm
 		  ON cm.chat_id = m.chat_id AND cm.user_id = $2
 		WHERE m.id = $1 AND m.deleted_at IS NULL
+		  AND NOT EXISTS (
+		      SELECT 1 FROM messages.hidden_messages hm
+		      WHERE hm.message_id = m.id AND hm.user_id = $2
+		  )
 	`, messageID, viewerID, emoji).Scan(&chatID, &isMember, &total)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ReactionAuthorsPage{}, ErrNotFound
@@ -3464,11 +3488,12 @@ func (s *Service) ListReactionAuthors(
 	}
 	_ = chatID // only needed to verify access; not exposed to callers
 
-	// Query #2: the page itself. viewer_privacy / viewer_blocks_owner /
-	// viewer_exceptions are intentionally omitted — the "Photo" rule does not
-	// read them, see Decide: photo visibility is one-way and decided by the
-	// owner (applyPeerPrivacy in service.go).
-	rows, err := s.db.QueryContext(ctx, `
+	// Query #2: the page itself, in the same snapshot as the total above.
+	// viewer_privacy / viewer_blocks_owner / viewer_exceptions are
+	// intentionally omitted — the "Photo" rule does not read them, see
+	// Decide: photo visibility is one-way and decided by the owner
+	// (applyPeerPrivacy in service.go).
+	rows, err := tx.QueryContext(ctx, `
 		SELECT r.user_id::text,
 		       au.username,
 		       COALESCE(up.first_name, au.first_name, ''),
@@ -3495,7 +3520,6 @@ func (s *Service) ListReactionAuthors(
 	if err != nil {
 		return ReactionAuthorsPage{}, err
 	}
-	defer rows.Close()
 
 	users := make([]ReactionAuthor, 0, limit)
 	var (
@@ -3524,6 +3548,7 @@ func (s *Service) ListReactionAuthors(
 			&author.AvatarURL, &createdAt,
 			&ownerPrivacy, &ownerBlocksViewer, &ownerExceptions,
 		); err != nil {
+			_ = rows.Close()
 			return ReactionAuthorsPage{}, err
 		}
 
@@ -3544,6 +3569,11 @@ func (s *Service) ListReactionAuthors(
 		lastUserID = author.ID
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return ReactionAuthorsPage{}, err
+	}
+	// Закрываем курсор до Commit: коммит с открытым rows может ругаться.
+	if err := rows.Close(); err != nil {
 		return ReactionAuthorsPage{}, err
 	}
 
@@ -3554,6 +3584,10 @@ func (s *Service) ListReactionAuthors(
 			lastCreatedAt.UTC().Format(time.RFC3339Nano),
 			lastUserID,
 		)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return ReactionAuthorsPage{}, err
 	}
 	return page, nil
 }
