@@ -36,13 +36,17 @@ function playBurst(ctx: AudioContext): void {
       try {
         o1.disconnect();
         g1.disconnect();
-      } catch {}
+      } catch {
+        /* узел уже отключён */
+      }
     };
     o2.onended = () => {
       try {
         o2.disconnect();
         g2.disconnect();
-      } catch {}
+      } catch {
+        /* узел уже отключён */
+      }
     };
 
     o1.start(t0 + offset);
@@ -122,9 +126,13 @@ export function startRingtone(): void {
         vibrateTimer = setInterval(() => {
           try {
             navigator.vibrate([400, 200, 400, 1000]);
-          } catch {}
+          } catch {
+            /* браузер заблокировал вибрацию без жеста */
+          }
         }, 2000);
-      } catch {}
+      } catch {
+        /* вибрация недоступна или заблокирована */
+      }
     }
 
     ringtoneHandle = { ctx, ringtoneTimer, vibrateTimer, cleanupListeners };
@@ -135,7 +143,9 @@ export function startRingtone(): void {
     if (ctx && ctx.state !== 'closed') {
       try {
         void ctx.close();
-      } catch {}
+      } catch {
+        /* контекст уже закрыт */
+      }
     }
     ringtoneHandle = null;
     console.warn('Ringtone failed:', e);
@@ -158,14 +168,18 @@ export function stopRingtone(): void {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     try {
       navigator.vibrate(0);
-    } catch {}
+    } catch {
+      /* вибрация уже остановлена или недоступна */
+    }
   }
 
   try {
     if (ringtoneHandle.ctx.state !== 'closed') {
       void ringtoneHandle.ctx.close();
     }
-  } catch {}
+  } catch {
+    /* контекст уже закрыт */
+  }
 
   ringtoneHandle = null;
 }

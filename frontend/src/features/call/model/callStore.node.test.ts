@@ -1,17 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECONNECT_TIMEOUT_MS, useCallStore, _resetCancelledRoomsForTest } from './callStore';
 import { services } from '@/services/serviceContainer';
-import { startRingtone, stopRingtone } from './callRingtone';
+import * as callRingtone from './callRingtone';
 import { useProfileStore, blockedUsersQuery, userKeys } from '@/entities/user';
 import { chatKeys } from '@/entities/chat';
 import { queryClient } from '@/shared/api';
 import type { WebSocketClient } from '@/services/WebSocketClient';
-
-vi.mock('./callRingtone', () => ({
-  startRingtone: vi.fn(),
-  stopRingtone: vi.fn(),
-  isRingtoneActive: vi.fn(),
-}));
 
 describe('useCallStore', () => {
   const mockSend = vi.fn();
@@ -22,6 +16,8 @@ describe('useCallStore', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(callRingtone, 'startRingtone').mockReturnValue(undefined);
+    vi.spyOn(callRingtone, 'stopRingtone').mockReturnValue(undefined);
     _resetCancelledRoomsForTest();
     services.userService.listBlocked = vi.fn().mockResolvedValue([]);
     queryClient.setQueryData(blockedUsersQuery().queryKey, []);
@@ -140,7 +136,7 @@ describe('useCallStore', () => {
     expect(state.incomingCall).not.toBeNull();
     expect(state.incomingCall?.roomId).toBe('room-1');
     expect(state.incomingCall?.from).toBe('caller-1');
-    expect(startRingtone).toHaveBeenCalledTimes(1);
+    expect(callRingtone.startRingtone).toHaveBeenCalledTimes(1);
   });
 
   it('автоматически отклоняет входящий вызов как busy, если уже идет звонок', () => {
@@ -182,7 +178,7 @@ describe('useCallStore', () => {
 
     useCallStore.getState().acceptCall();
 
-    expect(stopRingtone).toHaveBeenCalledTimes(1);
+    expect(callRingtone.stopRingtone).toHaveBeenCalledTimes(1);
     expect(mockSend).toHaveBeenCalledWith({
       type: 'call_invite_response',
       to: 'caller-1',
@@ -207,7 +203,7 @@ describe('useCallStore', () => {
 
     useCallStore.getState().rejectCall();
 
-    expect(stopRingtone).toHaveBeenCalledTimes(1);
+    expect(callRingtone.stopRingtone).toHaveBeenCalledTimes(1);
     expect(mockSend).toHaveBeenCalledWith({
       type: 'call_invite_response',
       to: 'caller-1',
@@ -503,7 +499,7 @@ describe('useCallStore', () => {
     });
 
     expect(useCallStore.getState().fsm.state).toBe('incoming');
-    expect(startRingtone).toHaveBeenCalledTimes(1);
+    expect(callRingtone.startRingtone).toHaveBeenCalledTimes(1);
   });
 
   it('не запускает рингтон, если callSounds: false в настройках (#1002)', async () => {
@@ -521,7 +517,7 @@ describe('useCallStore', () => {
     });
 
     expect(useCallStore.getState().fsm.state).toBe('incoming');
-    expect(startRingtone).not.toHaveBeenCalled();
+    expect(callRingtone.startRingtone).not.toHaveBeenCalled();
   });
 
   it('тихо игнорирует входящий вызов от пользователя из чёрного списка', async () => {
@@ -538,7 +534,7 @@ describe('useCallStore', () => {
     // Карточка не создаётся, рингтон не звенит, FSM остаётся в idle
     expect(useCallStore.getState().fsm.state).toBe('idle');
     expect(useCallStore.getState().incomingCall).toBeNull();
-    expect(startRingtone).not.toHaveBeenCalled();
+    expect(callRingtone.startRingtone).not.toHaveBeenCalled();
     expect(mockSend).not.toHaveBeenCalled();
   });
 
@@ -573,7 +569,7 @@ describe('useCallStore', () => {
 
     expect(services.userService.listBlocked).toHaveBeenCalledTimes(1);
     expect(useCallStore.getState().fsm.state).toBe('idle');
-    expect(startRingtone).not.toHaveBeenCalled();
+    expect(callRingtone.startRingtone).not.toHaveBeenCalled();
   });
 
   it('отмена исходящего вызова через cancelCall отправляет leave и сбрасывает FSM', () => {
@@ -624,7 +620,7 @@ describe('useCallStore', () => {
       roomId: 'multi-tab-room',
     });
 
-    expect(stopRingtone).toHaveBeenCalledTimes(1);
+    expect(callRingtone.stopRingtone).toHaveBeenCalledTimes(1);
     expect(useCallStore.getState().fsm.state).toBe('idle');
     expect(useCallStore.getState().incomingCall).toBeNull();
   });
