@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CALLS_ENABLED } from '@/shared/config';
 import { useCall } from '../model/useCall';
+import * as callRingtone from '../model/callRingtone';
 import { useLocalMedia } from '../model/useLocalMedia';
 import { ActiveCallSession } from './ActiveCallSession';
 import { CallLobbyView } from './CallLobbyView';
@@ -58,6 +59,13 @@ export function CallOverlay({
       setIsInLobby(false);
     }
   }, [incomingCall, isInLobby]);
+
+  // Остановка рингтона при размонтировании компонента (#1001)
+  useEffect(() => {
+    return () => {
+      callRingtone.stopRingtone();
+    };
+  }, []);
 
   useEffect(() => {
     if (enabled) return;
