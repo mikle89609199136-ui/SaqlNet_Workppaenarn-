@@ -1,6 +1,8 @@
 import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
 import { formatDateDivider, isDifferentDay, usePageActive } from '@/shared/lib';
-import { estimateMessageItemSize } from '@/entities/message';
+import { estimateMessageItemSize, flattenThread, type IThreadPages } from '@/entities/message';
+import { chatKeys } from '@/entities/chat';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { elementScroll, useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -55,6 +57,17 @@ interface IUseVirtualMessagesFeedOptions {
   loadOlder?: (options?: { isJump?: boolean }) => Promise<void> | void;
   hasOlder?: boolean;
   onMessagesSeen?: (messages: IMessageDto[]) => void;
+  chatId?: string;
+  /** Сообщения истории чата для разрешения цитируемых сообщений (#1084). */
+  threadMessages?: TMessagesList;
+}
+
+function useOptionalQueryClient(): QueryClient | null {
+  try {
+    return useQueryClient();
+  } catch {
+    return null;
+  }
 }
 
 const SCROLL_THRESHOLD_PX = 200;
@@ -71,10 +84,13 @@ export function useVirtualMessagesFeed({
   loadOlder,
   hasOlder = false,
   onMessagesSeen,
+  chatId: optionsChatId,
+  threadMessages,
 }: IUseVirtualMessagesFeedOptions) {
   const { t } = useTranslation();
+  const queryClient = useOptionalQueryClient();
 
-  const chatId = messages[0]?.chatId;
+  const chatId = optionsChatId || messages[0]?.chatId;
   const [unread, setUnread] = useState<IUnreadSnapshot | null>(null);
   // Снимок делается при отрисовке, а не эффектом: иначе первый кадр
   // ленты вышел бы без разделителя и дёрнулся бы следующим.
@@ -153,12 +169,20 @@ export function useVirtualMessagesFeed({
     return () => resizeObserver.disconnect();
   }, [setContainerRef]);
 
-  /* Указатель на сообщения по ID для O(1) поиска превью цитирования */
+  /* Указатель на сообщения по ID для O(1) поиска превью цитирования (#1084) */
   const messagesById = useMemo(() => {
     const index = new Map<string, IMediaItem>();
+    if (threadMessages) {
+      for (const message of threadMessages) index.set(message.id, message);
+    } else if (chatId && queryClient) {
+      const cached = flattenThread(
+        queryClient.getQueryData<IThreadPages>(chatKeys.messages(chatId))
+      );
+      for (const message of cached) index.set(message.id, message);
+    }
     for (const message of messages) index.set(message.id, message);
     return index;
-  }, [messages]);
+  }, [messages, threadMessages, chatId, queryClient]);
 
   /* Формирование элементов ленты с инлайн-разделителями между днями
      и расчётом непрерывных групп одного автора (Telegram-стиль). */

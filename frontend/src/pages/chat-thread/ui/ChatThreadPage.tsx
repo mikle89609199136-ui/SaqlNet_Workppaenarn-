@@ -122,6 +122,7 @@ export function ChatThreadPage() {
       {modals.isPinnedMessagesOpen && (
         <PinnedMessagesView
           pinnedMessages={pinnedMessages}
+          threadMessages={messages}
           onClose={() => modals.setPinnedMessagesOpen(false)}
           isLoading={isLoading}
           error={threadError}

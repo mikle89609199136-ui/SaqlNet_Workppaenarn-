@@ -4,13 +4,15 @@ import { MessageActionsPopover } from '@/features/message-actions';
 import { Button, ConfirmDialog, showToast } from '@/shared/ui';
 import { services } from '@/services/serviceContainer';
 import { type IActionMenu } from '@/entities/chat';
-import type { IMessageDto, IPinnedDto, TPinnedList } from '@/types';
+import type { IMessageDto, IPinnedDto, TPinnedList, TMessagesList } from '@/types';
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
 interface Props {
   pinnedMessages: TPinnedList;
+  /** Сообщения истории чата для разрешения цитируемых сообщений (#1084). */
+  threadMessages?: TMessagesList;
   onClose: () => void;
   isLoading: boolean;
   error: string;
@@ -24,6 +26,7 @@ interface Props {
 
 export const PinnedMessagesView = ({
   pinnedMessages,
+  threadMessages,
   onClose,
   isLoading,
   error,
@@ -78,10 +81,12 @@ export const PinnedMessagesView = ({
       <ChatThreadHeader locationPage="pinned-messages" onClosePinnedMessagePage={onClose} />
 
       <MessagesList
+        chatId={chatId}
         error={error}
         isLoading={isLoading}
         messages={pinnedMessages.map((pinned) => pinned.message)}
         setOpenedImage={setOpenedImage}
+        threadMessages={threadMessages}
         toggleMessageSelection={onSelection}
         trackUnread={false}
       />

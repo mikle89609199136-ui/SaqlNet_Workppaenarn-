@@ -65,6 +65,8 @@ interface Props {
   readMark?: IReadMark;
   onMessagesSeen?: (messages: IMessageDto[]) => void;
   chatId?: string;
+  /** Сообщения истории чата для разрешения цитируемых сообщений (#1084). */
+  threadMessages?: TMessagesList;
 }
 
 export const MessagesList = memo(
@@ -91,10 +93,14 @@ export const MessagesList = memo(
     readMark,
     onMessagesSeen,
     chatId,
+    threadMessages,
   }: Props) => {
     const { t } = useTranslation();
     const user = useProfileStore((state) => state.user);
     const translations = useChatUiStore((state) => state.translations);
+
+    // Чат ленты — по переданному пропу или сообщениям
+    const activeChatId = chatId || messages.find((message) => message.chatId)?.chatId;
 
     const {
       activeDate,
@@ -119,6 +125,8 @@ export const MessagesList = memo(
       loadOlder,
       hasOlder,
       onMessagesSeen,
+      chatId: activeChatId,
+      threadMessages,
     });
 
     const scrollToFeedIndex = useCallback(
@@ -137,8 +145,6 @@ export const MessagesList = memo(
         ? activeMessageId
         : renderedMessageIds.at(-1);
 
-    // Чат ленты — по переданному пропу или сообщениям
-    const activeChatId = chatId || messages.find((message) => message.chatId)?.chatId;
     const { jumpToMessage: handleJumpToMessage } = useJumpToMessage({
       onScrollToMessage: jumpToMessage,
       loadOlder,

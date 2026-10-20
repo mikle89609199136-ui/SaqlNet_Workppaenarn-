@@ -3,6 +3,7 @@ import { act, render, screen } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import {
   $getRoot,
+  $getSelection,
   $isElementNode,
   $isRangeSelection,
   $isTextNode,
@@ -507,6 +508,42 @@ describe('комбинированное форматирование в пол�
           expect.objectContaining({ type: 'bold', offset: 0, length: 5 }),
         ]);
       });
+    });
+  });
+
+  describe('очистка поля и сброс форматирования (#1084)', () => {
+    it('после очистки поля ввода следующее набранное сообщение не наследует форматирование', async () => {
+      const { field, handle } = renderInput();
+      const editor = composerEditor(field);
+
+      await typeIntoComposer(field, {
+        text: 'жирный текст',
+        entities: [{ type: 'bold', offset: 0, length: 12 }],
+      });
+
+      expect(handle.current?.getValue().entities).toEqual([
+        expect.objectContaining({ type: 'bold', offset: 0, length: 12 }),
+      ]);
+
+      await act(async () => {
+        handle.current?.clear();
+      });
+
+      expect(handle.current?.getValue().text).toBe('');
+      expect(handle.current?.getValue().entities).toEqual([]);
+
+      // Печатаем новый текст после очистки
+      await act(async () => {
+        editor.update(() => {
+          const sel = $getSelection();
+          if ($isRangeSelection(sel)) {
+            sel.insertText('обычный текст');
+          }
+        });
+      });
+
+      expect(handle.current?.getValue().text).toBe('обычный текст');
+      expect(handle.current?.getValue().entities).toEqual([]);
     });
   });
 });

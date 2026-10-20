@@ -140,4 +140,72 @@ describe('PinnedMessagesView', () => {
     fireEvent.click(viewer);
     expect(setOpenedImage).toHaveBeenCalledWith(null);
   });
+
+  it('отображает текст и автора цитируемого сообщения из треда (#1084)', () => {
+    const origin = makeMessage({
+      id: 'origin-1',
+      chatId: CHAT_ID,
+      senderName: 'Алексей',
+      content: 'Текст исходного сообщения',
+    });
+    const pinnedMsg = makeMessage({
+      id: 'pin-msg-1',
+      chatId: CHAT_ID,
+      replyTo: 'origin-1',
+      content: 'Ответ на сообщение',
+    });
+    const pin = makePin({
+      id: 'pin-1',
+      chatId: CHAT_ID,
+      messageId: 'pin-msg-1',
+      message: pinnedMsg,
+    });
+
+    renderView({
+      pinnedMessages: [pin],
+      threadMessages: [origin],
+    });
+
+    expect(screen.getByText('Ответ на сообщение')).toBeInTheDocument();
+    expect(screen.getByText('Текст исходного сообщения')).toBeInTheDocument();
+    expect(screen.getByText('Алексей')).toBeInTheDocument();
+  });
+
+  it('отображает текст цитаты из кеша треда QueryClient, если threadMessages не передан (#1084)', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const origin = makeMessage({
+      id: 'origin-2',
+      chatId: CHAT_ID,
+      senderName: 'Мария',
+      content: 'Сообщение из кеша истории',
+    });
+    queryClient.setQueryData(chatKeys.messages(CHAT_ID), {
+      pages: [[origin]],
+      pageParams: [0],
+    });
+
+    const pinnedMsg = makeMessage({
+      id: 'pin-msg-2',
+      chatId: CHAT_ID,
+      replyTo: 'origin-2',
+      content: 'Закреплённый ответ',
+    });
+    const pin = makePin({
+      id: 'pin-2',
+      chatId: CHAT_ID,
+      messageId: 'pin-msg-2',
+      message: pinnedMsg,
+    });
+
+    renderView(
+      {
+        pinnedMessages: [pin],
+      },
+      queryClient
+    );
+
+    expect(screen.getByText('Закреплённый ответ')).toBeInTheDocument();
+    expect(screen.getByText('Сообщение из кеша истории')).toBeInTheDocument();
+    expect(screen.getByText('Мария')).toBeInTheDocument();
+  });
 });
