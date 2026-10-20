@@ -200,6 +200,8 @@ describe('подстраница правила (#786)', () => {
     const always = await screen.findByRole('region', { name: 'Исключения' });
     await within(always).findByRole('button', { name: /^Всегда разрешать/ });
     expect(await within(always).findByText('Дина')).toBeInTheDocument();
+    expect(always).toHaveTextContent(/Этим людям разрешено звонить вам/);
+    expect(always).toHaveTextContent(/заблокированный пользователь не сможет позвонить вам/);
   });
 
   it('подстраница «Кто может звонить»: добавляет и удаляет исключения (#1043)', async () => {
@@ -217,6 +219,12 @@ describe('подстраница правила (#786)', () => {
       privacy: { calls: 'all' },
       currentUser: makeUser({ id: 'me' }),
     });
+
+    const exceptionsRegion = await screen.findByRole('region', { name: 'Исключения' });
+    expect(exceptionsRegion).toHaveTextContent(/Этим людям запрещено звонить вам/);
+    expect(exceptionsRegion).toHaveTextContent(
+      /заблокированный пользователь не сможет позвонить вам/
+    );
 
     // Удаляем Ивана из deny
     await userEvent.click(await screen.findByRole('button', { name: 'Убрать Иван' }));

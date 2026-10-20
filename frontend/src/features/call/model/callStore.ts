@@ -703,13 +703,18 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         set({ callTimeoutTimer: timer });
       } catch (err: unknown) {
         if (get().currentAttemptId === attemptId && get().fsm.state === 'outgoing') {
+          const errorCode = (err as { code?: string })?.code;
           const isPrivacyForbidden =
-            (err as { code?: string; status?: number })?.code === 'calls_forbidden' ||
-            (err as { code?: string; status?: number })?.status === 403;
+            errorCode === 'calls_forbidden' || errorCode === 'blocked_by_user';
 
           if (isPrivacyForbidden) {
+            get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'declined' });
             get().dispatch({ type: 'END_CALL', reason: 'declined' });
-            get().dispatch({ type: 'RESET_TO_IDLE' });
+            setTimeout(() => {
+              if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+                get().dispatch({ type: 'RESET_TO_IDLE' });
+              }
+            }, 1500);
             return;
           }
 
