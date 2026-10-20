@@ -701,8 +701,23 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           get().handleOutgoingTimeout();
         }, CALL_TIMEOUT_MS);
         set({ callTimeoutTimer: timer });
-      } catch {
+      } catch (err: unknown) {
         if (get().currentAttemptId === attemptId && get().fsm.state === 'outgoing') {
+          const errorCode = (err as { code?: string })?.code;
+          const isPrivacyForbidden =
+            errorCode === 'calls_forbidden' || errorCode === 'blocked_by_user';
+
+          if (isPrivacyForbidden) {
+            get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'declined' });
+            get().dispatch({ type: 'END_CALL', reason: 'declined' });
+            setTimeout(() => {
+              if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+                get().dispatch({ type: 'RESET_TO_IDLE' });
+              }
+            }, 1500);
+            return;
+          }
+
           get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'failed' });
           get().dispatch({ type: 'END_CALL', reason: 'network_error' });
           setTimeout(() => {

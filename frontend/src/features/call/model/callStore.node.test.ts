@@ -928,6 +928,90 @@ describe('useCallStore', () => {
     expect(state.outgoingCall?.phase).toBe('failed');
   });
 
+  it('initiateCall переводит вызов в phase: declined при ошибке calls_forbidden (#1043)', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce({
+        code: 'calls_forbidden',
+        status: 403,
+      });
+
+      await useCallStore
+        .getState()
+        .initiateCall('chat-1', 'p2p', 'Тест', 'audio', 'peer-1', null, 'Алиса');
+
+      let state = useCallStore.getState();
+      expect(state.fsm.state).toBe('ended');
+      expect(state.fsm.endReason).toBe('declined');
+      expect(state.fsm.outgoingPhase).toBe('declined');
+      expect(state.outgoingCall?.phase).toBe('declined');
+
+      vi.advanceTimersByTime(1500);
+
+      state = useCallStore.getState();
+      expect(state.fsm.state).toBe('idle');
+      expect(state.outgoingCall).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('initiateCall переводит вызов в phase: declined при ошибке blocked_by_user (#1043)', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce({
+        code: 'blocked_by_user',
+        status: 403,
+      });
+
+      await useCallStore
+        .getState()
+        .initiateCall('chat-1', 'p2p', 'Тест', 'audio', 'peer-1', null, 'Алиса');
+
+      let state = useCallStore.getState();
+      expect(state.fsm.state).toBe('ended');
+      expect(state.fsm.endReason).toBe('declined');
+      expect(state.fsm.outgoingPhase).toBe('declined');
+      expect(state.outgoingCall?.phase).toBe('declined');
+
+      vi.advanceTimersByTime(1500);
+
+      state = useCallStore.getState();
+      expect(state.fsm.state).toBe('idle');
+      expect(state.outgoingCall).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('initiateCall при 403 с code access_denied оставляет сбой failed и network_error (#1043)', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce({
+        code: 'access_denied',
+        status: 403,
+      });
+
+      await useCallStore
+        .getState()
+        .initiateCall('chat-1', 'p2p', 'Тест', 'audio', 'peer-1', null, 'Алиса');
+
+      let state = useCallStore.getState();
+      expect(state.fsm.state).toBe('ended');
+      expect(state.fsm.endReason).toBe('network_error');
+      expect(state.fsm.outgoingPhase).toBe('failed');
+      expect(state.outgoingCall?.phase).toBe('failed');
+
+      vi.advanceTimersByTime(1500);
+
+      state = useCallStore.getState();
+      expect(state.fsm.state).toBe('idle');
+      expect(state.outgoingCall).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   describe('восстановление связи и реконнект (PR 1 / #775)', () => {
     beforeEach(() => {
       vi.useFakeTimers();

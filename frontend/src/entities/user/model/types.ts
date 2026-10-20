@@ -40,14 +40,16 @@ export interface IPrivacyDto {
   photoVisibility: TPrivacyVisibility;
   /** Кто может ссылаться на мой аккаунт, пересылая мои сообщения (#785). */
   forwards: TPrivacyVisibility;
+  /** Кто может звонить (#714, #1043). */
+  calls: TPrivacyVisibility;
   messagesFromStrangers: boolean;
 }
 
 /**
  * Правила, у которых на экране есть исключения (#786) — те, что сервер
- * применяет. «Звонки» добавятся вместе с #714.
+ * применяет (#714, #1043).
  */
-export type TPrivacyRule = 'lastSeen' | 'photoVisibility' | 'forwards';
+export type TPrivacyRule = 'lastSeen' | 'photoVisibility' | 'forwards' | 'calls';
 
 /** allow — «Всегда разрешать», deny — «Никогда не разрешать». */
 export type TPrivacyExceptionMode = 'allow' | 'deny';
