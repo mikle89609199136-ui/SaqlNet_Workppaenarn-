@@ -177,13 +177,31 @@ export function usePhotoEditorCanvas({
       }
       const encode = (type: string, quality?: number) =>
         new Promise<Blob | null>((resolve) => output.toBlob(resolve, type, quality));
-      const { mimeType, quality } = getImageExportConfig(file);
-      let blob = await encode(mimeType, quality);
-      // По спецификации W3C HTML Canvas toBlob при неподдерживаемом формате (Safari < 17 для WebP)
-      // браузер возвращает PNG. В этом случае откатываемся на JPEG.
-      if (!blob || (mimeType === 'image/webp' && blob.type !== 'image/webp')) {
-        blob = await encode('image/jpeg', 0.94);
+
+      // Основной формат для всех исходников — WebP 0.92, как и в encodeImage (#565).
+      // WebP сохраняет прозрачность альфа-канала и обеспечивает эффективное сжатие.
+      let blob = await encode('image/webp', 0.92);
+
+      // Safari до 17 не поддерживает WebP в canvas.toBlob и возвращает PNG (либо null).
+      // Запасной путь (#565):
+      if (!blob || blob.type !== 'image/webp') {
+        const isPng = file.type?.toLowerCase() === 'image/png';
+        if (isPng) {
+          // Если браузер уже вернул PNG на запрос WebP (Safari < 17 по спецификации W3C),
+          // берем его, иначе кодируем в PNG для сохранения прозрачности.
+          blob = blob && blob.type === 'image/png' ? blob : await encode('image/png');
+        } else {
+          // Для не-PNG исходников: JPEG 0.94 с белой подложкой, как в encodeOnMainThread.
+          // Иначе полупрозрачные края ложатся на чёрный фон.
+          if (ctx) {
+            ctx.globalCompositeOperation = 'destination-over';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, sw, sh);
+          }
+          blob = await encode('image/jpeg', 0.94);
+        }
       }
+
       if (!blob) throw new Error('Не удалось подготовить изображение');
 
       const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';

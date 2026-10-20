@@ -13,14 +13,14 @@ describe('getImageExportConfig', () => {
     expect(config.quality).toBeUndefined();
   });
 
-  it('возвращает mimeType image/webp, расширение webp и quality 0.94 для WebP', () => {
+  it('возвращает mimeType image/webp, расширение webp и quality 0.92 для WebP', () => {
     const file = new File(['webp-data'], 'photo.webp', { type: 'image/webp' });
     const config = getImageExportConfig(file);
 
     expect(config).toEqual({
       mimeType: 'image/webp',
       extension: 'webp',
-      quality: 0.94,
+      quality: 0.92,
     });
   });
 
@@ -43,7 +43,7 @@ describe('getImageExportConfig', () => {
     expect(getImageExportConfig({ type: 'IMAGE/WEBP' })).toEqual({
       mimeType: 'image/webp',
       extension: 'webp',
-      quality: 0.94,
+      quality: 0.92,
     });
     expect(getImageExportConfig({ type: 'Image/JPEG' })).toEqual({
       mimeType: 'image/jpeg',

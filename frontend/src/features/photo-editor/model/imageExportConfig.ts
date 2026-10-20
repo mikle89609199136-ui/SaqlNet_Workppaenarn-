@@ -5,10 +5,10 @@ export interface IImageExportConfig {
 }
 
 /**
- * Определяет параметры сохранения отредактированного изображения на основе типа исходного файла или Blob.
- * - PNG сохраняется как PNG без параметра качества (lossless) для сохранения прозрачности.
- * - WebP сохраняется с качеством 0.94.
- * - JPEG и прочие форматы экспортируются в JPEG с качеством 0.94.
+ * Определяет параметры сохранения отредактированного изображения на основе типа исходного файла или Blob (#565).
+ * - PNG: без параметра качества (lossless) для сохранения прозрачности, расширение png.
+ * - WebP: качество 0.92, расширение webp.
+ * - JPEG и прочие форматы: качество 0.94, расширение jpg.
  */
 export function getImageExportConfig(source: { type?: string } | Blob): IImageExportConfig {
   const type = source.type?.toLowerCase() || '';
@@ -24,7 +24,7 @@ export function getImageExportConfig(source: { type?: string } | Blob): IImageEx
     return {
       mimeType: 'image/webp',
       extension: 'webp',
-      quality: 0.94,
+      quality: 0.92,
     };
   }
 

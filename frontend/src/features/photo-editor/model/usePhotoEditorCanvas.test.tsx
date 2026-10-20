@@ -4,9 +4,22 @@ import { DEFAULT_CROP, DEFAULT_FILTERS } from './config';
 import { usePhotoEditorCanvas } from './usePhotoEditorCanvas';
 
 describe('usePhotoEditorCanvas saveImage', () => {
+  let mockCtx: {
+    drawImage: ReturnType<typeof vi.fn>;
+    clearRect: ReturnType<typeof vi.fn>;
+    save: ReturnType<typeof vi.fn>;
+    restore: ReturnType<typeof vi.fn>;
+    translate: ReturnType<typeof vi.fn>;
+    rotate: ReturnType<typeof vi.fn>;
+    scale: ReturnType<typeof vi.fn>;
+    fillRect: ReturnType<typeof vi.fn>;
+    globalCompositeOperation?: string;
+    fillStyle?: string;
+  };
+
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    mockCtx = {
       drawImage: vi.fn(),
       clearRect: vi.fn(),
       save: vi.fn(),
@@ -14,7 +27,13 @@ describe('usePhotoEditorCanvas saveImage', () => {
       translate: vi.fn(),
       rotate: vi.fn(),
       scale: vi.fn(),
-    } as unknown as CanvasRenderingContext2D);
+      fillRect: vi.fn(),
+      globalCompositeOperation: 'source-over',
+      fillStyle: '#000000',
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      mockCtx as unknown as CanvasRenderingContext2D
+    );
   });
 
   const baseParams = {
@@ -30,48 +49,9 @@ describe('usePhotoEditorCanvas saveImage', () => {
     onCancel: vi.fn(),
   };
 
-  it('сохраняет PNG без сжатия качества и с расширением .png', async () => {
+  it('сохраняет PNG в WebP с качеством 0.92 и расширением .webp (основной формат с сохранением прозрачности)', async () => {
     const onSave = vi.fn();
     const file = new File(['png-data'], 'avatar.png', { type: 'image/png' });
-
-    const toBlobSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
-      this: HTMLCanvasElement,
-      callback: BlobCallback,
-      type?: string
-    ) {
-      callback(new Blob(['edited-png-data'], { type: type || 'image/png' }));
-    });
-
-    const { result } = renderHook(() =>
-      usePhotoEditorCanvas({
-        ...baseParams,
-        file,
-        onSave,
-      })
-    );
-
-    // Подставляем mock canvas element
-    const mockCanvas = document.createElement('canvas');
-    mockCanvas.width = 200;
-    mockCanvas.height = 200;
-    result.current.canvasRef.current = mockCanvas;
-
-    await act(async () => {
-      await result.current.saveImage();
-    });
-
-    expect(toBlobSpy).toHaveBeenCalledWith(expect.any(Function), 'image/png', undefined);
-    expect(onSave).toHaveBeenCalledTimes(1);
-
-    const savedFile: File = onSave.mock.calls[0][0];
-    expect(savedFile.name).toBe('avatar-edited.png');
-    expect(savedFile.type).toBe('image/png');
-    expect(savedFile.lastModified).toBeGreaterThan(0);
-  });
-
-  it('сохраняет WebP с качеством 0.94 и расширением .webp', async () => {
-    const onSave = vi.fn();
-    const file = new File(['webp-data'], 'photo.webp', { type: 'image/webp' });
 
     const toBlobSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
       this: HTMLCanvasElement,
@@ -98,25 +78,25 @@ describe('usePhotoEditorCanvas saveImage', () => {
       await result.current.saveImage();
     });
 
-    expect(toBlobSpy).toHaveBeenCalledWith(expect.any(Function), 'image/webp', 0.94);
+    expect(toBlobSpy).toHaveBeenCalledWith(expect.any(Function), 'image/webp', 0.92);
     expect(onSave).toHaveBeenCalledTimes(1);
 
     const savedFile: File = onSave.mock.calls[0][0];
-    expect(savedFile.name).toBe('photo-edited.webp');
+    expect(savedFile.name).toBe('avatar-edited.webp');
     expect(savedFile.type).toBe('image/webp');
+    expect(savedFile.lastModified).toBeGreaterThan(0);
   });
 
-  it('сохраняет JPEG с качеством 0.94 и расширением .jpg', async () => {
+  it('сохраняет JPEG в WebP с качеством 0.92 и расширением .webp', async () => {
     const onSave = vi.fn();
     const file = new File(['jpeg-data'], 'camera.jpeg', { type: 'image/jpeg' });
 
     const toBlobSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
       this: HTMLCanvasElement,
       callback: BlobCallback,
-      type?: string,
-      quality?: unknown
+      type?: string
     ) {
-      callback(new Blob(['edited-jpeg-data'], { type: type || 'image/jpeg' }));
+      callback(new Blob(['edited-webp-data'], { type: type || 'image/webp' }));
     });
 
     const { result } = renderHook(() =>
@@ -136,17 +116,61 @@ describe('usePhotoEditorCanvas saveImage', () => {
       await result.current.saveImage();
     });
 
-    expect(toBlobSpy).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.94);
+    expect(toBlobSpy).toHaveBeenCalledWith(expect.any(Function), 'image/webp', 0.92);
     expect(onSave).toHaveBeenCalledTimes(1);
 
     const savedFile: File = onSave.mock.calls[0][0];
-    expect(savedFile.name).toBe('camera-edited.jpg');
-    expect(savedFile.type).toBe('image/jpeg');
+    expect(savedFile.name).toBe('camera-edited.webp');
+    expect(savedFile.type).toBe('image/webp');
   });
 
-  it('при возврате PNG вместо WebP по спецификации W3C (Safari < 17) откатывается на JPEG', async () => {
+  it('для PNG-исходника при Safari < 17 (возврат PNG на запрос WebP) сохраняет в PNG для сохранения прозрачности', async () => {
     const onSave = vi.fn();
-    const file = new File(['webp-data'], 'safari.webp', { type: 'image/webp' });
+    const file = new File(['png-data'], 'avatar.png', { type: 'image/png' });
+
+    const toBlobSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
+      this: HTMLCanvasElement,
+      callback: BlobCallback,
+      type?: string
+    ) {
+      if (type === 'image/webp') {
+        // По спецификации W3C Safari < 17 возвращает PNG blob при отсутствии поддержки WebP
+        callback(new Blob(['safari-png-blob'], { type: 'image/png' }));
+      } else {
+        callback(new Blob(['fallback'], { type: type || 'image/png' }));
+      }
+    });
+
+    const { result } = renderHook(() =>
+      usePhotoEditorCanvas({
+        ...baseParams,
+        file,
+        onSave,
+      })
+    );
+
+    const mockCanvas = document.createElement('canvas');
+    mockCanvas.width = 200;
+    mockCanvas.height = 200;
+    result.current.canvasRef.current = mockCanvas;
+
+    await act(async () => {
+      await result.current.saveImage();
+    });
+
+    // Safari уже вернул PNG, второй вызов toBlob не требуется
+    expect(toBlobSpy).toHaveBeenCalledTimes(1);
+    expect(toBlobSpy).toHaveBeenCalledWith(expect.any(Function), 'image/webp', 0.92);
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const savedFile: File = onSave.mock.calls[0][0];
+    expect(savedFile.name).toBe('avatar-edited.png');
+    expect(savedFile.type).toBe('image/png');
+  });
+
+  it('для PNG-исходника при сбое WebP в null повторно кодирует в PNG', async () => {
+    const onSave = vi.fn();
+    const file = new File(['png-data'], 'avatar.png', { type: 'image/png' });
 
     let callCount = 0;
     const toBlobSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
@@ -156,7 +180,52 @@ describe('usePhotoEditorCanvas saveImage', () => {
     ) {
       callCount++;
       if (type === 'image/webp') {
-        // По спецификации W3C Safari < 17 возвращает PNG blob при отсутствии поддержки WebP
+        callback(null);
+      } else {
+        callback(new Blob(['png-fallback'], { type: 'image/png' }));
+      }
+    });
+
+    const { result } = renderHook(() =>
+      usePhotoEditorCanvas({
+        ...baseParams,
+        file,
+        onSave,
+      })
+    );
+
+    const mockCanvas = document.createElement('canvas');
+    mockCanvas.width = 200;
+    mockCanvas.height = 200;
+    result.current.canvasRef.current = mockCanvas;
+
+    await act(async () => {
+      await result.current.saveImage();
+    });
+
+    expect(callCount).toBe(2);
+    expect(toBlobSpy).toHaveBeenNthCalledWith(1, expect.any(Function), 'image/webp', 0.92);
+    expect(toBlobSpy).toHaveBeenNthCalledWith(2, expect.any(Function), 'image/png', undefined);
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const savedFile: File = onSave.mock.calls[0][0];
+    expect(savedFile.name).toBe('avatar-edited.png');
+    expect(savedFile.type).toBe('image/png');
+  });
+
+  it('для не-PNG исходника (JPEG) при отсутствии поддержки WebP откатывается на JPEG 0.94 с белой подложкой', async () => {
+    const onSave = vi.fn();
+    const file = new File(['jpeg-data'], 'camera.jpeg', { type: 'image/jpeg' });
+
+    let callCount = 0;
+    const toBlobSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
+      this: HTMLCanvasElement,
+      callback: BlobCallback,
+      type?: string
+    ) {
+      callCount++;
+      if (type === 'image/webp') {
+        // Safari < 17 возвращает PNG на запрос WebP
         callback(new Blob(['safari-png-blob'], { type: 'image/png' }));
       } else {
         callback(new Blob(['fallback-jpeg'], { type: 'image/jpeg' }));
@@ -181,18 +250,22 @@ describe('usePhotoEditorCanvas saveImage', () => {
     });
 
     expect(callCount).toBe(2);
-    expect(toBlobSpy).toHaveBeenNthCalledWith(1, expect.any(Function), 'image/webp', 0.94);
+    expect(toBlobSpy).toHaveBeenNthCalledWith(1, expect.any(Function), 'image/webp', 0.92);
     expect(toBlobSpy).toHaveBeenNthCalledWith(2, expect.any(Function), 'image/jpeg', 0.94);
+
+    expect(mockCtx.globalCompositeOperation).toBe('destination-over');
+    expect(mockCtx.fillStyle).toBe('#ffffff');
+    expect(mockCtx.fillRect).toHaveBeenCalled();
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const savedFile: File = onSave.mock.calls[0][0];
-    expect(savedFile.name).toBe('safari-edited.jpg');
+    expect(savedFile.name).toBe('camera-edited.jpg');
     expect(savedFile.type).toBe('image/jpeg');
   });
 
-  it('при сбое экспорта в null откатывается на JPEG', async () => {
+  it('для не-PNG исходника при сбое WebP в null откатывается на JPEG 0.94 с белой подложкой', async () => {
     const onSave = vi.fn();
-    const file = new File(['webp-data'], 'fallback.webp', { type: 'image/webp' });
+    const file = new File(['bmp-data'], 'photo.bmp', { type: 'image/bmp' });
 
     let callCount = 0;
     const toBlobSpy = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
@@ -226,12 +299,16 @@ describe('usePhotoEditorCanvas saveImage', () => {
     });
 
     expect(callCount).toBe(2);
-    expect(toBlobSpy).toHaveBeenNthCalledWith(1, expect.any(Function), 'image/webp', 0.94);
+    expect(toBlobSpy).toHaveBeenNthCalledWith(1, expect.any(Function), 'image/webp', 0.92);
     expect(toBlobSpy).toHaveBeenNthCalledWith(2, expect.any(Function), 'image/jpeg', 0.94);
+
+    expect(mockCtx.globalCompositeOperation).toBe('destination-over');
+    expect(mockCtx.fillStyle).toBe('#ffffff');
+    expect(mockCtx.fillRect).toHaveBeenCalled();
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const savedFile: File = onSave.mock.calls[0][0];
-    expect(savedFile.name).toBe('fallback-edited.jpg');
+    expect(savedFile.name).toBe('photo-edited.jpg');
     expect(savedFile.type).toBe('image/jpeg');
   });
 });
