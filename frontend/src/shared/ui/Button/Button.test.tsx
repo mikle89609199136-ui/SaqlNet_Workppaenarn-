@@ -245,4 +245,40 @@ describe('кнопка', () => {
 
     expect(screen.getByRole('button', { name: 'Забыли пароль?' })).toHaveClass('text-brand');
   });
+
+  it('должна иметь стили нажатия :active и микро-масштабирования (#1082)', () => {
+    render(
+      <>
+        <Button variant="primary">Основная</Button>
+        <Button variant="secondary">Вторичная</Button>
+        <Button variant="danger">Опасная</Button>
+        <Button variant="accent">Акцент</Button>
+      </>
+    );
+
+    const primary = screen.getByRole('button', { name: 'Основная' });
+    const secondary = screen.getByRole('button', { name: 'Вторичная' });
+    const danger = screen.getByRole('button', { name: 'Опасная' });
+    const accent = screen.getByRole('button', { name: 'Акцент' });
+
+    expect(primary).toHaveClass('not-disabled:active:scale-[0.98]', 'not-disabled:active:brightness-92');
+    expect(secondary).toHaveClass('not-disabled:active:scale-[0.98]', 'not-disabled:active:brightness-92', 'active:layer-press');
+    expect(danger).toHaveClass('not-disabled:active:scale-[0.98]', 'not-disabled:active:brightness-92', 'active:layer-press');
+    expect(accent).toHaveClass('not-disabled:active:scale-[0.98]', 'not-disabled:active:brightness-92');
+  });
+
+  it('не должна скейлиться при disabled или aria-disabled (#1082)', () => {
+    render(
+      <>
+        <Button disabled>Отключена</Button>
+        <Button loading>Загрузка</Button>
+      </>
+    );
+
+    const disabledBtn = screen.getByRole('button', { name: 'Отключена' });
+    const loadingBtn = screen.getByRole('button', { name: 'Загрузка' });
+
+    expect(disabledBtn).toHaveClass('aria-disabled:active:scale-100');
+    expect(loadingBtn).toHaveClass('aria-disabled:active:scale-100');
+  });
 });

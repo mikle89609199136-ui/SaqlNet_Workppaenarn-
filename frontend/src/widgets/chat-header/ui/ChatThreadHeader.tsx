@@ -82,9 +82,10 @@ export const ChatThreadHeader = ({
 
   /* Шапка — по макету (#822): 64px, снизу линия. На телефоне слева
      «Назад к чатам», дальше одна кнопка «аватар и имя», открывающая
-     панель, справа кнопки 40×40 цвета ink-2. */
+     панель, справа кнопки 40×40 цвета ink-2.
+     Отступ px-1.5 (6px) симметричен вертикальным отступам (64 - 52) / 2 = 6px (#1082). */
   const headerClass =
-    'z-5 flex h-16 shrink-0 items-center gap-1.5 border-b border-divider bg-chat-bg px-1.5 md:px-3 ' +
+    'z-5 flex h-16 shrink-0 items-center gap-1.5 border-b border-divider bg-chat-bg px-1.5 ' +
     'max-md:sticky max-md:top-0 max-md:h-[calc(64px+env(safe-area-inset-top,0px))] max-md:pt-[env(safe-area-inset-top,0px)]';
 
   const backToChats = (
