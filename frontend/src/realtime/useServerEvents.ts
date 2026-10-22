@@ -13,7 +13,7 @@ import {
   putThreadReceipt,
 } from '@/entities/message';
 import { putChatListReceipt, useTypingStore } from '@/entities/chat';
-import { useProfileStore } from '@/entities/user';
+import { useProfileStore, refreshSettings, isSettingsInvalidation } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { createPresenceBuffer, refreshPresence } from './applyPresence';
 import { startConnectionWatch } from './connectionStatus';
@@ -54,6 +54,14 @@ export function useServerEvents(enabled: boolean): void {
       // Таблица построена из тех же констант, что и карта типов событий,
       // но перебор ключей объекта эту связь теряет.
       eventBus.on(eventType as keyof IWsEventMap, (payload: any) => {
+        if (eventType === WS_EVENTS.USER.SETTINGS_UPDATED) {
+          if (
+            isSettingsInvalidation(payload) &&
+            payload.userId === useProfileStore.getState().user?.id
+          )
+            void refreshSettings(queryClient);
+          return;
+        }
         // Новое сообщение появляется в ленте сразу: расшифровываем и кладём
         // в кеш, вместо того чтобы запрашивать историю заново.
         if (eventType === WS_EVENTS.MESSAGE.NEW && payload?.chatId && payload?.message) {
@@ -150,6 +158,7 @@ export function useServerEvents(enabled: boolean): void {
     // возврате сети отключён намеренно. Без этого пропущенное не
     // появилось бы в разговоре никогда.
     const unsubscribeReconnect = eventBus.on(WS_EVENTS.SOCKET.CONNECTED, () => {
+      void refreshSettings(queryClient);
       void resyncAfterReconnect(queryClient);
       // Пока связи не было, собеседники могли войти и выйти.
       refreshPresence(queryClient);

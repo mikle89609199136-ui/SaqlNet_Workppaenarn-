@@ -27,6 +27,7 @@ await previewI18n.use(initReactI18next).init({
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 const params = Object.fromEntries(new URLSearchParams(location.search));
 const hidden = params.hidden === 'true';
+useProfileStore.setState({ user: makeUser({ id: 'me' }), isAuth: true });
 queryClient.setQueryData(userKeys.settings(), {
   settings: normalizePreferences({
     ...(params as Partial<ISettingsDto>),
@@ -37,7 +38,6 @@ queryClient.setQueryData(userKeys.settings(), {
   }),
   privacy: {},
 });
-useProfileStore.setState({ user: makeUser({ id: 'me' }), isAuth: true });
 const messages = [
   makeMessage({
     id: 'one',

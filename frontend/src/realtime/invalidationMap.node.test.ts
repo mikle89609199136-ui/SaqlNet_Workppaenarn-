@@ -32,6 +32,22 @@ describe('полнота таблицы событий', () => {
 describe('что устаревает при событии', () => {
   const chatId = 'chat-1';
 
+  it('only invalidates settings for the current owner and known event version', () => {
+    expect(
+      resolveInvalidations(WS_EVENTS.USER.SETTINGS_UPDATED, {
+        userId: 'owner',
+        currentUserId: 'owner',
+        version: 1,
+      })
+    ).toEqual([userKeys.settings()]);
+    for (const payload of [
+      { userId: 'foreign', currentUserId: 'owner', version: 1 },
+      { userId: 'owner', currentUserId: 'owner', version: 2 },
+      {},
+    ])
+      expect(resolveInvalidations(WS_EVENTS.USER.SETTINGS_UPDATED, payload)).toEqual([]);
+  });
+
   it('should refresh the thread and the chat list on a new message', () => {
     expect(resolveInvalidations(WS_EVENTS.MESSAGE.NEW, { chatId })).toEqual([
       chatKeys.messages(chatId),

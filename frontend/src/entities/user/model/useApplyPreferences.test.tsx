@@ -67,6 +67,27 @@ describe('применение темы и языка', () => {
     expect(document.documentElement.lang).toBe('en');
   });
 
+  it('поздний словарь прежнего языка не отменяет новый выбор', async () => {
+    await testI18n.changeLanguage('ru');
+    let finish!: () => void;
+    const old = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    vi.spyOn(testI18n, 'loadLanguages').mockReturnValueOnce(old).mockResolvedValue(undefined);
+    const change = vi.spyOn(testI18n, 'changeLanguage');
+    const { queryClient } = renderWithSettings({ language: 'en' });
+    act(() =>
+      queryClient.setQueryData(userKeys.settings(), { settings: { language: 'ru' }, privacy: {} })
+    );
+    await waitFor(() => expect(document.documentElement.lang).toBe('ru'));
+    await act(async () => {
+      finish();
+      await old;
+    });
+    expect(change).not.toHaveBeenCalledWith('en');
+    expect(testI18n.language).toBe('ru');
+  });
+
   it('ничего не трогает, пока настройки не загружены', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 

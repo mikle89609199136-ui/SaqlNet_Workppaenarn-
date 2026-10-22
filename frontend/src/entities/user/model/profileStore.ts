@@ -49,6 +49,10 @@ export const useProfileStore = create<InitialState>((set, get) => ({
   isAuth: !!storedUser,
   isLoading: false,
   setUser: (user) => {
+    if (get().user?.id !== user.id) {
+      localStorage.removeItem(STORAGE_KEYS.SETTINGS);
+      if (typeof document !== 'undefined') applyAppearance(normalizePreferences(), false);
+    }
     localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
     set({ user, isAuth: !!user });
   },

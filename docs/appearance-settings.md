@@ -34,7 +34,7 @@ Canonical `GET/PUT /api/v2/users/settings` читает и частично об
 
 `ISettingsDto` использует enums из generated `MvpSettings`. `DEFAULT_PROFILE_SETTINGS` совпадает с JSON-источником серверных defaults; это проверяет тест. Отсутствующие поля дополняются при чтении, а на сервер отправляется только изменённый patch. Текущий источник — TanStack Query; отдельный Zustand appearance store удалён.
 
-Во «Внешнем виде» доступны theme light/dark/system, три palette, шесть accentPreset, три textSize, три chatDensity, четыре переключателя ленты и avatarShape. Переключение оптимистичное; ошибка возвращает прежнее оформление. Пока PUT и его refetch не завершены, раздел блокирует повторный выбор: существующий rollback восстанавливает полный снимок, поэтому параллельные изменения из этого раздела не запускаются. Полноценное разрешение конкурирующих клиентских изменений остаётся #1041.
+Во «Внешнем виде» доступны theme light/dark/system, три palette, шесть accentPreset, три textSize, три chatDensity, четыре переключателя ленты и avatarShape. Переключение оптимистичное; ошибка возвращает прежнее оформление. Пока PUT и его refetch не завершены, раздел блокирует повторный выбор. Общий mutation path #1041 сериализует локальные записи и откатывает только слой неудачного patch, сохраняя соседние изменения; [правила синхронизации](settings-sync.md) действуют и для других вкладок/устройств.
 
 `data-theme-preference` хранит system/light/dark, `data-theme` — только вычисленную light/dark. Для system подписка `matchMedia('(prefers-color-scheme: dark)')` обновляет тему без PUT при смене ОС и удаляется при смене выбора/размонтировании. Карточки образцов тоже реагируют на ОС. Root attributes для palette/accentPreset/textSize/chatDensity меняют существующие токены; стандартные graphite/violet/medium/normal работают без дополнительных атрибутов.
 
@@ -80,8 +80,8 @@ npx playwright test --config playwright.appearance.config.ts --update-snapshots
 
 Unit/integration tests проверяют каждый новый patch, rollback документа и проекции, явный перенос, keyboard navigation, подписку ОС/cleanup, общие defaults, ранний startup script, группировку/аватары и сохранение read receipts/retry при скрытых отметках.
 
-### Оставшаяся связанная работа
+### Связанная работа
 
-#1041 остаётся отдельной задачей: транспорт инвалидации между вкладками/устройствами, срок сходимости, focus/reconnect и защита от запоздавших ответов при конкурентных изменениях. Сохранение и применение в текущей вкладке не означают готовность этой синхронизации. Полностью закрывать родительскую #728 следует после приёмки #1041. Уведомления в открытом приложении — #725; серверная миграция #1042 уже реализована. Анимации, animated emoji/stickers и autoplay GIF в MVP-настройки не добавлены.
+Синхронизация открытых вкладок/устройств, focus/reconnect и защита от поздних ответов реализованы в #1041: [контракт и приёмка](settings-sync.md). После слияния и приёмки #1041 можно завершать родительскую #728. Уведомления в открытом приложении — #725; серверная миграция #1042 реализована. Анимации, animated emoji/stickers и autoplay GIF в MVP-настройки не добавлены.
 
 Проверено локально 22 октября 2026: 267 файлов / 2350 unit/integration tests, 28 contract tests, production build, отсутствие циклов и lint изменённых файлов (без ошибок). Пять browser-сценариев проверяют шесть screenshot-эталонов; отдельный SQL read из PostgreSQL подтвердил system/midnight/teal/large/compact и showMessageTime=false после UI-записи. Общий `tsc -p tsconfig.app.json` по-прежнему содержит существующие ошибки проекта (в том числе старые поля DTO сообщений и Node typings в тестах); он не заменён формальным `npm run typecheck`, который не проверяет referenced app project.

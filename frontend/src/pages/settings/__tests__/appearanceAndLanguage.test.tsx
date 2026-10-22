@@ -38,6 +38,9 @@ describe('внешний вид и язык', () => {
     testI18n.addResource('en', 'translation', 'settingsSaved', 'Settings saved');
     clearToasts();
     server.use(
+      http.get(api('/users/settings'), () =>
+        HttpResponse.json({ settings: { language: 'en' }, privacy: {} })
+      ),
       http.put(api('/users/settings'), async ({ request }) =>
         HttpResponse.json({ settings: await request.json() })
       )

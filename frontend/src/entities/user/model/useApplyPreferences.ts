@@ -52,6 +52,17 @@ export function useApplyPreferences(): void {
   useEffect(() => {
     if (!language) return;
     document.documentElement.lang = language;
-    if (i18n.language !== language) void i18n.changeLanguage(language);
-  }, [i18n, language]);
+    // Load first: an older dictionary response must not switch the interface
+    // back after a newer preference (or a different owner) has arrived.
+    let active = true;
+    void i18n
+      .loadLanguages(language)
+      .then(() => {
+        if (active && i18n.language !== language) return i18n.changeLanguage(language);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [i18n, language, ownerId]);
 }
