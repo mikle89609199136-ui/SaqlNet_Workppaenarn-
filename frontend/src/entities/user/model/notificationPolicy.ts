@@ -9,6 +9,10 @@ export interface INotificationFlags {
   callSounds: boolean;
 }
 const disabled: INotificationFlags = { notifications: false, sounds: false, callSounds: false };
+function currentSettingsMutation(key: readonly unknown[] | undefined): boolean {
+  const current = userKeys.settings();
+  return Boolean(key && current.every((part, index) => key[index] === part));
+}
 
 /** Defaults допустимы только внутри полученного серверного settings object. */
 export function notificationFlags(settings?: Partial<ISettingsDto> | null): INotificationFlags {
@@ -28,9 +32,7 @@ export function notificationSettingsPending(client: QueryClient): boolean {
     .getAll()
     .some(
       (mutation) =>
-        mutation.state.status === 'pending' &&
-        mutation.options.mutationKey?.[0] === 'user' &&
-        mutation.options.mutationKey?.[1] === 'settings'
+        mutation.state.status === 'pending' && currentSettingsMutation(mutation.options.mutationKey)
     );
 }
 
@@ -43,11 +45,12 @@ export function getNotificationFlags(client: QueryClient): INotificationFlags {
   for (const mutation of client.getMutationCache().getAll()) {
     if (
       mutation.state.status !== 'pending' ||
-      mutation.options.mutationKey?.[0] !== 'user' ||
-      mutation.options.mutationKey?.[1] !== 'settings'
+      !currentSettingsMutation(mutation.options.mutationKey)
     )
       continue;
-    const patch = mutation.state.variables as Partial<ISettingsDto> | undefined;
+    const variables = mutation.state.variables as
+      (Partial<ISettingsDto> & { patch?: Partial<ISettingsDto> }) | undefined;
+    const patch = variables?.patch ?? variables;
     if (patch?.notifications === true) return disabled;
     if (patch?.sounds === true) flags.sounds = false;
     if (patch?.callSounds === true) flags.callSounds = false;

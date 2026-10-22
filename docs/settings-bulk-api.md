@@ -88,13 +88,13 @@ Canonical SQL updates, которые уже меняют только пере�
 - Для одного и того же key или двух замен folders применяется последнее сериализованное изменение; время клика/сетевого ответа не задаёт порядок БД.
 - Read-only passcode не попадает в UPDATE и не откатывает параллельное изменение через собственный endpoint.
 - Новые обязательные revision/If-Match и конфликт 409 для bulk не вводятся. Optimistic concurrency можно добавить отдельным контрактом, если понадобится редактирование snapshot.
-- Ответ success отправляется после commit. При использовании settings events (#1041) failed/no-op mutation не должна выдавать ложное событие; правило публикации после commit согласуется с транспортом #1041.
+- Ответ success отправляется после commit. AFTER UPDATE trigger #1041 публикует инвалидацию через PostgreSQL NOTIFY после commit; failed/no-op mutation ложного события не создаёт ([контракт](settings-sync.md)).
 
 В #1047 `UpdateAllSettings` и `UpdatePreference` (включая storage) используют общий `mutateSettings` из `internal/user/settings_mutation.go`: BEGIN → INSERT ON CONFLICT → SELECT sections FOR UPDATE → sparse merge → UPDATE → COMMIT. Validation заканчивается до BEGIN. При ошибке UPDATE/COMMIT откатывается и создание отсутствующей строки; HTTP success возвращается только после commit. No-op bulk не открывает транзакцию.
 
 Canonical settings/privacy и dedicated folders/passcode writers выполняют атомарные SQL UPDATE той же строки и сериализуются с этой блокировкой. Mutation читает только шесть JSON sections: старые повреждённые folders не мешают unrelated patch, omitted/null folders сохраняются физически. Passcode columns не входят в UPDATE. Defaults из #451 добавляются к ответам, но не становятся patch keys.
 
-Проверки на настоящем PostgreSQL (`settings_mutation_integration_test.go`) используют удерживаемую транзакцию и `pg_blocking_pids` как барьер: writer обязан ждать на SELECT FOR UPDATE, затем увидеть предыдущее изменение. Проверены disjoint/same-key patches, оба порядка bulk/section writers, замена/очистка folders, параллельный passcode, ошибки UPDATE и deferred COMMIT, отмена ожидающего запроса. События синхронизации пока не публикуются; транспорт и публикация после commit остаются #1041. Alias patch #1042 вычисляется из проверенного input до BEGIN, а его merge в canonical/compatibility состояние выполняется внутри этой же транзакции.
+Проверки на настоящем PostgreSQL (`settings_mutation_integration_test.go`) используют удерживаемую транзакцию и `pg_blocking_pids` как барьер: writer обязан ждать на SELECT FOR UPDATE, затем увидеть предыдущее изменение. Проверены disjoint/same-key patches, оба порядка bulk/section writers, замена/очистка folders, параллельный passcode, ошибки UPDATE и deferred COMMIT, отмена ожидающего запроса. Публикация события после commit и его транспорт реализованы в [#1041](settings-sync.md); отдельный LISTEN integration test проверяет rollback/validation/no-op. Alias patch #1042 вычисляется из проверенного input до BEGIN, а его merge в canonical/compatibility состояние выполняется внутри этой же транзакции.
 
 ## Ошибки и проверяемый round-trip
 

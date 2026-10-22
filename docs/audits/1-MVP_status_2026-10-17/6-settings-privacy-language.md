@@ -1,5 +1,7 @@
 # Уведомления, конфиденциальность, оформление, язык
 
+> Обновление 23.10.2026 (#1041): owner-only событие после commit, транспорт вкладок, focus/reconnect и 30-second recovery реализованы; добавлены session-scoped cache и безопасная очередь записей. Сквозная проверка на двух устройствах/двух вкладках и другом аккаунте — [синхронизация настроек](../../settings-sync.md). Клиентские #725/#728 реализованы; ниже сохранён исторический snapshot.
+
 > Обновление 22.10.2026 (#1042): серверный resolver, однократная нормализация/marker,
 > alias projections и push silent реализованы; новый service worker применяет policy.
 > [Rollout и rollback](../../notification-settings-migration.md). Browser fallback/ringtone

@@ -20,11 +20,14 @@ interface IEventPayload {
   messageId?: string;
   userId?: string;
   currentUserId?: string;
+  version?: number;
 }
 
 type TInvalidationRule = (payload: IEventPayload) => QueryKey[];
 
 export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
+  [WS_EVENTS.USER.SETTINGS_UPDATED]: ({ userId, currentUserId, version }) =>
+    userId && userId === currentUserId && version === 1 ? [userKeys.settings()] : [],
   [WS_EVENTS.MESSAGE.NEW]: ({ chatId }) =>
     chatId ? [chatKeys.messages(chatId), chatKeys.list()] : [chatKeys.list()],
 

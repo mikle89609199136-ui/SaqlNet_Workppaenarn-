@@ -42,7 +42,7 @@ Call notification создаётся по валидированному FSM inc
 
 Перед background fallback выполняется короткий owner-scoped BroadcastChannel probe (75ms). Активная вкладка того же аккаунта имеет приоритет даже при разном порядке доставки сокета. Другая учётная запись не отвечает. Web Locks и bounded ledger сериализуют claim одного события в нескольких вкладках: до 512 идентификаторов за 5 минут. На диске только owner/event id и время, без plaintext, ключей или settings. Claim не удерживает lock во время HTTP/decrypt. В окружении без BroadcastChannel/Web Locks/storage остаётся доступный уровень suppression; строгая межвкладочная гарантия при недоступных browser primitives не обещается.
 
-Это не транспорт синхронизации preferences #1041. Новые события проверяют серверный допуск, а уже полученное изменение применяется локально; доставка изменения settings всем вкладкам/устройствам без нового события, reconnect/focus convergence и общие гонки settings writes остаются #1041.
+Alert presence/dedup transport не передаёт preferences. Доставка изменения settings всем открытым клиентам, focus/reconnect и конкурентные settings writes реализованы отдельным [транспортом #1041](settings-sync.md); alert gate читает обновляемый им канонический кеш.
 
 ## Проверки
 
@@ -62,3 +62,5 @@ Browser test требует изолированный локальный backen
 Service worker sound matrix и server notification policy покрыты проверками #1042. Реальная внешняя push-доставка/VAPID не заменяется имитацией и не объявляется проверенной этим локальным browser test.
 
 Локальная приёмка: 271 файл / 2430 тестов Vitest, 28 контрактных проверок, неизменность regenerated API types, production build, отсутствие циклов и lint изменённых файлов без ошибок. Полный browser scenario на реальном стенде прошёл, включая message/call/mute/preview и две вкладки. Общий app TypeScript-check остаётся с прежними ошибками DTO/Node typings в проекте; новые модули policy/permission/delivery не добавили ошибок. Корневой `npm run typecheck` не используется как замена проверки referenced app project.
+
+Синхронизация канонического кеша между открытыми клиентами реализована в #1041: [событие, сходимость и правила конкурентных записей](settings-sync.md). Pending notification gate использует ключ текущего owner/session и не блокирует нового владельца незавершённой записью прежнего.

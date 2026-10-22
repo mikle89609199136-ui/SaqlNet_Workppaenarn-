@@ -285,4 +285,5 @@ export interface IWsEventMap {
   [WS_EVENTS.USER.PRESENCE]: IPresenceChangedEvent;
   [WS_EVENTS.USER.BLOCKED]: IUserBlockEvent;
   [WS_EVENTS.USER.UNBLOCKED]: IUserBlockEvent;
+  [WS_EVENTS.USER.SETTINGS_UPDATED]: { userId: string; version: 1 };
 }

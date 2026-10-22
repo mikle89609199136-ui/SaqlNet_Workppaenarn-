@@ -16,10 +16,6 @@ describe('useCallStore', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    queryClient.setQueryData(userKeys.settings(), {
-      settings: { notifications: true, sounds: true, callSounds: true },
-      privacy: {},
-    });
     vi.spyOn(services.userService, 'getSettings').mockImplementation(async () =>
       queryClient.getQueryData(userKeys.settings())!
     );
@@ -127,6 +123,10 @@ describe('useCallStore', () => {
       settings: {
         sounds: true,
       } as any,
+    });
+    queryClient.setQueryData(userKeys.settings(), {
+      settings: { notifications: true, sounds: true, callSounds: true },
+      privacy: {},
     });
   });
 

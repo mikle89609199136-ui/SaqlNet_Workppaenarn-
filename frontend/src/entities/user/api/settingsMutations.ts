@@ -1,107 +1,90 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type MutateOptions } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
-import type { IPrivacyDto, ISettingsDto, ISettingsPayloadDto } from '@/types';
+import type { IPrivacyDto, ISettingsDto } from '@/types';
 import { userKeys } from '../model/userKeys';
+import {
+  isSettingsSession,
+  settingsSession,
+  type TSettingsSession,
+} from '../model/settingsSession';
+import {
+  beginSettingsWrite,
+  finishSettingsWrite,
+  settingsWritesPending,
+  type ISettingsWrite,
+  type TSettingsSection,
+} from '../model/settingsWrites';
+import { refreshSettings, publishSettingsInvalidation } from '../model/settingsSync';
 
-/**
- * Сохранение настроек и приватности.
- *
- * Лежит рядом с `settingsQuery`, а не в отдельной папке мутаций: ключ кеша
- * у них общий, инвалидация общая, и читать их порознь бессмысленно.
- *
- * Три вещи, которые здесь делаются намеренно:
- *
- * **Уходит патч, а не весь объект.** Сервер сливает изменения
- * (`settings = settings || $2::jsonb`), поэтому слать нужно только
- * изменённое поле. Раньше уходил весь объект, собранный на момент клика, и
- * два быстрых переключения затирали друг друга: второй запрос отправлял
- * состояние, в котором первого изменения ещё не было.
- *
- * Оговорка на будущее: `||` сливает только верхний уровень. Если настройка
- * станет вложенной, патч `{ notifications: { sound: false } }` заменит весь
- * объект `notifications`, а не одно поле.
- *
- * **Значение показывается до ответа сервера.** Переключатель обязан
- * отзываться сразу, поэтому новое значение кладётся в кеш в `onMutate`.
- *
- * **Ошибка возвращает прежнее значение.** Снимок кеша сохраняется до
- * записи и восстанавливается в `onError`. Без этого человек видел
- * «не удалось сохранить» и включённый переключатель одновременно, а после
- * перезагрузки тот возвращался обратно.
- */
-
-/** Слияние патча в ту половину ответа, к которой он относится. */
-function mergeSettings(
-  current: ISettingsPayloadDto | undefined,
-  patch: Partial<ISettingsDto>
-): ISettingsPayloadDto {
-  return {
-    settings: { ...current?.settings, ...patch },
-    privacy: current?.privacy ?? {},
-  };
+interface IWriteVariables<T> {
+  patch: T;
+  session: TSettingsSession;
 }
 
-function mergePrivacy(
-  current: ISettingsPayloadDto | undefined,
-  patch: Partial<IPrivacyDto>
-): ISettingsPayloadDto {
+/** Flat patches preserve other fields. One local queue preserves click order across hooks.
+ * PUT responses are never installed as snapshots: only a new GET after the last write
+ * can confirm the canonical state. Rollback removes only that write's optimistic layer.
+ */
+function usePreferenceMutation<T extends object>(
+  section: TSettingsSection,
+  send: (patch: T) => Promise<unknown>
+) {
+  const client = useQueryClient();
+  const mutation = useMutation<unknown, Error, IWriteVariables<T>, ISettingsWrite>({
+    mutationKey: userKeys.settings(),
+    scope: { id: JSON.stringify(userKeys.settings()) },
+    mutationFn: ({ patch, session }) => {
+      if (!isSettingsSession(session)) throw new DOMException('Session changed', 'AbortError');
+      return send(patch);
+    },
+    onMutate: ({ patch, session }) => beginSettingsWrite(client, session, section, patch),
+    onSuccess: (_data, { session }, context) => {
+      finishSettingsWrite(client, context, true);
+      if (isSettingsSession(session) && session.ownerId)
+        publishSettingsInvalidation(session.ownerId);
+    },
+    onError: (_error, _variables, context) => {
+      if (context) finishSettingsWrite(client, context, false);
+    },
+    onSettled: async (_data, _error, { session }) => {
+      if (isSettingsSession(session) && !settingsWritesPending(client, session))
+        await refreshSettings(client, session);
+    },
+  });
+
+  type Options = MutateOptions<unknown, Error, T, ISettingsWrite>;
+  const optionsFor = (
+    options?: Options
+  ): MutateOptions<unknown, Error, IWriteVariables<T>, ISettingsWrite> => ({
+    onSuccess: (data, variables, ...rest) => {
+      if (isSettingsSession(variables.session))
+        options?.onSuccess?.(data, variables.patch, ...rest);
+    },
+    onError: (error, variables, ...rest) => {
+      if (isSettingsSession(variables.session)) options?.onError?.(error, variables.patch, ...rest);
+    },
+    onSettled: (data, error, variables, ...rest) => {
+      if (isSettingsSession(variables.session))
+        options?.onSettled?.(data, error, variables.patch, ...rest);
+    },
+  });
   return {
-    settings: current?.settings ?? {},
-    privacy: { ...current?.privacy, ...patch },
+    ...mutation,
+    variables: mutation.variables?.patch,
+    mutate: (patch: T, options?: Options) =>
+      mutation.mutate({ patch, session: settingsSession() }, optionsFor(options)),
+    mutateAsync: (patch: T, options?: Options) =>
+      mutation.mutateAsync({ patch, session: settingsSession() }, optionsFor(options)),
   };
 }
 
 export function useUpdateSettings() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationKey: userKeys.settings(),
-    mutationFn: (patch: Partial<ISettingsDto>) => services.userService.updateSettings(patch),
-
-    onMutate: async (patch) => {
-      // Запрос, идущий прямо сейчас, ответит старым значением и затрёт
-      // только что показанное новое — поэтому его нужно отменить.
-      await queryClient.cancelQueries({ queryKey: userKeys.settings() });
-
-      const previous = queryClient.getQueryData<ISettingsPayloadDto>(userKeys.settings());
-      queryClient.setQueryData<ISettingsPayloadDto>(userKeys.settings(), (current) =>
-        mergeSettings(current, patch)
-      );
-
-      return { previous };
-    },
-
-    onError: (_error, _patch, context) => {
-      queryClient.setQueryData(userKeys.settings(), context?.previous);
-    },
-
-    // Ответ сервера — окончательное состояние: у него могли быть свои
-    // умолчания и правки, которых клиент не предполагал.
-    onSettled: () => queryClient.invalidateQueries({ queryKey: userKeys.settings() }),
-  });
+  return usePreferenceMutation('settings', (patch: Partial<ISettingsDto>) =>
+    services.userService.updateSettings(patch)
+  );
 }
-
 export function useUpdatePrivacy() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (patch: Partial<IPrivacyDto>) => services.userService.updatePrivacy(patch),
-
-    onMutate: async (patch) => {
-      await queryClient.cancelQueries({ queryKey: userKeys.settings() });
-
-      const previous = queryClient.getQueryData<ISettingsPayloadDto>(userKeys.settings());
-      queryClient.setQueryData<ISettingsPayloadDto>(userKeys.settings(), (current) =>
-        mergePrivacy(current, patch)
-      );
-
-      return { previous };
-    },
-
-    onError: (_error, _patch, context) => {
-      queryClient.setQueryData(userKeys.settings(), context?.previous);
-    },
-
-    onSettled: () => queryClient.invalidateQueries({ queryKey: userKeys.settings() }),
-  });
+  return usePreferenceMutation('privacy', (patch: Partial<IPrivacyDto>) =>
+    services.userService.updatePrivacy(patch)
+  );
 }
