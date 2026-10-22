@@ -1,3 +1,4 @@
+import { appIsForeground } from '@/shared/lib/notifications/delivery';
 import { create } from 'zustand';
 import { services } from '@/services/serviceContainer';
 import * as callRingtone from './callRingtone';
@@ -6,6 +7,7 @@ import { WebSocketClient } from '@/services/WebSocketClient';
 import {
   useProfileStore,
   blockedUsersQuery,
+  refreshNotificationSettings,
   userProfileQuery,
   userKeys,
   type IBlockedUserDto,
@@ -59,6 +61,7 @@ interface CallStoreState {
 
   // Селекторы совместимости с UI
   incomingCall: IIncomingCall | null;
+  incomingAlertsReady: boolean;
   outgoingCall: IOutgoingCall | null;
   activeCall: IActiveCall | null;
   endedCall: IEndedCall | null;
@@ -224,6 +227,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       fsm.state === 'incoming' && fsm.roomId && fsm.peerId
         ? {
             roomId: fsm.roomId,
+            chatId: fsm.chatId ?? undefined,
             from: fsm.peerId,
             fromName: fsm.peerName ?? undefined,
             fromAvatar: fsm.peerAvatar,
@@ -318,6 +322,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     callTimeoutTimer: null,
     reconnectTimeoutTimer: null,
     incomingCall: null,
+    incomingAlertsReady: false,
     outgoingCall: null,
     activeCall: null,
     endedCall: null,
@@ -467,6 +472,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     },
 
     handleIncoming: async (payload) => {
+      const receivingUserId = useProfileStore.getState().user?.id;
       const { fsm, socket } = get();
 
       if (!payload.roomId || !payload.from) {
@@ -525,7 +531,10 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
       // 4. Имя и аватар звонящего — из профиля / личного чата, но не из приглашения (#854)
       // Запрашиваем профиль ДО проверок отмены и FSM, чтобы все ожидания шли раньше финальных проверок
-      const callerInfo = await resolveCallerInfo(payload.from, directChat);
+      const [callerInfo, alertSettingsReady] = await Promise.all([
+        resolveCallerInfo(payload.from, directChat),
+        refreshNotificationSettings(queryClient),
+      ]);
 
       // 5. Проверяем, не была ли комната отменена за время асинхронных проверок (#854)
       if (cancelledRoomIds.has(payload.roomId)) {
@@ -552,6 +561,8 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         return;
       }
 
+      if (useProfileStore.getState().user?.id !== receivingUserId) return;
+      set({ incomingAlertsReady: alertSettingsReady });
       get().dispatch({
         type: 'RECEIVE_INCOMING',
         payload: {
@@ -564,8 +575,14 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         },
       });
 
-      if (getCallSoundsEnabled()) {
-        callRingtone.startRingtone();
+      if (alertSettingsReady && getCallSoundsEnabled() && appIsForeground()) {
+        callRingtone.startRingtone(
+          () =>
+            get().fsm.state === 'incoming' &&
+            get().fsm.roomId === payload.roomId &&
+            getCallSoundsEnabled() &&
+            appIsForeground()
+        );
       }
     },
 

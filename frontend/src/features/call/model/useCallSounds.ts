@@ -1,36 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
+import { useIsMutating, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryClient } from '@/shared/api';
-import {
-  type ISettingsPayloadDto,
-  selectCallSounds,
-  settingsQuery,
-  userKeys,
-  useProfileStore,
-} from '@/entities/user';
+import { getNotificationFlags, settingsQuery, userKeys } from '@/entities/user';
 
-/**
- * Хук для чтения флага воспроизведения звука звонка из настроек пользователя (#1002).
- * Читает кэш запросов настроек через selectCallSounds с запасным вариантом в useProfileStore.
- */
+/** Effective рингтон: N && C. Профиль/localStorage не разрешают оповещения до GET. */
 export function useCallSounds(): boolean {
-  const { data } = useQuery({ ...settingsQuery(), enabled: false });
-  const storeSettings = useProfileStore((s) => s.settings);
-
-  return selectCallSounds(data?.settings ?? storeSettings);
+  const client = useQueryClient();
+  useQuery({ ...settingsQuery(), enabled: false });
+  useIsMutating({ mutationKey: userKeys.settings() });
+  return getNotificationFlags(client).callSounds;
 }
-
-/**
- * Чтение флага воспроизведения звука звонка вне компонентов (внутри FSM / store / сервисов).
- * Проверяет кэш React Query, затем useProfileStore, вычисляя значение через selectCallSounds (#1002).
- */
 export function getCallSoundsEnabled(): boolean {
-  const querySettings = queryClient.getQueryData<ISettingsPayloadDto>(
-    userKeys.settings()
-  )?.settings;
-  if (querySettings) {
-    return selectCallSounds(querySettings);
-  }
-
-  const storeSettings = useProfileStore.getState().settings;
-  return selectCallSounds(storeSettings);
+  return getNotificationFlags(queryClient).callSounds;
 }

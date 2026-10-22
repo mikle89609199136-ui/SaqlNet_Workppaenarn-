@@ -17,3 +17,5 @@ export * from './model/validateAvatarFile';
 export * from './api/settingsMutations';
 export { ProfileHeader } from './ui/ProfileHeader';
 export { ProfilePanelBar, ProfilePanelFallback } from './ui/ProfilePanelFallback';
+
+export * from './model/notificationPolicy';

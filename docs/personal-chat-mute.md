@@ -19,7 +19,7 @@ RFC3339 timestamp должен быть в будущем. `{}` или `{"mutedU
 - `isMuted`: effective boolean текущего владельца; false при отсутствии настройки и после истечения срока.
 - `mutedUntil`: UTC timestamp будущего окончания; отсутствует при isMuted=false или бессрочном mute. Бессрочное отключение различается по isMuted=true.
 
-Клиентская DTO уже содержит эти поля. Действие меню, optimistic mutation/refetch и подавление browser fallback/звука выполняются в #725. При длительно открытом кеше frontend должен учитывать expiry/refetch; новый realtime event эта задача не добавляет.
+Клиентская DTO содержит эти поля. В #725 реализованы toggle меню, optimistic list/archive/detail с field-only rollback, refetch и подавление browser fallback/звука. Quiet badge учитывает expiry без нового сообщения. UI задаёт бессрочный mute; временный API сохранён. Подробности — [клиентская policy](notification-client-policy.md). Рассылка изменений другим открытым клиентам остаётся #1041; нового realtime event здесь нет.
 
 ## Хранение и доставка
 
@@ -33,4 +33,4 @@ Push Directory получает контекст события. Перед от
 
 HTTP/PostgreSQL regression tests проверяют private/group chats, бессрочный и временный mute, expiry без Sleep, повторные операции, другое устройство, чужого участника, сохранность соседних preferences и ошибку БД. Реальный Notifier с PostgreSQL Directory проверяет message/call/missed-call delivery на нескольких подписках, другой чат/пользователя, global off/on, expiry и независимый moderator mute. Мигратор проверяет повторное применение SQL.
 
-#1042 использует этот personal mute при переходе notification/sound на единый resolver. #725 добавляет frontend action и общую effective policy, #1041 отвечает за синхронизацию открытых клиентов.
+#1042 использует этот personal mute при переходе notification/sound на единый resolver. #725 реализует frontend action и общую effective policy, #1041 отвечает за синхронизацию открытых клиентов.

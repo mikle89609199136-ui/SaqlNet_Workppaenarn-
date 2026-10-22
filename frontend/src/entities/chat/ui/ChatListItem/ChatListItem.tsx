@@ -1,3 +1,4 @@
+import { useChatMuted } from '../../model/notificationMute';
 import { ROUTES } from '@/shared/config';
 import { cn, formatChatListTime, receiptState, useLongPress } from '@/shared/lib';
 import type { TReceiptState } from '@/shared/lib';
@@ -38,6 +39,7 @@ interface Props {
 
 export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu }: Props) {
   const { t, i18n } = useTranslation();
+  const muted = useChatMuted(chat);
   const title = getChatTitle(chat, t);
   const saved = isSavedMessages(chat);
   const typingLabel = useTypingLabel(chat);
@@ -142,7 +144,7 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
             >
               {title}
             </span>
-            {chat.isMuted && (
+            {muted && (
               <span
                 aria-label={t('chatList.muted', 'Без звука')}
                 className={cn('flex self-center text-ink-3', onCurrentRow)}
@@ -223,7 +225,7 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
                     ? t('chatList.markedUnread', 'Отмечен непрочитанным')
                     : `${chat.unreadCount} ${t('unreadMessages', 'непрочитанных')}`
                 }
-                tone={chat.isMuted ? 'quiet' : 'brand'}
+                tone={muted ? 'quiet' : 'brand'}
               >
                 {chat.isMarkedUnread ? undefined : chat.unreadCount}
               </Badge>

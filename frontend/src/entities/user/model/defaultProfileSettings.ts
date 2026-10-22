@@ -19,7 +19,7 @@ export const DEFAULT_PROFILE_SETTINGS = {
 
 /**
  * Читает сохранённое предпочтение рингтона (#496/#1002), независимо от sounds.
- * Это не effective policy: global notifications и контекст применяются в #725.
+ * Только отображение сохранённого выбора; effective policy #725 учитывает N и подтверждённый query.
  */
 export function selectCallSounds(settings?: Partial<ISettingsDto> | null): boolean {
   return settings?.callSounds ?? DEFAULT_PROFILE_SETTINGS.callSounds ?? true;
