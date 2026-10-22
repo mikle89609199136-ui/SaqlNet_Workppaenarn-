@@ -169,11 +169,16 @@ func TestSettingsNormalizeCorruptRowsWithoutReadWrites(t *testing.T) {
 	require.Equal(t, "letter", settings["avatarShape"])
 	require.NotContains(t, settings, "unknown")
 	all := api.request(t, http.MethodGet, "all-settings", "", http.StatusOK)
-	for _, key := range []string{"notificationSettings", "soundSettings", "advancedSettings"} {
+	for _, key := range []string{"notificationSettings", "advancedSettings"} {
 		for _, value := range all[key].(map[string]any) {
 			require.NotEqual(t, true, value)
 		}
 	}
+	soundAliases := all["soundSettings"].(map[string]any)
+	require.Equal(t, false, soundAliases["messagesSound"])
+	require.Equal(t, false, soundAliases["notificationsSound"])
+	require.Equal(t, true, soundAliases["callsSound"], "canonical/default callSounds не зависит от corrupt legacy section")
+	require.Equal(t, false, soundAliases["sendSound"])
 	storage := api.request(t, http.MethodGet, "storage", "", http.StatusOK)["settings"].(map[string]any)
 	require.Equal(t, false, storage["autoDownloadWifi"])
 	require.Equal(t, "never", storage["deleteMediaAfter"])

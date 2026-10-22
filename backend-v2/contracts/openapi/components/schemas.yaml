@@ -7,7 +7,8 @@ LegacySettingsBulkPatch:
     Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495);
     bulk and legacy section writers share a row-locked transaction (#1047). Correctly typed passcode fields
     are ignored. Canonical flags beat
-    valid legacy sound aliases (#496/#1042). Unknown root fields and null root are rejected before SQL (#495).
+    valid legacy sound aliases (#496/#1042); conflicting submitted message aliases without canonical sounds
+    reject the complete patch with 400 validation_failed. Unknown root fields and null root are rejected before SQL (#495).
   properties:
     settings:
       $ref: '#/LegacyGeneralSettingsBulkSection'
@@ -83,7 +84,7 @@ NotificationPreferences:
     Defaults describe normalized reads/new accounts, not resetting a patch.
     These are stored preferences, not effective delivery decisions. Detailed
     legacy objects are compatibility data, with sound aliases mapped in #1042.
-    Runtime validation is enforced by #495; shared defaults are applied by #451; alias migration remains #1042.
+    Runtime validation is enforced by #495; shared defaults are applied by #451; one-time alias migration and projections are implemented by #1042.
   properties:
     notifications:
       type: boolean
@@ -98,14 +99,14 @@ NotificationPreferences:
         Default true when absent during normalization. Incoming message sound preference, independent of callSounds.
         Effective message sound also requires notifications, an unmuted chat
         and an eligible delivery context. Legacy messagesSound and
-        notificationsSound become compatibility aliases after #1042.
+        notificationsSound are compatibility aliases of sounds (#1042).
     callSounds:
       type: boolean
       description: >-
         Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated
         to conversation audio. Effective ringtone also requires notifications
-        and an allowed call. Legacy callsSound becomes an alias after #1042.
-        Missing on older accounts: read projection supplies true (#451) without persisting it before #1042.
+        and an allowed call. Legacy callsSound is an alias of callSounds (#1042).
+        Existing rows are normalized once in migration 0042; canonical values then remain authoritative.
 MvpSettings:
   type: object
   additionalProperties: false
@@ -159,7 +160,7 @@ MvpSettings:
   description: >-
     Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an
     old response; defaults are normalization rules, not patch values. Root and leaves must not be null,
-    unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Shared read defaults are applied by #451. Appearance compatibility is implemented by #1040 without global backfill; notification migration remains #1042. Animation/GIF controls are outside MVP.
+    unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Shared read defaults are applied by #451. Appearance compatibility is implemented by #1040 without global backfill; notification migration/resolver are implemented by #1042. Animation/GIF controls are outside MVP.
 Error:
   type: object
   required: [code, message]
@@ -1369,19 +1370,19 @@ LegacySoundSettings:
       description: Compatibility percentage; fallback 100. Not call conversation audio volume.
     notificationsSound:
       type: boolean
-      description: 'Fallback true; alias precedence/migration is defined in #496/#1042.'
+      description: 'Compatibility alias of canonical sounds (#1042). Reads project sounds; a submitted alias writes sounds unless canonical sounds is provided in the same bulk patch.'
     messagesSound:
       type: boolean
-      description: 'Fallback true; alias precedence/migration is defined in #496/#1042.'
+      description: 'Compatibility alias of canonical sounds (#1042). Conflicting submitted messagesSound/notificationsSound without canonical sounds reject the complete patch before SQL.'
     sendSound:
       type: boolean
-      description: 'Fallback true; alias precedence/migration is defined in #496/#1042.'
+      description: 'Compatibility-only preference; fallback true. Not a global sound gate or an implemented send-sound feature.'
     callsSound:
       type: boolean
-      description: 'Fallback true; alias precedence/migration is defined in #496/#1042.'
+      description: 'Compatibility alias of canonical callSounds (#1042), independent of message sounds and notifications.'
     vibrateOnCall:
       type: boolean
-      description: 'Fallback true; alias precedence/migration is defined in #496/#1042.'
+      description: 'Compatibility-only preference; fallback true. Does not bypass effective notification/sound policy.'
     notificationSound:
       type: string
       description: Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support.
@@ -1992,6 +1993,28 @@ DeviceRegistrationRequest:
       nullable: true
       description: Session metadata is replaced on every registration. Omitted/null/empty string writes an empty value. No enum, address or length validator exists.
 
+PushNotificationPayload:
+  type: object
+  additionalProperties: false
+  required: [v, kind, chatId, chatType, actorName, lang, silent]
+  description: >-
+    Web Push v1 metadata, extended compatibly with an explicit silent boolean (#1042).
+    No plaintext message, keys, full settings or subscription credentials are included.
+    Global notifications=false suppresses delivery; personal chat mute suppresses message delivery only.
+    Message silent follows sounds; call silent follows callSounds; missed_call is always silent.
+    Updated workers show legacy payloads with absent/invalid silent quietly; older workers ignore the new
+    property and must be updated to enforce sound policy. Browser fallback/ringtone remains #725.
+  properties:
+    v: { type: integer, enum: [1] }
+    kind: { type: string, enum: [message, call, missed_call] }
+    chatId: { type: string, format: uuid }
+    chatType: { type: string, enum: [private, group, channel, self] }
+    actorName: { type: string }
+    chatTitle: { type: string, description: Omitted for private chats. }
+    roomId: { type: string }
+    callKind: { type: string }
+    lang: { type: string }
+    silent: { type: boolean, description: Effective server sound decision; false explicitly permits sound, true disables sound/vibration. }
 PushVapidResponse:
   type: object
   required:

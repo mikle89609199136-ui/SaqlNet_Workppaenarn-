@@ -62,7 +62,7 @@ Bulk никогда не включает/отключает passcode, не ус
 
 ## Notification/sound aliases в bulk
 
-После внедрения resolver #1042 применяется уже принятое решение #496:
+Resolver #1042 применяет решение #496:
 
 - Валидные переданные `settings.sounds/callSounds` имеют приоритет над соответствующими aliases в soundSettings; явный false сохраняется.
 - Если canonical flag отсутствует, переданный messagesSound или notificationsSound задаёт sounds, callsSound — callSounds. Отсутствующий alias не подмешивается из прежнего snapshot.
@@ -70,7 +70,7 @@ Bulk никогда не включает/отключает passcode, не ус
 - Типы проигравших по приоритету aliases тоже валидируются; invalid input не маскируется приоритетом.
 - Alias-проекции и compatibility-only данные обновляются одной атомарной операцией с canonical fields. GET после перехода показывает разрешённые resolver значения, а не независимые копии глобальных flags.
 
-До rollout #1042 bulk пока сохраняет независимые JSONB objects. #454 не объявляет runtime alias mapping реализованным.
+Resolver #1042 применяет указанные приоритеты до SQL и атомарно сохраняет canonical/compatibility части через locked mutation path. Legacy sound aliases возвращаются как проекции canonical flags; физические старые aliases не становятся вторым источником.
 
 ## Appearance aliases (#1040)
 
@@ -94,11 +94,11 @@ Canonical SQL updates, которые уже меняют только пере�
 
 Canonical settings/privacy и dedicated folders/passcode writers выполняют атомарные SQL UPDATE той же строки и сериализуются с этой блокировкой. Mutation читает только шесть JSON sections: старые повреждённые folders не мешают unrelated patch, omitted/null folders сохраняются физически. Passcode columns не входят в UPDATE. Defaults из #451 добавляются к ответам, но не становятся patch keys.
 
-Проверки на настоящем PostgreSQL (`settings_mutation_integration_test.go`) используют удерживаемую транзакцию и `pg_blocking_pids` как барьер: writer обязан ждать на SELECT FOR UPDATE, затем увидеть предыдущее изменение. Проверены disjoint/same-key patches, оба порядка bulk/section writers, замена/очистка folders, параллельный passcode, ошибки UPDATE и deferred COMMIT, отмена ожидающего запроса. События синхронизации пока не публикуются; транспорт и публикация после commit остаются #1041. Resolver #1042 должен вычислять canonical/alias изменения внутри этой же транзакции.
+Проверки на настоящем PostgreSQL (`settings_mutation_integration_test.go`) используют удерживаемую транзакцию и `pg_blocking_pids` как барьер: writer обязан ждать на SELECT FOR UPDATE, затем увидеть предыдущее изменение. Проверены disjoint/same-key patches, оба порядка bulk/section writers, замена/очистка folders, параллельный passcode, ошибки UPDATE и deferred COMMIT, отмена ожидающего запроса. События синхронизации пока не публикуются; транспорт и публикация после commit остаются #1041. Alias patch #1042 вычисляется из проверенного input до BEGIN, а его merge в canonical/compatibility состояние выполняется внутри этой же транзакции.
 
 ## Ошибки и проверяемый round-trip
 
-Общие cookie/Origin/auth/errors правила — #498. После #495 неверный JSON даёт 400 invalid_json, а shape/type/null/unknown-key/domain errors — 400 validation_failed до любого SQL. Все sections, включая проигравшие по будущему приоритету aliases, проверяются до записи. Неверный passcode input не изменяет passcode; тип проверяется несмотря на read-only семантику. Не вводим новый reset endpoint, PATCH или другой URL.
+Общие cookie/Origin/auth/errors правила — #498. После #495 неверный JSON даёт 400 invalid_json, а shape/type/null/unknown-key/domain errors — 400 validation_failed до любого SQL. Все sections, включая проигравшие по приоритету aliases, проверяются до записи. Неверный passcode input не изменяет passcode; тип проверяется несмотря на read-only семантику. Не вводим новый reset endpoint, PATCH или другой URL.
 
 Round-trip для compatibility-клиента:
 

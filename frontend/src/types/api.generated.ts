@@ -581,13 +581,13 @@ export interface paths {
         /**
          * Get legacy settings snapshot
          * @deprecated
-         * @description Deprecated compatibility snapshot (#498/#454). Use GET /users/settings for MVP settings/privacy. Passcode fields are read-only; exceptions, blocklist, subscriptions and sessions are separate resources. After #1042, sound aliases are resolved from canonical flags (#496).
+         * @description Deprecated compatibility snapshot (#498/#454). Use GET /users/settings for MVP settings/privacy. Passcode fields are read-only; exceptions, blocklist, subscriptions and sessions are separate resources. Sound aliases are resolved from canonical flags by #1042 (#496); compatibility-only details remain stored.
          */
         get: operations["getAllSettings"];
         /**
          * Partially update legacy settings sections
          * @deprecated
-         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Submitted textSize wins over submitted fontSize; otherwise a submitted fontSize sets textSize (#1040). Both fields are validated, including the losing alias. Arbitrary accentColor stays compatibility data. Bulk and legacy section read-modify-write share a row-locked transaction (#1047), preserving disjoint concurrent patches. Row creation and all section changes roll back on update or commit failure. Strict root/section/leaf validation runs before SQL (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases fail without writes.
+         * @description Deprecated partial bulk update (#454), NOT replace. Each provided object section is shallow-merged; omitted, null or empty object sections do not reset values. A provided folders array replaces the list (empty clears), omission/null preserves it. Correctly typed passcode fields are accepted but ignored for legacy snapshot compatibility. Response stays success only; GET separately for the resulting snapshot. Submitted textSize wins over submitted fontSize; otherwise a submitted fontSize sets textSize (#1040). Both fields are validated, including the losing alias. Arbitrary accentColor stays compatibility data. Bulk and legacy section read-modify-write share a row-locked transaction (#1047), preserving disjoint concurrent patches. Row creation and all section changes roll back on update or commit failure. Strict root/section/leaf validation runs before SQL (#495). Canonical sound flags win over aliases as specified in #496/#1042; conflicting submitted message aliases without canonical sounds fail without writes.
          */
         put: operations["updateAllSettings"];
         post?: never;
@@ -606,12 +606,12 @@ export interface paths {
         };
         /**
          * Get own account settings and privacy
-         * @description Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate objects; never another user's settings. Detailed legacy notification/sound/storage sections are not included. Typed field contract is #453; shared read defaults are implemented in #451. Appearance compatibility (#1040) resolves a valid stored textSize before legacy fontSize and the default, without backfill. Notification migration remains #1042.
+         * @description Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate objects; never another user's settings. Detailed legacy notification/sound/storage sections are not included. Typed field contract is #453; shared read defaults are implemented in #451. Appearance compatibility (#1040) resolves a valid stored textSize before legacy fontSize and the default, without backfill. One-time notification migration and alias projections are implemented by #1042.
          */
         get: operations["getSettings"];
         /**
          * Partially update own account settings
-         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is normalized on reads; shared read defaults are implemented in #451. Appearance compatibility is implemented in #1040; notification migration remains #1042. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization require #1042; consumers apply effective policy in #725.
+         * @description Canonical MVP preference write (#498). Send a flat partial JSON object, for example {"theme":"light"}, not an envelope with a settings key. Omitted keys are preserved; merging is shallow, not JSON Merge Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is normalized on reads; shared read defaults are implemented in #451. Appearance compatibility is implemented in #1040; notification migration/resolver are implemented by #1042. Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound aliases and read normalization are implemented by #1042; browser fallback/ringtone consumers remain #725.
          */
         put: operations["updateSettings"];
         post?: never;
@@ -698,13 +698,13 @@ export interface paths {
         /**
          * Get notification settings
          * @deprecated
-         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
+         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). One-time migration and alias projections are implemented by #1042.
          */
         get: operations["getNotifications"];
         /**
          * Update notification settings
          * @deprecated
-         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior. Closed keys, types, ranges and null leaves are validated before SQL (#495).
+         * @description Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). One-time migration and alias projections are implemented by #1042. Closed keys, types, ranges and null leaves are validated before SQL (#495).
          */
         put: operations["updateNotifications"];
         post?: never;
@@ -724,13 +724,13 @@ export interface paths {
         /**
          * Get sound settings
          * @deprecated
-         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior.
+         * @description Legacy detailed sound settings, deprecated by #498. Compatibility fields remain stored; messagesSound/notificationsSound alias settings.sounds and callsSound aliases settings.callSounds (#1042). New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). One-time migration and alias projections are implemented by #1042.
          */
         get: operations["getSounds"];
         /**
          * Update sound settings
          * @deprecated
-         * @description Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of /users/settings. New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042; until then this route retains its legacy behavior. Closed keys, types, ranges and null leaves are validated before SQL (#495).
+         * @description Legacy detailed sound settings, deprecated by #498. Compatibility fields remain stored; messagesSound/notificationsSound alias settings.sounds and callsSound aliases settings.callSounds (#1042). New MVP consumers use /users/settings. Global preferences are settings.notifications/sounds/callSounds (#496). One-time migration and alias projections are implemented by #1042. Closed keys, types, ranges and null leaves are validated before SQL (#495).
          */
         put: operations["updateSounds"];
         post?: never;
@@ -2771,6 +2771,25 @@ export interface components {
             /** @description When the boundary moved, UTC ISO 8601 with milliseconds. */
             at: string;
         };
+        /** @description Web Push v1 metadata, extended compatibly with an explicit silent boolean (#1042). No plaintext message, keys, full settings or subscription credentials are included. Global notifications=false suppresses delivery; personal chat mute suppresses message delivery only. Message silent follows sounds; call silent follows callSounds; missed_call is always silent. Updated workers show legacy payloads with absent/invalid silent quietly; older workers ignore the new property and must be updated to enforce sound policy. Browser fallback/ringtone remains #725. */
+        PushNotificationPayload: {
+            /** @enum {integer} */
+            v: 1;
+            /** @enum {string} */
+            kind: "message" | "call" | "missed_call";
+            /** Format: uuid */
+            chatId: string;
+            /** @enum {string} */
+            chatType: "private" | "group" | "channel" | "self";
+            actorName: string;
+            /** @description Omitted for private chats. */
+            chatTitle?: string;
+            roomId?: string;
+            callKind?: string;
+            lang: string;
+            /** @description Effective server sound decision; false explicitly permits sound */
+            silent: boolean;
+        };
         /** @example john_doe */
         Username: string;
         /**
@@ -3044,9 +3063,9 @@ export interface components {
         };
         /** @description Default true when absent during normalization. Master preference for automatic message/call alerts, including their sounds. False masks sounds/callSounds without changing those stored values, subscriptions, chat preferences, receipts or conversation audio. Browser fallback and ringtone enforcement remain in #725. */
         notifications: boolean;
-        /** @description Default true when absent during normalization. Incoming message sound preference, independent of callSounds. Effective message sound also requires notifications, an unmuted chat and an eligible delivery context. Legacy messagesSound and notificationsSound become compatibility aliases after #1042. */
+        /** @description Default true when absent during normalization. Incoming message sound preference, independent of callSounds. Effective message sound also requires notifications, an unmuted chat and an eligible delivery context. Legacy messagesSound and notificationsSound are compatibility aliases of sounds (#1042). */
         sounds: boolean;
-        /** @description Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated to conversation audio. Effective ringtone also requires notifications and an allowed call. Legacy callsSound becomes an alias after #1042. Missing on older accounts: read projection supplies true (#451) without persisting it before #1042. */
+        /** @description Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated to conversation audio. Effective ringtone also requires notifications and an allowed call. Legacy callsSound is an alias of callSounds (#1042). Existing rows are normalized once in migration 0042; canonical values then remain authoritative. */
         callSounds: boolean;
         /** @description Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown keys/null leaves rejected before SQL (#495). Appearance alias compatibility is implemented by #1040; reads resolve valid textSize, then valid legacy fontSize, then the shared default. Bulk/export fontSize projects the resolved value. Arbitrary accentColor remains compatibility data. Stored unknown keys are hidden on reads. It is not an extension point. */
         LegacyGeneralSettings: {
@@ -3153,15 +3172,15 @@ export interface components {
             notificationsVolume?: number;
             /** @description Compatibility percentage; fallback 100. Not call conversation audio volume. */
             mediaVolume?: number;
-            /** @description Fallback true; alias precedence/migration is defined in #496/#1042. */
+            /** @description Compatibility alias of canonical sounds (#1042). Reads project sounds; a submitted alias writes sounds unless canonical sounds is provided in the same bulk patch. */
             notificationsSound?: boolean;
-            /** @description Fallback true; alias precedence/migration is defined in #496/#1042. */
+            /** @description Compatibility alias of canonical sounds (#1042). Conflicting submitted messagesSound/notificationsSound without canonical sounds reject the complete patch before SQL. */
             messagesSound?: boolean;
-            /** @description Fallback true; alias precedence/migration is defined in #496/#1042. */
+            /** @description Compatibility-only preference; fallback true. Not a global sound gate or an implemented send-sound feature. */
             sendSound?: boolean;
-            /** @description Fallback true; alias precedence/migration is defined in #496/#1042. */
+            /** @description Compatibility alias of canonical callSounds (#1042), independent of message sounds and notifications. */
             callsSound?: boolean;
-            /** @description Fallback true; alias precedence/migration is defined in #496/#1042. */
+            /** @description Compatibility-only preference; fallback true. Does not bypass effective notification/sound policy. */
             vibrateOnCall?: boolean;
             /** @description Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support. */
             notificationSound?: string;
@@ -3275,7 +3294,7 @@ export interface components {
         LegacyStorageSettingsBulkSection: components["schemas"]["LegacyStorageSettings"] | components["schemas"]["LegacyNullSection"];
         /** @description Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyAdvancedSettings; invalid leaves and unknown keys reject the complete command (#495). */
         LegacyAdvancedSettingsBulkSection: components["schemas"]["LegacyAdvancedSettings"] | components["schemas"]["LegacyNullSection"];
-        /** @description Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data. Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495); bulk and legacy section writers share a row-locked transaction (#1047). Correctly typed passcode fields are ignored. Canonical flags beat valid legacy sound aliases (#496/#1042). Unknown root fields and null root are rejected before SQL (#495). */
+        /** @description Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data. Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495); bulk and legacy section writers share a row-locked transaction (#1047). Correctly typed passcode fields are ignored. Canonical flags beat valid legacy sound aliases (#496/#1042); conflicting submitted message aliases without canonical sounds reject the complete patch with 400 validation_failed. Unknown root fields and null root are rejected before SQL (#495). */
         LegacySettingsBulkPatch: {
             settings?: components["schemas"]["LegacyGeneralSettingsBulkSection"];
             privacySettings?: components["schemas"]["PrivacySettingsPatchBulkSection"];
@@ -3298,7 +3317,7 @@ export interface components {
             /** @enum {string} */
             code?: "invalid_json" | "validation_failed";
         };
-        /** @description Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an old response; defaults are normalization rules, not patch values. Root and leaves must not be null, unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Shared read defaults are applied by #451. Appearance compatibility is implemented by #1040 without global backfill; notification migration remains #1042. Animation/GIF controls are outside MVP. */
+        /** @description Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an old response; defaults are normalization rules, not patch values. Root and leaves must not be null, unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Shared read defaults are applied by #451. Appearance compatibility is implemented by #1040 without global backfill; notification migration/resolver are implemented by #1042. Animation/GIF controls are outside MVP. */
         MvpSettings: {
             /**
              * @description Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme (#728). Backend storage/compatibility is implemented by #1040.
