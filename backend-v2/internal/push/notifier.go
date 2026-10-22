@@ -59,6 +59,7 @@ type Payload struct {
 	RoomID    string `json:"roomId,omitempty"`
 	CallKind  string `json:"callKind,omitempty"`
 	Lang      string `json:"lang"`
+	Silent    bool   `json:"silent"`
 }
 
 // Target — подписка получателя, которому уведомления не выключены.
@@ -67,6 +68,7 @@ type Target struct {
 	UserID         string
 	Subscription   Subscription
 	Lang           string
+	Silent         bool
 }
 
 // ChatInfo — тип и название чата для подписи.
@@ -238,6 +240,7 @@ func (n *Notifier) deliver(ctx context.Context, event Event) {
 			RoomID:    event.RoomID,
 			CallKind:  event.CallKind,
 			Lang:      target.Lang,
+			Silent:    target.Silent || event.Kind == KindMissedCall,
 		}
 		if chat.Type != "private" {
 			payload.ChatTitle = chat.Title

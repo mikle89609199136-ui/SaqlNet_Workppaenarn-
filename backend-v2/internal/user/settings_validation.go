@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"craneapp/backend-v2/internal/platform/httpx"
+	"craneapp/backend-v2/internal/platform/notificationpolicy"
 	"craneapp/backend-v2/internal/platform/settingsdefaults"
 )
 
@@ -147,10 +148,14 @@ func validateSettingsPatch(section string, patch map[string]any) error {
 }
 
 // Defaults — проекция для ответа. Mutation base остаётся sparse: иначе
-// unrelated patch закрепит отсутствующие sound flags до миграции #1042.
+// unrelated patch не должен превращать missing flags в новый canonical выбор.
 func normalizeStoredSettings(section string, data []byte) map[string]any {
 	if section == "settings" || section == "legacy_settings" {
-		return storedAppearance(section, data)
+		out := storedAppearance(section, data)
+		for key, value := range notificationpolicy.Read(data).Map() {
+			out[key] = value
+		}
+		return out
 	}
 	return withSettingsDefaults(section, normalizeSettingsPatchBase(section, data))
 }

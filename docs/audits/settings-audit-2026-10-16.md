@@ -60,6 +60,14 @@
 После мержа реализации #559 остаются 5 задач основной очереди, 2 приёмки и #855.
 Состояния в исходных таблицах ниже — исторический snapshot от 16 октября.
 
+> **Продолжение 22 октября в #1042:** [notification model v1](../notification-settings-migration.md)
+> добавляет однократную migration с внутренним marker/rollback snapshot, canonical sound
+> aliases и conflict validation до SQL. Push использует общий strict canonical reader и
+> silent по независимым S/C; worker применяет quiet policy и безопасный legacy fallback.
+> Проверены replay/rollback, HTTP/PG writers, lock barriers и полная N/S/C/M матрица.
+> Новая серверная часть готова; browser fallback/message sound/ringtone остаются #725.
+> Исходные состояния и очередь ниже относятся к датам предыдущих сверок.
+
 ## Основание и границы проверки
 
 > **Продолжение 17 октября в #495:** typed validation всех общих и detailed sections

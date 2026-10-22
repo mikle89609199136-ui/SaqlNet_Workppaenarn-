@@ -19,6 +19,7 @@ import (
 	"craneapp/backend-v2/internal/auth"
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/blockevent"
+	"craneapp/backend-v2/internal/platform/notificationpolicy"
 	"craneapp/backend-v2/internal/platform/privacy"
 	"craneapp/backend-v2/internal/platform/profileevent"
 	usernamepolicy "craneapp/backend-v2/internal/platform/username"
@@ -618,7 +619,11 @@ func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input Al
 	}
 	// Проверены оба поля, включая alias, проигравший canonical textSize.
 	input.Settings = appearancePatch(input.Settings)
-	_, err := s.mutateSettings(ctx, userID, input)
+	input, err := notificationPatch(input)
+	if err != nil {
+		return err
+	}
+	_, err = s.mutateSettings(ctx, userID, input)
 	return err
 }
 
@@ -700,11 +705,19 @@ func (s *Service) UpdatePreference(ctx context.Context, userID, column string, p
 		input.AdvancedSettings = patch
 		result = func(state AllSettings) map[string]any { return state.AdvancedSettings }
 	}
+	input, err := notificationPatch(input)
+	if err != nil {
+		return nil, err
+	}
 	current, err := s.mutateSettings(ctx, userID, input)
 	if err != nil {
 		return nil, err
 	}
-	return withSettingsDefaults(column, result(current)), nil
+	out := withSettingsDefaults(column, result(current))
+	if column == "sound_settings" {
+		notificationpolicy.FromMap(current.Settings).ProjectSound(out)
+	}
+	return out, nil
 }
 
 func (s *Service) Folders(ctx context.Context, userID string) ([]any, error) {
@@ -963,7 +976,13 @@ func (s *Service) jsonColumn(ctx context.Context, userID, column string) (map[st
 	case "notification_settings":
 		q = `SELECT notification_settings FROM users.settings WHERE user_id = $1`
 	case "sound_settings":
-		q = `SELECT sound_settings FROM users.settings WHERE user_id = $1`
+		var settings []byte
+		if err := s.db.QueryRowContext(ctx, `SELECT sound_settings, settings FROM users.settings WHERE user_id=$1`, userID).Scan(&raw, &settings); err != nil {
+			return nil, err
+		}
+		out := normalizeStoredSettings(column, raw)
+		notificationpolicy.Read(settings).ProjectSound(out)
+		return out, nil
 	case "advanced_settings":
 		q = `SELECT advanced_settings FROM users.settings WHERE user_id = $1`
 	case "storage_settings":

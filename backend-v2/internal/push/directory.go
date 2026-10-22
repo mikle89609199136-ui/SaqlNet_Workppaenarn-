@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 
+	"craneapp/backend-v2/internal/platform/notificationpolicy"
+
 	"github.com/lib/pq"
 )
 
@@ -64,11 +66,10 @@ func (d DBDirectory) Targets(ctx context.Context, userIDs []string, event Event)
 	}
 	rows, err := d.DB.QueryContext(ctx, `
 		SELECT ps.id::text, ps.user_id::text, ps.endpoint, ps.p256dh, ps.auth,
-		       COALESCE(us.settings->>'language', 'ru')
+		       COALESCE(us.settings->>'language', 'ru'), us.settings
 		FROM users.push_subscriptions ps
 		LEFT JOIN users.settings us ON us.user_id = ps.user_id
 		WHERE ps.user_id = ANY($1::uuid[])
-		  AND COALESCE(us.settings->>'notifications', 'true') <> 'false'
 		  AND ($3 <> 'message' OR NOT EXISTS (
 		    SELECT 1 FROM chats.user_chat_settings cs
 		    WHERE cs.user_id=ps.user_id AND cs.chat_id=$2::uuid
@@ -83,9 +84,21 @@ func (d DBDirectory) Targets(ctx context.Context, userIDs []string, event Event)
 	var targets []Target
 	for rows.Next() {
 		var target Target
+		var rawSettings []byte
 		if err := rows.Scan(&target.SubscriptionID, &target.UserID, &target.Subscription.Endpoint,
-			&target.Subscription.Keys.P256dh, &target.Subscription.Keys.Auth, &target.Lang); err != nil {
+			&target.Subscription.Keys.P256dh, &target.Subscription.Keys.Auth, &target.Lang, &rawSettings); err != nil {
 			return nil, err
+		}
+		flags := notificationpolicy.Read(rawSettings)
+		if !flags.Notifications {
+			continue
+		}
+		target.Silent = true
+		switch event.Kind {
+		case KindMessage:
+			target.Silent = !flags.Sounds
+		case KindCall:
+			target.Silent = !flags.CallSounds
 		}
 		targets = append(targets, target)
 	}
