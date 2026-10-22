@@ -55,6 +55,7 @@ export function useUpdateSettings() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: userKeys.settings(),
     mutationFn: (patch: Partial<ISettingsDto>) => services.userService.updateSettings(patch),
 
     onMutate: async (patch) => {

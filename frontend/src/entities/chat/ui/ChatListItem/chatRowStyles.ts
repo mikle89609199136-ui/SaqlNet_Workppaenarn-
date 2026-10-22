@@ -13,7 +13,7 @@
    `text-inherit` — потому что строкой бывает и ссылка, и кнопка: у
    каждой свой цвет текста от браузера. */
 export const chatRowStyles =
-  'group flex items-center gap-3 rounded-bubble px-3 py-2.25 text-inherit no-underline ' +
+  'group flex items-center gap-3 rounded-bubble px-3 py-(--chat-row-py) text-inherit no-underline ' +
   'transition-colors duration-[200ms] hover:layer-hover data-[menu=open]:bg-sheet-2 ' +
   'aria-[current=page]:bg-brand-fill aria-[current=page]:text-on-brand aria-[current=page]:hover:bg-none ' +
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:-outline-offset-2';

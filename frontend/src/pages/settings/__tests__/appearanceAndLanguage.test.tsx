@@ -8,7 +8,6 @@ import { renderSettings } from '@/test/harness/renderSettings';
 import { testI18n } from '@/test/harness/i18n';
 import { clearToasts, getToasts } from '@/shared/ui';
 import { STORAGE_KEYS } from '@/shared/config';
-import { useAppearanceStore } from '@/entities/user';
 
 /**
  * Разделы «Внешний вид» и «Язык».
@@ -139,31 +138,130 @@ describe('внешний вид и язык', () => {
     await waitFor(() => expect(screen.getByRole('radio', { name: /^Буква/ })).toBeChecked());
   });
 
-  it('палитра и акцент применяются сразу и запоминаются в браузере (#828)', async () => {
-    const root = document.documentElement;
-    try {
-      renderSettings({ section: 'appearance', settings: {} });
+  it('палитра и акцент сохраняются на сервере отдельными патчами (#728)', async () => {
+    let saved: Record<string, unknown> = {};
+    const patches: unknown[] = [];
+    server.use(
+      http.get(api('/users/settings'), () => HttpResponse.json({ settings: saved, privacy: {} })),
+      http.put(api('/users/settings'), async ({ request }) => {
+        const patch = await request.json();
+        patches.push(patch);
+        saved = { ...saved, ...(patch as object) };
+        return HttpResponse.json({ success: true });
+      })
+    );
+    renderSettings({ section: 'appearance', settings: {} });
+    await userEvent.click(await screen.findByRole('radio', { name: 'Полночь' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Бирюзовый' })).toBeEnabled());
+    await userEvent.click(screen.getByRole('radio', { name: 'Бирюзовый' }));
+    await waitFor(() =>
+      expect(patches).toEqual([{ palette: 'midnight' }, { accentPreset: 'teal' }])
+    );
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Бирюзовый' })).toBeChecked());
+    expect(localStorage.getItem(STORAGE_KEYS.APPEARANCE)).toBeNull();
+    expect(document.documentElement).toHaveAttribute('data-palette', 'midnight');
+    expect(document.documentElement).toHaveAttribute('data-accent', 'teal');
+  });
 
-      await userEvent.click(await screen.findByRole('radio', { name: 'Полночь' }));
-      expect(root).toHaveAttribute('data-palette', 'midnight');
-      expect(screen.getByRole('radio', { name: 'Полночь' })).toBeChecked();
+  it.each([
+    ['Системная', { theme: 'system' }],
+    ['Крупный', { textSize: 'large' }],
+    ['Компактный', { chatDensity: 'compact' }],
+  ])('сохраняет вариант %s', async (name, patch) => {
+    let sent: unknown;
+    server.use(
+      http.put(api('/users/settings'), async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({ success: true });
+      })
+    );
+    renderSettings({ section: 'appearance', settings: {} });
+    await userEvent.click(await screen.findByRole('radio', { name: name as string }));
+    await waitFor(() => expect(sent).toEqual(patch));
+  });
 
-      await userEvent.click(screen.getByRole('radio', { name: 'Бирюзовый' }));
-      expect(root).toHaveAttribute('data-accent', 'teal');
+  it.each([
+    ['Время сообщений', 'showMessageTime'],
+    ['Статусы доставки и прочтения', 'showMessageStatus'],
+    ['Аватарки в ленте группы', 'showMessageAvatars'],
+    ['Группировать сообщения одного автора', 'groupConsecutiveMessages'],
+  ])('сохраняет переключатель %s', async (name, field) => {
+    let sent: unknown;
+    server.use(
+      http.put(api('/users/settings'), async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({ success: true });
+      })
+    );
+    renderSettings({ section: 'appearance', settings: {} });
+    await userEvent.click(await screen.findByRole('switch', { name }));
+    await waitFor(() => expect(sent).toEqual({ [field]: false }));
+  });
 
-      expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.APPEARANCE) ?? '{}')).toEqual({
-        palette: 'midnight',
-        accent: 'teal',
-      });
+  it('переносит прежний браузерный выбор только по кнопке и удаляет его после успеха', async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.APPEARANCE,
+      JSON.stringify({ palette: 'warm', accent: 'amber' })
+    );
+    let sent: unknown;
+    server.use(
+      http.put(api('/users/settings'), async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({ success: true });
+      })
+    );
+    renderSettings({
+      section: 'appearance',
+      settings: { palette: 'midnight', accentPreset: 'teal' },
+    });
+    expect(await screen.findByRole('radio', { name: 'Полночь' })).toBeChecked();
+    expect(sent).toBeUndefined();
+    await userEvent.click(screen.getByRole('button', { name: /Применить прежнюю палитру/ }));
+    await waitFor(() => expect(sent).toEqual({ palette: 'warm', accentPreset: 'amber' }));
+    await waitFor(() => expect(localStorage.getItem(STORAGE_KEYS.APPEARANCE)).toBeNull());
+  });
 
-      // Значения по умолчанию заданы в CSS без атрибута.
-      await userEvent.click(screen.getByRole('radio', { name: 'Графит' }));
-      expect(root).not.toHaveAttribute('data-palette');
-    } finally {
-      // Хранилище общее для всех тестов: возвращаем умолчания.
-      useAppearanceStore.getState().setPalette('graphite');
-      useAppearanceStore.getState().setAccent('violet');
-      localStorage.removeItem(STORAGE_KEYS.APPEARANCE);
-    }
+  it('группы вариантов поддерживают стрелки и одну остановку Tab', async () => {
+    server.use(http.put(api('/users/settings'), () => HttpResponse.json({ success: true })));
+    renderSettings({ section: 'appearance', settings: {} });
+    const group = await screen.findByRole('radiogroup', { name: 'Тема' });
+    const selected = within(group).getByRole('radio', { name: 'Тёмная' });
+    expect(
+      within(group)
+        .getAllByRole('radio')
+        .filter((radio) => radio.tabIndex === 0)
+    ).toEqual([selected]);
+    selected.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(within(group).getByRole('radio', { name: 'Светлая' })).toHaveFocus();
+  });
+  it('ошибка сохранения откатывает оформление и не пишет оптимистичный выбор в проекцию', async () => {
+    let finish!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    server.use(
+      http.get(api('/users/settings'), () =>
+        HttpResponse.json({ settings: { palette: 'warm' }, privacy: {} })
+      ),
+      http.put(api('/users/settings'), async () => {
+        await gate;
+        return HttpResponse.json({}, { status: 500 });
+      })
+    );
+    renderSettings({ section: 'appearance', settings: { palette: 'warm' } });
+    await userEvent.click(await screen.findByRole('radio', { name: 'Полночь' }));
+    await waitFor(() =>
+      expect(document.documentElement).toHaveAttribute('data-palette', 'midnight')
+    );
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS)!)).toMatchObject({
+      palette: 'warm',
+    });
+    finish();
+    expect(await screen.findByText('Не удалось сохранить настройки')).toBeInTheDocument();
+    await waitFor(() => expect(document.documentElement).toHaveAttribute('data-palette', 'warm'));
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS)!)).toMatchObject({
+      palette: 'warm',
+    });
   });
 });

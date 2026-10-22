@@ -845,3 +845,59 @@ describe('звонок в ленте', () => {
     expect(screen.getByText('Без ответа')).toBeInTheDocument();
   });
 });
+
+describe('настройки ленты #728', () => {
+  const base = {
+    currentUserId: 'user-1',
+    translations: {},
+    onOpenImage: vi.fn(),
+    onReact: vi.fn(),
+    onSelection: vi.fn(),
+  };
+  it.each(['pending', 'sent', 'delivered', 'read'] as const)(
+    'скрывает отметки %s и время',
+    (status) => {
+      renderBubble(
+        <MessageBubble
+          {...base}
+          message={makeMessage({ senderId: 'user-1', status })}
+          showDeliveryStatus
+          showMessageStatus={false}
+          showMessageTime={false}
+        />
+      );
+      expect(document.querySelector('time')).toBeNull();
+      expect(document.querySelector('[data-delivery]')).toBeNull();
+      expect(document.querySelector('.message-meta')).toBeNull();
+    }
+  );
+  it('при скрытых статусах оставляет ошибку и работающий retry', async () => {
+    const retry = vi.fn();
+    const message = makeMessage({ senderId: 'user-1', status: 'failed' });
+    renderBubble(
+      <MessageBubble
+        {...base}
+        message={message}
+        showMessageStatus={false}
+        showMessageTime={false}
+        onRetryMessage={retry}
+      />
+    );
+    expect(screen.getByText('Не отправлено')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }));
+    expect(retry).toHaveBeenCalledWith(message);
+  });
+  it('скрывает аватар группы, сохраняя имя и доступ к профилю', () => {
+    renderBubble(
+      <MessageBubble
+        {...base}
+        message={makeMessage({ senderId: 'user-2', senderName: 'Анна' })}
+        isGroupChat
+        showMessageAvatars={false}
+        onOpenProfile={vi.fn()}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Анна' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Профиль: Анна' })).not.toBeInTheDocument();
+  });
+});

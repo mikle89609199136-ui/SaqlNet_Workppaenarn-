@@ -1,8 +1,9 @@
+import { useQuery } from '@tanstack/react-query';
 import { useFeedKeyboardNavigation } from '../model/useFeedKeyboardNavigation';
 import { useVirtualMessagesFeed } from '../model/useVirtualMessagesFeed';
 import type { IReadMark } from '../model/unread';
 import { useJumpToMessage } from '@/features/jump-to-message';
-import { useProfileStore } from '@/entities/user';
+import { useProfileStore, settingsQuery, normalizePreferences } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
 import type { IMessageDto, TMessagesList } from '@/types';
 import {
@@ -93,6 +94,8 @@ export const MessagesList = memo(
     chatId,
   }: Props) => {
     const { t } = useTranslation();
+    const { data: preferences } = useQuery({ ...settingsQuery(), enabled: false });
+    const appearance = normalizePreferences(preferences?.settings);
     const user = useProfileStore((state) => state.user);
     const translations = useChatUiStore((state) => state.translations);
 
@@ -119,6 +122,7 @@ export const MessagesList = memo(
       loadOlder,
       hasOlder,
       onMessagesSeen,
+      appearance,
     });
 
     const scrollToFeedIndex = useCallback(
@@ -219,7 +223,9 @@ export const MessagesList = memo(
                   <div
                     className={cn(
                       'w-full absolute top-0 left-0',
-                      item.type === 'message' && item.isDifferentAuthor && 'pt-2'
+                      item.type === 'message' &&
+                        (!appearance.groupConsecutiveMessages || item.isDifferentAuthor) &&
+                        'pt-(--chat-group-gap)'
                     )}
                     data-index={virtualRow.index}
                     key={item.id}
@@ -235,9 +241,9 @@ export const MessagesList = memo(
                     ) : (
                       <MessageBubble
                         currentUserId={user.id}
-                        isFirstInGroup={item.isFirstInGroup}
+                        isFirstInGroup={!appearance.groupConsecutiveMessages || item.isFirstInGroup}
                         isGroupChat={isGroupChat}
-                        isLastInGroup={item.isLastInGroup}
+                        isLastInGroup={!appearance.groupConsecutiveMessages || item.isLastInGroup}
                         message={item.message}
                         onJumpToMessage={handleJumpToMessage}
                         onOpenProfile={onOpenProfile}
@@ -249,6 +255,9 @@ export const MessagesList = memo(
                         onOpenOriginal={onOpenOriginal}
                         onSelection={toggleMessageSelection}
                         repliedMessage={replyId ? messagesById.get(replyId) : undefined}
+                        showMessageTime={appearance.showMessageTime}
+                        showMessageStatus={appearance.showMessageStatus}
+                        showMessageAvatars={appearance.showMessageAvatars}
                         showDeliveryStatus={showDeliveryStatus}
                         tabIndex={item.id === tabStopId ? 0 : -1}
                         translations={translations}
