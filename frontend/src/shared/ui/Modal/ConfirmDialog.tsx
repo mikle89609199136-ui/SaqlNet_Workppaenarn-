@@ -14,6 +14,8 @@ interface Props {
   danger?: boolean;
   /** Подтверждение уже выполняется. */
   confirming?: boolean;
+  /** The confirmed request cannot be cancelled once it has started. */
+  cancelDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -33,10 +35,14 @@ export function ConfirmDialog({
   cancelLabel,
   danger = false,
   confirming = false,
+  cancelDisabled = false,
   onConfirm,
   onCancel,
 }: Props) {
   const { t } = useTranslation();
+  const cancel = () => {
+    if (!cancelDisabled) onCancel();
+  };
 
   /* Диалог дизайн-системы (#817): узкий, кнопки маленькие; «Отмена» без
      фона, действие справа. Опасное — на подложке ошибки, и окно
@@ -48,7 +54,7 @@ export function ConfirmDialog({
       closeButton={false}
       footer={
         <>
-          <Button onClick={onCancel} size="sm" variant="ghost">
+          <Button disabled={cancelDisabled} onClick={cancel} size="sm" variant="ghost">
             {cancelLabel ?? t('cancel', 'Отмена')}
           </Button>
           <Button
@@ -61,7 +67,7 @@ export function ConfirmDialog({
           </Button>
         </>
       }
-      onClose={onCancel}
+      onClose={cancel}
       open={open}
       title={title}
     >
