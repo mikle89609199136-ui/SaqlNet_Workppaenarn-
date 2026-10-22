@@ -59,5 +59,12 @@ export function useSettingsData() {
     });
   }
 
-  return { settings, privacy, isPending, saveSettings, savePrivacy };
+  return {
+    settings,
+    privacy,
+    isPending,
+    isSaving: updateSettings.isPending,
+    saveSettings,
+    savePrivacy,
+  };
 }

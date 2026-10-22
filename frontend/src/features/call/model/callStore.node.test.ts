@@ -16,6 +16,13 @@ describe('useCallStore', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    queryClient.setQueryData(userKeys.settings(), {
+      settings: { notifications: true, sounds: true, callSounds: true },
+      privacy: {},
+    });
+    vi.spyOn(services.userService, 'getSettings').mockImplementation(async () =>
+      queryClient.getQueryData(userKeys.settings())!
+    );
     vi.spyOn(callRingtone, 'startRingtone').mockReturnValue(undefined);
     vi.spyOn(callRingtone, 'stopRingtone').mockReturnValue(undefined);
     _resetCancelledRoomsForTest();
@@ -503,6 +510,10 @@ describe('useCallStore', () => {
   });
 
   it('не запускает рингтон, если callSounds: false в настройках (#1002)', async () => {
+    queryClient.setQueryData(userKeys.settings(), {
+      settings: { notifications: true, callSounds: false },
+      privacy: {},
+    });
     useProfileStore.setState({
       settings: {
         sounds: true,
@@ -517,6 +528,28 @@ describe('useCallStore', () => {
     });
 
     expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(callRingtone.startRingtone).not.toHaveBeenCalled();
+  });
+
+  it('global notifications=false не отменяет incoming state, но исключает рингтон', async () => {
+    queryClient.setQueryData(userKeys.settings(), {
+      settings: { notifications: false, sounds: true, callSounds: true },
+      privacy: {},
+    });
+    await useCallStore
+      .getState()
+      .handleIncoming({ roomId: 'global-off', from: 'caller-mute', kind: 'audio' });
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(callRingtone.startRingtone).not.toHaveBeenCalled();
+  });
+
+  it('ошибка проверки settings не разрешает звонковое оповещение', async () => {
+    vi.mocked(services.userService.getSettings).mockRejectedValueOnce(new Error('offline'));
+    await useCallStore
+      .getState()
+      .handleIncoming({ roomId: 'settings-error', from: 'caller-mute', kind: 'audio' });
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(useCallStore.getState().incomingAlertsReady).toBe(false);
     expect(callRingtone.startRingtone).not.toHaveBeenCalled();
   });
 

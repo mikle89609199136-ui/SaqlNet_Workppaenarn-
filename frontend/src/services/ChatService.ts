@@ -177,6 +177,14 @@ export class ChatService {
     });
   }
 
+  async muteChat(chatId: string, mutedUntil?: string) {
+    return this.apiClient.post(API_ENDPOINTS.CHAT_MUTE(chatId), mutedUntil ? { mutedUntil } : {});
+  }
+
+  async unmuteChat(chatId: string) {
+    return this.apiClient.delete(API_ENDPOINTS.CHAT_MUTE(chatId));
+  }
+
   async pinChat(chatId: string) {
     const response = await this.apiClient.post(API_ENDPOINTS.CHAT_PIN(chatId));
     return response.data;

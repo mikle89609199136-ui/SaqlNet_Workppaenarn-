@@ -71,6 +71,17 @@ describe('callRingtone', () => {
     expect(mockAudioContext.createOscillator).toHaveBeenCalledTimes(8);
   });
 
+  it('немедленно прекращает последующие пачки/вибрацию после запрета', () => {
+    let allowed = true;
+    startRingtone(() => allowed);
+    expect(mockAudioContext.createOscillator).toHaveBeenCalledTimes(4);
+    allowed = false;
+    vi.advanceTimersByTime(2000);
+    expect(mockAudioContext.createOscillator).toHaveBeenCalledTimes(4);
+    expect(isRingtoneActive()).toBe(false);
+    expect(navigator.vibrate).toHaveBeenLastCalledWith(0);
+  });
+
   it('корректно останавливает рингтон, очищает таймеры, виброотклик и закрывает контекст', () => {
     startRingtone();
     expect(isRingtoneActive()).toBe(true);

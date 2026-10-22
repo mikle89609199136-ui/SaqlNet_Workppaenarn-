@@ -14,9 +14,9 @@ export interface IUserDto {
   badges: string[]; // неизвестно какое dto у бэйджа
 }
 
-type TNotificationPreferences = components['schemas']['NotificationPreferences'];
+type TNotificationPreferences = components['schemas']['MvpSettings'];
 
-/** Флаги берутся из общего контракта #496; callSounds может отсутствовать до #1042. */
+/** Canonical флаги #496/#1042. Partial ответы дополняются server defaults. */
 export interface ISettingsDto
   extends
     Required<Pick<TNotificationPreferences, 'notifications' | 'sounds'>>,

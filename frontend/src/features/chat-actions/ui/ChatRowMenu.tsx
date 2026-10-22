@@ -1,6 +1,6 @@
 import { ContextMenu } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
-import { getChatTitle, isSavedMessages } from '@/entities/chat';
+import { getChatTitle, isSavedMessages, isChatMuted } from '@/entities/chat';
 import { useChatActions } from '../model/useChatActions';
 import type { IChatDto } from '@/types';
 import type { RefObject } from 'react';
@@ -72,8 +72,15 @@ export function ChatRowMenu({
   hidden = false,
 }: IChatRowMenuProps) {
   const { t } = useTranslation();
-  const { togglePin, toggleArchive, markRead, toggleNotificationPreview, isNotificationPending } =
-    useChatActions();
+  const {
+    togglePin,
+    toggleArchive,
+    markRead,
+    toggleNotificationPreview,
+    isNotificationPending,
+    toggleMute,
+    isMutePending,
+  } = useChatActions();
   const previewHidden = Boolean(chat.hideNotificationPreview);
 
   /** Действие и закрытие меню — одним нажатием. */
@@ -128,12 +135,13 @@ export function ChatRowMenu({
         </ContextMenu.Item>
       )}
 
-      {mute && (
+      {!isSavedMessages(chat) && (
         <ContextMenu.Item
-          icon={<Icon name={mute.muted ? 'bell' : 'bellOff'} />}
-          onClick={run(mute.onToggle)}
+          icon={<Icon name={(mute?.muted ?? isChatMuted(chat)) ? 'bell' : 'bellOff'} />}
+          disabled={isMutePending}
+          onClick={run(mute?.onToggle ?? (() => toggleMute(chat)))}
         >
-          {mute.muted
+          {(mute?.muted ?? isChatMuted(chat))
             ? t('unmuteChat', 'Включить уведомления')
             : t('muteChat', 'Отключить уведомления')}
         </ContextMenu.Item>
