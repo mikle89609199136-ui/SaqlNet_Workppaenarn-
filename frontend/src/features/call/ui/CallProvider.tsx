@@ -1,3 +1,7 @@
+import { useCallSounds, getCallSoundsEnabled } from '../model/useCallSounds';
+import * as callRingtone from '../model/callRingtone';
+import { usePageActive } from '@/shared/lib';
+import { appIsForeground } from '@/shared/lib/notifications/delivery';
 import { useEffect, type PropsWithChildren } from 'react';
 import { WS_EVENTS } from '@/shared/config';
 import { useRealtimeSocket } from '@/shared/api';
@@ -15,6 +19,25 @@ import type {
 
 export function CallProvider({ children }: PropsWithChildren) {
   const { socket, eventBus } = useRealtimeSocket();
+  const incoming = useCallStore((state) => state.incomingCall);
+  const alertsReady = useCallStore((state) => state.incomingAlertsReady);
+  const enabled = useCallSounds() && alertsReady;
+  const foreground = usePageActive();
+  useEffect(() => {
+    if (!incoming || !enabled || !foreground) {
+      callRingtone.stopRingtone();
+      return;
+    }
+    if (!callRingtone.isRingtoneActive()) {
+      callRingtone.startRingtone(
+        () =>
+          useCallStore.getState().incomingCall?.roomId === incoming.roomId &&
+          getCallSoundsEnabled() &&
+          appIsForeground()
+      );
+    }
+  }, [incoming, enabled, foreground]);
+  useEffect(() => () => callRingtone.stopRingtone(), []);
 
   useEffect(() => {
     useCallStore.getState().attachSocket(socket ?? null);

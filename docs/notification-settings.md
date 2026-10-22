@@ -1,5 +1,7 @@
 # Источник правды уведомлений и звуков
 
+> **Клиент #725 — 23 октября 2026:** общий gate, message sound, ringtone, fallback call alerts, permission UI, personal mute и suppression дублей реализованы. Подробная [клиентская policy и проверка](notification-client-policy.md) задаёт foreground/background каналы, fail-closed чтение и границы приёмки. Рассылка изменений settings остаётся #1041. Ниже сохранены контракт и исторические основания решения.
+
 Решение USER-D003, #496. Дата: 16 октября 2026. Продолжает [выбор Settings API](settings-api.md), #498. Серверная нормализация/совместимость и push silent реализованы в #1042; применение в клиентских fallback/ringtone consumers остаётся #725. [Миграция, rollback и обновление worker](notification-settings-migration.md) описаны отдельно.
 
 ## Каноническая модель MVP

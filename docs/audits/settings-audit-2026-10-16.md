@@ -2,6 +2,8 @@
 
 Дата: 16 октября 2026. Проверена локальная ветка `dev`, commit `d658b383`.
 
+> **Обновление #725 — 23 октября 2026:** frontend применяет общий notifications gate, независимые sounds/callSounds, personal message mute/expiry и preview к browser fallback, message sound и ringtone. Добавлены mute menu/rollback, permission UI без зависимости от push, owner-scoped suppression дублей и валидированный call alert. Матрица и проверяемые границы — [клиентская policy](../notification-client-policy.md). Синхронизация открытых клиентов остаётся #1041; ниже исторический снимок.
+
 > **Продолжение в #498:** выбор маршрутов и совместимости зафиксирован в
 > [каноническом Settings API](../settings-api.md): `GET/PUT /users/settings`,
 > `PUT /users/privacy`, отдельные ресурсы исключений и чёрного списка.
