@@ -11,7 +11,8 @@ export const userKeys = {
   checkUsername: (username: string) => [...userKeys.all, 'check-username', username] as const,
   settings: (session: TSettingsSession = settingsSession()) =>
     [...userKeys.all, 'settings', session.ownerId ?? null, session.epoch] as const,
-  sessions: () => [...userKeys.all, 'sessions'] as const,
+  sessions: (session: TSettingsSession = settingsSession()) =>
+    [...userKeys.all, 'sessions', session.ownerId ?? null, session.epoch] as const,
   search: (query: string) => [...userKeys.all, 'search', query] as const,
   /** Чёрный список (#727). */
   blocked: () => [...userKeys.all, 'blocked'] as const,

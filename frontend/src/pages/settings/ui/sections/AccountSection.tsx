@@ -34,7 +34,8 @@ export function AccountSection() {
 
   const view = isAccountSubsection(params.subsection) ? params.subsection : 'overview';
 
-  const sessions = useQuery(sessionsQuery());
+  // The sessions subpage has its own observer; only the overview needs this count.
+  const sessions = useQuery({ ...sessionsQuery(), enabled: view === 'overview' });
   const [asked, setAsked] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
