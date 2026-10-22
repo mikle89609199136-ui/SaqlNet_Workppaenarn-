@@ -68,6 +68,9 @@ interface Props {
    * чате: это про судьбу моего сообщения, а не про чужие глаза.
    */
   showDeliveryStatus?: boolean;
+  showMessageTime?: boolean;
+  showMessageStatus?: boolean;
+  showMessageAvatars?: boolean;
   /** Группа: у чужих сообщений — имя автора и его аватарка (#820). */
   isGroupChat?: boolean;
   /** Первое сообщение в непрерывной цепочке одного автора. */
@@ -178,6 +181,9 @@ export const MessageBubble = memo(
     onRetryMedia,
     onOpenOriginal,
     showDeliveryStatus = false,
+    showMessageTime = true,
+    showMessageStatus = true,
+    showMessageAvatars = true,
     isGroupChat = false,
     isFirstInGroup = true,
     isLastInGroup = true,
@@ -228,15 +234,16 @@ export const MessageBubble = memo(
        Доставку и прочтение сообщает сервер; показываются они только в
        личном чате — в группе у них нет одного значения. */
     const sending = message.status === 'pending' || message.status === 'uploading';
-    const delivery: 'sending' | 'sent' | 'delivered' | 'read' | null = !mine
-      ? null
-      : sending
-        ? 'sending'
-        : failed
-          ? null
-          : showDeliveryStatus
-            ? receiptState(message)
-            : 'sent';
+    const delivery: 'sending' | 'sent' | 'delivered' | 'read' | null =
+      !mine || !showMessageStatus
+        ? null
+        : sending
+          ? 'sending'
+          : failed
+            ? null
+            : showDeliveryStatus
+              ? receiptState(message)
+              : 'sent';
     const deliveryLabel = {
       sending:
         message.status === 'uploading'
@@ -255,7 +262,7 @@ export const MessageBubble = memo(
       // Звонок getLastMessageText подписывает сам («Входящий звонок · 28 сек»),
       // а не читает служебный JSON из content.
       getLastMessageText({ ...message, type: isVoice ? 'voice' : actualType }, t, currentUserId),
-      formatMessageTime(message.createdAt),
+      showMessageTime && formatMessageTime(message.createdAt),
       editedAt,
       delivery && deliveryLabel[delivery],
     ]
@@ -276,7 +283,7 @@ export const MessageBubble = memo(
           </span>
         )}
         {message.isEdited && <span title={editedAt ?? undefined}>{t('edited', 'изменено')}</span>}
-        <time>{formatMessageTime(message.createdAt)}</time>
+        {showMessageTime && <time>{formatMessageTime(message.createdAt)}</time>}
         {delivery && (
           <span
             aria-label={deliveryLabel[delivery]}
@@ -299,13 +306,16 @@ export const MessageBubble = memo(
       </>
     );
     /* В звонке, голосовом и под медиа — строкой рядом с содержимым. */
-    const meta = <span className={cn(metaClass, 'inline-flex align-[-2px]')}>{metaContent}</span>;
+    const hasMeta = message.isPinned || message.isEdited || showMessageTime || Boolean(delivery);
+    const meta = hasMeta ? (
+      <span className={cn(metaClass, 'inline-flex align-[-2px]')}>{metaContent}</span>
+    ) : undefined;
     /* В тексте — всегда в правом нижнем углу: прижата вправо в конце
        текста. Помещается на последней строке — встаёт на неё справа, нет —
        переносится ниже, тоже справа. */
-    const cornerMeta = (
+    const cornerMeta = hasMeta ? (
       <span className={cn(metaClass, 'float-right mt-1 flex')}>{metaContent}</span>
-    );
+    ) : undefined;
 
     return (
       <article
@@ -323,7 +333,7 @@ export const MessageBubble = memo(
 
           {/* Место под аватарку есть у каждого чужого сообщения группы, а
               сама она — у последнего в серии: столбец пузырей не ломается. */}
-          {groupIn && (
+          {groupIn && showMessageAvatars && (
             <span className={cn('flex shrink-0 self-end', !isLastInGroup && 'invisible')}>
               {onOpenProfile && isLastInGroup ? (
                 <button
@@ -359,7 +369,7 @@ export const MessageBubble = memo(
             data-state={isSelected ? 'selected' : undefined}
             className={cn(
               'group/bubble message-bubble relative w-fit min-w-0 max-w-[min(280px,100%)] md:max-w-[380px] lg:max-w-[440px] xl:max-w-[520px]',
-              'px-3 py-2 text-body leading-[1.45] transition-shadow duration-[160ms]',
+              'px-3 py-(--chat-bubble-py) text-body leading-[1.45] transition-shadow duration-[160ms]',
               /* Цвет «пыли» закрытого спойлера: текст пузыря с прозрачностью,
                  на своём — белый. */
               mine
@@ -375,9 +385,9 @@ export const MessageBubble = memo(
                     'bg-bubble-in text-ink rounded-bl-control',
                     !isFirstInGroup && 'rounded-tl-control'
                   ),
-              isCall && 'py-2.5 pr-3.5 pl-2.5',
-              isVoice && 'py-2 pr-3 pl-2',
-              message.undecryptable && 'px-3.5 py-2.5',
+              isCall && 'py-[calc(var(--chat-bubble-py)+2px)] pr-3.5 pl-2.5',
+              isVoice && 'pr-3 pl-2',
+              message.undecryptable && 'px-3.5 py-[calc(var(--chat-bubble-py)+2px)]',
               hasMessageMedia(message) && 'has-media',
               /* Плееру аудиофайла нужна ширина под ползунок. Голосовое — по
                  содержимому (кнопка, волна, время), в пределах максимума. */
@@ -534,7 +544,7 @@ export const MessageBubble = memo(
               />
             )}
 
-            {!hasInlineMeta && !isCall && !isVoice && (
+            {hasMeta && !hasInlineMeta && !isCall && !isVoice && (
               <div className="mt-1 flex justify-end">{meta}</div>
             )}
 
@@ -602,8 +612,8 @@ export const MessageBubble = memo(
               'message-reactions mt-0.5 flex flex-wrap gap-1.5',
               mine && 'justify-end',
               /* Под пузырём, а не под аватаркой и флажком выбора. */
-              groupIn && (selectionMode ? 'pl-[74px]' : 'pl-10.5'),
-              !groupIn && !mine && selectionMode && 'pl-8'
+              groupIn && showMessageAvatars && (selectionMode ? 'pl-[74px]' : 'pl-10.5'),
+              (!groupIn || !showMessageAvatars) && !mine && selectionMode && 'pl-8'
             )}
           >
             {message.reactions.map((reaction) => (

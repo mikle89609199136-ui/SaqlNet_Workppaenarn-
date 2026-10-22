@@ -2,7 +2,7 @@ import { showToast } from '@/shared/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  DEFAULT_PROFILE_SETTINGS,
+  normalizePreferences,
   settingsQuery,
   useUpdatePrivacy,
   useUpdateSettings,
@@ -30,16 +30,17 @@ export function useSettingsData() {
   const updateSettings = useUpdateSettings();
   const updatePrivacy = useUpdatePrivacy();
 
-  const settings: ISettingsDto = { ...DEFAULT_PROFILE_SETTINGS, ...(data?.settings ?? {}) };
+  const settings = normalizePreferences(data?.settings);
   const privacy: Partial<IPrivacyDto> = data?.privacy ?? {};
 
-  function saveSettings(patch: Partial<ISettingsDto>) {
+  function saveSettings(patch: Partial<ISettingsDto>, onSaved?: () => void) {
     updateSettings.mutate(patch, {
       onSuccess: async () => {
         // Язык сменился этим же сохранением: ждём словарь нового языка —
         // он грузится по сети, и без него сработал бы русский текст по
         // умолчанию.
         if (patch.language) await i18n.changeLanguage(patch.language).catch(() => {});
+        onSaved?.();
         showToast('success', i18n.t('settingsSaved', 'Настройки сохранены'));
       },
       onError: () =>

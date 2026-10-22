@@ -125,6 +125,7 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
         {...longPress}
       >
         <Avatar
+          className="size-(--chat-row-avatar)"
           icon={saved ? 'bookmark' : undefined}
           id={peerId}
           name={title}

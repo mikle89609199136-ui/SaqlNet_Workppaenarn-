@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from '@/shared/config';
+import { applyAppearance, normalizePreferences } from './appearancePreferences';
 import { DEFAULT_PROFILE_SETTINGS } from './defaultProfileSettings';
 import type { ISettingsDto, IUserDto } from './types';
 import { create } from 'zustand';
@@ -30,7 +31,11 @@ function readStoredUser(): IUserDto | null {
 function readStoredSettings(): ISettingsDto {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    return raw ? (JSON.parse(raw) as ISettingsDto) : DEFAULT_PROFILE_SETTINGS;
+    const stored = raw ? JSON.parse(raw) : null;
+    const ownerId = readStoredUser()?.id;
+    return ownerId && stored?.ownerId === ownerId
+      ? normalizePreferences(stored)
+      : DEFAULT_PROFILE_SETTINGS;
   } catch {
     return DEFAULT_PROFILE_SETTINGS;
   }
@@ -48,7 +53,10 @@ export const useProfileStore = create<InitialState>((set, get) => ({
     set({ user, isAuth: !!user });
   },
   setSettings: (settings) => {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    localStorage.setItem(
+      STORAGE_KEYS.SETTINGS,
+      JSON.stringify({ ...settings, ownerId: get().user?.id })
+    );
     set({ settings });
   },
   updateUser: (data) => {
@@ -62,7 +70,10 @@ export const useProfileStore = create<InitialState>((set, get) => ({
     // Дополнительная очистка токена версии до #705 при явном выходе.
     localStorage.removeItem(STORAGE_KEYS.LEGACY_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.USER);
+    localStorage.removeItem(STORAGE_KEYS.SETTINGS);
+    if (typeof document !== 'undefined') applyAppearance(normalizePreferences(), false);
     set({
+      settings: DEFAULT_PROFILE_SETTINGS,
       user: null,
       isAuth: false,
     });

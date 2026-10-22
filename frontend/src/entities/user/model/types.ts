@@ -16,13 +16,26 @@ export interface IUserDto {
 
 type TNotificationPreferences = components['schemas']['MvpSettings'];
 
-/** Canonical флаги #496/#1042. Partial ответы дополняются server defaults. */
+type TAppearancePreferences = Pick<
+  components['schemas']['MvpSettings'],
+  | 'palette'
+  | 'accentPreset'
+  | 'textSize'
+  | 'chatDensity'
+  | 'showMessageTime'
+  | 'showMessageStatus'
+  | 'showMessageAvatars'
+  | 'groupConsecutiveMessages'
+>;
+
+/** Типы полей согласованы с каноническим User API. Старые ответы могут быть частичными. */
 export interface ISettingsDto
   extends
+    TAppearancePreferences,
     Required<Pick<TNotificationPreferences, 'notifications' | 'sounds'>>,
     Pick<TNotificationPreferences, 'callSounds'> {
   language: string;
-  theme: 'dark' | 'light';
+  theme: NonNullable<components['schemas']['MvpSettings']['theme']>;
   /* Чем заменять фотографию, когда её нет: буквой или сеткой от
      идентификатора. Выбор вкусовой, поэтому вынесен человеку (#375). */
   avatarShape: 'letter' | 'grid';
