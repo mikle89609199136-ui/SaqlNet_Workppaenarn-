@@ -74,7 +74,7 @@ export function SettingsSearch() {
         />
         {query && (
           <button
-            aria-label={t('settings.search.clear', 'Очистить поиск')}
+            aria-label={t('clearSearch', 'Очистить поиск')}
             className="-mr-1.5 flex size-8 cursor-pointer items-center justify-center rounded-field text-ink-3 transition-colors hover:layer-hover hover:text-ink active:layer-press"
             onClick={(event) => {
               event.preventDefault();
@@ -103,7 +103,7 @@ export function SettingsSearch() {
               {results.map((entry, index) => (
                 <li key={`${entry.path}-${entry.title}`}>
                   <button
-                    className="flex w-full cursor-pointer flex-col gap-0.5 px-4 py-2.5 text-left transition-colors duration-fast hover:bg-sheet-2 hover:layer-hover active:bg-sheet-3 active:layer-press data-[state=active]:bg-sheet-2"
+                    className="flex w-full cursor-pointer flex-col gap-0.5 px-4 py-2.5 text-left transition-colors duration-fast hover:bg-sheet-2 hover:layer-hover active:layer-press data-[state=active]:bg-sheet-2"
                     data-state={index === active ? 'active' : undefined}
                     onClick={() => open(entry.path)}
                     onMouseEnter={() => setActive(index)}

@@ -42,14 +42,15 @@ const iconOnlySizes = {
    элементов формы. */
 const variants = {
   primary:
-    'bg-brand-fill text-on-brand not-disabled:hover:brightness-108 not-disabled:active:brightness-92 active:layer-press',
+    'bg-brand-fill text-on-brand not-disabled:hover:brightness-108 not-disabled:not-aria-disabled:active:brightness-92 not-disabled:not-aria-disabled:active:layer-press',
   secondary:
-    'bg-sheet-2 text-ink not-disabled:hover:brightness-108 not-disabled:active:brightness-92 active:layer-press',
-  ghost: 'bg-transparent text-ink-2 hover:layer-hover active:layer-press aria-pressed:text-brand',
+    'bg-sheet-2 text-ink not-disabled:hover:brightness-108 not-disabled:not-aria-disabled:active:brightness-92 not-disabled:not-aria-disabled:active:layer-press',
+  ghost:
+    'bg-transparent text-ink-2 hover:layer-hover not-disabled:not-aria-disabled:active:layer-press aria-pressed:text-brand',
   accent:
-    'bg-transparent text-brand not-disabled:hover:brightness-108 not-disabled:active:brightness-92',
+    'bg-transparent text-brand not-disabled:hover:brightness-108 not-disabled:not-aria-disabled:active:brightness-92 not-disabled:not-aria-disabled:active:layer-press',
   danger:
-    'bg-danger-soft text-danger not-disabled:hover:brightness-108 not-disabled:active:brightness-92 active:layer-press',
+    'bg-danger-soft text-danger not-disabled:hover:brightness-108 not-disabled:not-aria-disabled:active:brightness-92 not-disabled:not-aria-disabled:active:layer-press',
 } as const;
 
 /* Ссылка-действие обычного размера в дизайн-системе ниже и мельче
@@ -85,9 +86,9 @@ export const buttonStyles = ({
   className,
 }: StyleProps = {}) =>
   cn(
-    'inline-flex items-center justify-center font-semibold transition-[color,background-color,filter,transform] duration-fast cursor-pointer',
+    'inline-flex items-center justify-center font-semibold transition-[color,background-color,filter,transform,scale] duration-fast cursor-pointer',
     /* Состояние нажатия: микро-масштабирование для тактильного отклика (#1082) */
-    'not-disabled:active:scale-[0.98] aria-disabled:active:scale-100',
+    'not-disabled:not-aria-disabled:active:scale-[0.98]',
     /* Выключенная кнопка остаётся на месте и видна: пусть будет понятно,
        какое действие есть и что для него нужно. */
     'disabled:opacity-50 disabled:cursor-not-allowed',

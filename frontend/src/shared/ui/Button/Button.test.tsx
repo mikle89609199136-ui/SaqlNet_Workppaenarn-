@@ -261,10 +261,26 @@ describe('кнопка', () => {
     const danger = screen.getByRole('button', { name: 'Опасная' });
     const accent = screen.getByRole('button', { name: 'Акцент' });
 
-    expect(primary).toHaveClass('not-disabled:active:scale-[0.98]', 'not-disabled:active:brightness-92');
-    expect(secondary).toHaveClass('not-disabled:active:scale-[0.98]', 'not-disabled:active:brightness-92', 'active:layer-press');
-    expect(danger).toHaveClass('not-disabled:active:scale-[0.98]', 'not-disabled:active:brightness-92', 'active:layer-press');
-    expect(accent).toHaveClass('not-disabled:active:scale-[0.98]', 'not-disabled:active:brightness-92');
+    expect(primary).toHaveClass(
+      'not-disabled:not-aria-disabled:active:scale-[0.98]',
+      'not-disabled:not-aria-disabled:active:brightness-92',
+      'not-disabled:not-aria-disabled:active:layer-press'
+    );
+    expect(secondary).toHaveClass(
+      'not-disabled:not-aria-disabled:active:scale-[0.98]',
+      'not-disabled:not-aria-disabled:active:brightness-92',
+      'not-disabled:not-aria-disabled:active:layer-press'
+    );
+    expect(danger).toHaveClass(
+      'not-disabled:not-aria-disabled:active:scale-[0.98]',
+      'not-disabled:not-aria-disabled:active:brightness-92',
+      'not-disabled:not-aria-disabled:active:layer-press'
+    );
+    expect(accent).toHaveClass(
+      'not-disabled:not-aria-disabled:active:scale-[0.98]',
+      'not-disabled:not-aria-disabled:active:brightness-92',
+      'not-disabled:not-aria-disabled:active:layer-press'
+    );
   });
 
   it('не должна скейлиться при disabled или aria-disabled (#1082)', () => {
@@ -278,7 +294,14 @@ describe('кнопка', () => {
     const disabledBtn = screen.getByRole('button', { name: 'Отключена' });
     const loadingBtn = screen.getByRole('button', { name: 'Загрузка' });
 
-    expect(disabledBtn).toHaveClass('aria-disabled:active:scale-100');
-    expect(loadingBtn).toHaveClass('aria-disabled:active:scale-100');
+    expect(disabledBtn).toBeDisabled();
+    expect(loadingBtn).toHaveAttribute('aria-disabled', 'true');
+    for (const button of [disabledBtn, loadingBtn]) {
+      expect(button).toHaveClass(
+        'not-disabled:not-aria-disabled:active:scale-[0.98]',
+        'not-disabled:not-aria-disabled:active:brightness-92',
+        'not-disabled:not-aria-disabled:active:layer-press'
+      );
+    }
   });
 });

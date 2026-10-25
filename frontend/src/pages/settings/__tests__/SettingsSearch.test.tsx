@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { testI18n } from '@/test/harness/i18n';
+import enTranslations from '../../../../public/locales/en/translation.json';
 import { SettingsSearch } from '../ui/SettingsSearch';
 
 const mockNavigate = vi.fn();
@@ -15,9 +16,9 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-function renderSearch() {
+function renderSearch(i18n = testI18n) {
   return render(
-    <I18nextProvider i18n={testI18n}>
+    <I18nextProvider i18n={i18n}>
       <MemoryRouter>
         <SettingsSearch />
       </MemoryRouter>
@@ -46,6 +47,18 @@ describe('SettingsSearch (#1082)', () => {
     expect(screen.queryByRole('button', { name: 'Очистить поиск' })).not.toBeInTheDocument();
   });
 
+  it('переводит подпись кнопки очистки на английский', async () => {
+    const i18n = testI18n.cloneInstance({ forkResourceStore: true });
+    i18n.addResourceBundle('en', 'translation', enTranslations);
+    await i18n.changeLanguage('en');
+    const user = userEvent.setup();
+    renderSearch(i18n);
+
+    await user.type(screen.getByRole('textbox'), 'password');
+
+    expect(screen.getByRole('button', { name: 'Clear search' })).toBeInTheDocument();
+  });
+
   it('результаты поиска имеют стили cursor-pointer, hover и active', async () => {
     const user = userEvent.setup();
     renderSearch();
@@ -53,14 +66,14 @@ describe('SettingsSearch (#1082)', () => {
     const input = screen.getByRole('textbox', { name: 'Поиск по настройкам' });
     await user.type(input, 'пароль');
 
-    const resultButtons = screen.getAllByRole('button').filter(
-      (btn) => btn.getAttribute('aria-label') !== 'Очистить поиск'
-    );
+    const resultButtons = screen
+      .getAllByRole('button')
+      .filter((btn) => btn.getAttribute('aria-label') !== 'Очистить поиск');
     expect(resultButtons.length).toBeGreaterThan(0);
 
     const firstResult = resultButtons[0];
     expect(firstResult).toHaveClass('cursor-pointer');
     expect(firstResult).toHaveClass('hover:bg-sheet-2');
-    expect(firstResult).toHaveClass('active:bg-sheet-3', 'active:layer-press');
+    expect(firstResult).toHaveClass('active:layer-press');
   });
 });
