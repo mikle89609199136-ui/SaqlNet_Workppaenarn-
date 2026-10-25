@@ -65,6 +65,8 @@ interface Props {
    */
   readMark?: IReadMark;
   onMessagesSeen?: (messages: IMessageDto[]) => void;
+  searchQuery?: string;
+  searchCurrentId?: string | null;
   chatId?: string;
 }
 
@@ -91,6 +93,8 @@ export const MessagesList = memo(
     handleJumpRequests = false,
     readMark,
     onMessagesSeen,
+    searchQuery,
+    searchCurrentId,
     chatId,
   }: Props) => {
     const { t } = useTranslation();
@@ -259,6 +263,8 @@ export const MessagesList = memo(
                         showMessageStatus={appearance.showMessageStatus}
                         showMessageAvatars={appearance.showMessageAvatars}
                         showDeliveryStatus={showDeliveryStatus}
+                        isSearchCurrent={item.id === searchCurrentId}
+                        searchQuery={searchQuery}
                         tabIndex={item.id === tabStopId ? 0 : -1}
                         translations={translations}
                       />
