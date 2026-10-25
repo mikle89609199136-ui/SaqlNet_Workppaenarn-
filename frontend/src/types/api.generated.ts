@@ -8335,7 +8335,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description not_found: the message does not exist or is deleted. */
+            /** @description not_found: the message does not exist, is deleted, or is hidden from the caller. */
             404: {
                 headers: {
                     [name: string]: unknown;
