@@ -72,7 +72,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
       '400': *error
       '404': *error
       '500': *error
-      
+
 /messages/favorites:
   get:
     tags: [Messages]
@@ -235,11 +235,11 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
     summary: Authors of one reaction on a message
     description: >-
       Paginated list of chat members who reacted to a message with the given
-      emoji (#566). Each item is a minimal public profile of the author; the
+      emoji (#709). Each item is a minimal public profile of the author; the
       avatar is empty when the author's photoVisibility rule (with the block
       list and exceptions) hides the photo from the caller. Only current
       members of the chat get a result; a stranger or a former member gets
-      403, a non-existent or deleted message gets 404. Ordering is stable
+      403, a non-existent, deleted, or hidden message gets 404. Ordering is stable
       newest-first, (created_at DESC, user_id DESC); pass nextCursor as
       cursor for the next page. total is the count of this emoji on the
       message and matches Reaction.count — the author list is not filtered
@@ -287,7 +287,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
         description: 'access_denied: the caller is not a member of the chat (or left it).'
         content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } }
       '404':
-        description: 'not_found: the message does not exist or is deleted.'
+        description: 'not_found: the message does not exist, is deleted, or is hidden from the caller.'
         content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } }
       '405':
         description: Method not allowed
