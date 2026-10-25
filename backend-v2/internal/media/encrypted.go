@@ -8,6 +8,13 @@ import (
 	"strings"
 )
 
+// Web Crypto appends a 128-bit AES-GCM tag to the original media bytes.
+const mediaEncryptionOverheadBytes int64 = 16
+
+func (s *Service) encryptedUploadLimit() int64 {
+	return addRequestOverhead(s.maxUploadBytes, mediaEncryptionOverheadBytes)
+}
+
 // encryptedMediaEnvelope is the v2 wire format. Deploy support for new formats
 // server-first; validation here checks the envelope, never decrypts its contents.
 type encryptedMediaEnvelope struct {

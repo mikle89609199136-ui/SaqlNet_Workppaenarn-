@@ -1,10 +1,11 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useChatUiStore } from '@/entities/chat';
 import { formatMessageTime } from '@/entities/message';
-import { useProfileStore } from '@/entities/user';
-import { mockThreadLayout } from '@/test/harness/threadLayout';
+import { userKeys, useProfileStore } from '@/entities/user';
+import { mockThreadLayout, setPageActive } from '@/test/harness/threadLayout';
 import { makeMessage, makeUser } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessagesList } from './MessagesList';
@@ -14,6 +15,11 @@ describe('MessagesList', () => {
 
   beforeEach(() => {
     useProfileStore.setState({ user: currentUser, isAuth: true });
+  });
+
+  let queryClient: QueryClient;
+  beforeEach(() => {
+    queryClient = new QueryClient();
   });
 
   const renderComponent = (props: Partial<Parameters<typeof MessagesList>[0]> = {}) => {
@@ -28,9 +34,11 @@ describe('MessagesList', () => {
     };
 
     return render(
-      <I18nextProvider i18n={testI18n}>
-        <MessagesList {...defaultProps} />
-      </I18nextProvider>
+      <QueryClientProvider client={queryClient}>
+        <I18nextProvider i18n={testI18n}>
+          <MessagesList {...defaultProps} />
+        </I18nextProvider>
+      </QueryClientProvider>
     );
   };
 
@@ -60,6 +68,48 @@ describe('MessagesList', () => {
 
     expect(screen.getByText('Привет от вчера')).toBeInTheDocument();
     expect(screen.getByText('Привет от сегодня')).toBeInTheDocument();
+  });
+
+  it('выключает группировку и аватары без отключения read receipts', async () => {
+    mockThreadLayout({ viewport: 20_000 });
+    setPageActive();
+    queryClient.setQueryData(userKeys.settings(), {
+      settings: {
+        groupConsecutiveMessages: false,
+        showMessageAvatars: false,
+        showMessageStatus: false,
+        showMessageTime: false,
+      },
+      privacy: {},
+    });
+    const onMessagesSeen = vi.fn();
+    const messages = [
+      makeMessage({ id: 'first', senderId: 'u-2' }),
+      makeMessage({ id: 'last', senderId: 'u-2' }),
+    ];
+    renderComponent({ messages, trackUnread: false, isGroupChat: true, onMessagesSeen });
+    expect(
+      screen
+        .getAllByRole('article')
+        .every(
+          (article) =>
+            article.dataset.firstInGroup === 'true' && article.dataset.lastInGroup === 'true'
+        )
+    ).toBe(true);
+    expect(document.querySelector('time')).toBeNull();
+    await waitFor(() => expect(onMessagesSeen).toHaveBeenCalled());
+    expect(onMessagesSeen.mock.calls.flat(2)).toEqual(expect.arrayContaining(messages));
+    act(() =>
+      queryClient.setQueryData(userKeys.settings(), {
+        settings: { groupConsecutiveMessages: true },
+        privacy: {},
+      })
+    );
+    await waitFor(() =>
+      expect(document.getElementById('last')).not.toHaveAttribute('data-first-in-group')
+    );
+    expect(document.getElementById('first')).not.toHaveAttribute('data-last-in-group');
+    vi.restoreAllMocks();
   });
 
   describe('лента с клавиатуры (#910)', () => {
@@ -155,7 +205,7 @@ describe('MessagesList', () => {
       renderComponent({ messages: [call], trackUnread: false });
 
       expect(article('call-1')).toHaveAccessibleName(
-        `Тестовый, Звонок завершен · 28 сек, ${formatMessageTime(call.createdAt)}`
+        `Тестовый, Входящий видеозвонок · 28 сек, ${formatMessageTime(call.createdAt)}`
       );
     });
 

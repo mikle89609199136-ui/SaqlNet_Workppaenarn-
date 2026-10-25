@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatChatListTime } from './chatListTime';
+import { formatCallTime, formatChatListTime } from './chatListTime';
 
 const NOW = new Date('2026-09-03T12:00:00');
 
@@ -57,5 +57,35 @@ describe('отметка времени в списке чатов', () => {
   it('отдаёт пустую строку на пустом и негодном значении', () => {
     expect(formatChatListTime(null, 'ru', NOW)).toBe('');
     expect(formatChatListTime('не дата', 'ru', NOW)).toBe('');
+  });
+});
+
+/* В журнале звонков важно, когда именно звонили (#1074): у прошлых дней —
+   и день, и время. */
+describe('время звонка в истории', () => {
+  it('сегодня — только часы и минуты', () => {
+    expect(formatCallTime(new Date('2026-09-03T09:05:00'), 'ru', NOW)).toBe('09:05');
+  });
+
+  it('вчера — «вчера, 23:59»', () => {
+    expect(formatCallTime(new Date('2026-09-02T23:59:00'), 'ru', NOW)).toBe('вчера, 23:59');
+  });
+
+  it('на этой неделе — день недели и время', () => {
+    expect(formatCallTime(new Date('2026-08-30T10:00:00'), 'ru', NOW)).toBe('вс, 10:00');
+  });
+
+  it('старше недели — дата и время', () => {
+    expect(formatCallTime(new Date('2026-07-14T10:00:00'), 'ru', NOW)).toBe('14.07.26, 10:00');
+  });
+
+  it('по-английски', () => {
+    expect(formatCallTime(new Date('2026-09-02T09:07:00'), 'en', NOW)).toMatch(
+      /^yesterday, 09:07\sAM$/
+    );
+  });
+
+  it.each([null, '', 'не дата'])('%s — пустая строка', (value) => {
+    expect(formatCallTime(value, 'ru', NOW)).toBe('');
   });
 });

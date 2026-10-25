@@ -1,7 +1,7 @@
 import { Icon } from '@/shared/ui/Icon';
 import { useChatUiStore } from '@/entities/chat';
 import type { IMediaItem, IMessageDto, TMediaMessageType } from '../../model/types';
-import { cn } from '@/shared/lib';
+import { cn, describeCallMessage } from '@/shared/lib';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -28,6 +28,13 @@ export const MessageReplyPreview = memo(
     const hasReply = Boolean(targetReplyId || repliedMessage);
     if (!hasReply) return null;
 
+    /* Исходник в ленте — первым: в нём живые правки и расшифрованное медиа.
+       Нет его — превью от сервера (#1065): иначе ответ на давнее сообщение
+       показывал одно слово «Сообщение». У превью нет файла, поэтому для
+       фото и видео — только подпись типа. */
+    const preview = repliedMessage ? undefined : message.replyPreview;
+    const sourceType = repliedMessage?.type ?? preview?.type;
+
     const mediaUrl =
       repliedMessage?.mediaUrl ||
       (repliedMessage?.metadata as { mediaUrl?: string })?.mediaUrl ||
@@ -35,16 +42,14 @@ export const MessageReplyPreview = memo(
     const actualType =
       repliedMessage?.mediaType ||
       (repliedMessage?.metadata as { mediaType?: TMediaMessageType })?.mediaType ||
-      (repliedMessage?.type && repliedMessage.type !== 'text' && repliedMessage.type !== 'call'
-        ? repliedMessage.type
-        : null) ||
+      (sourceType && sourceType !== 'text' && sourceType !== 'call' ? sourceType : null) ||
       null;
 
     const isVideo = actualType === 'video';
     const isVoice = actualType === 'voice';
     const isAudio = actualType === 'audio' || isVoice;
     const isFile = actualType === 'file';
-    const isCall = actualType === 'call' || repliedMessage?.type === 'call';
+    const isCall = actualType === 'call' || sourceType === 'call';
     const isSticker = actualType === 'sticker';
     const isGif = actualType === 'gif';
     const isImage =
@@ -56,9 +61,12 @@ export const MessageReplyPreview = memo(
       message.replySenderName ||
       repliedMessage?.senderName ||
       repliedMessage?.senderFirstName ||
+      preview?.senderName ||
       t('replyTo', 'Ответ');
 
-    const textSnippet = repliedMessage?.content?.trim() || '';
+    // У звонка в content служебный JSON, а не текст.
+    const textSnippet = isCall ? '' : (repliedMessage?.content ?? preview?.content ?? '').trim();
+    const undecryptable = repliedMessage?.undecryptable ?? preview?.undecryptable;
 
     let typeLabel = '';
     if (isImage) {
@@ -72,7 +80,14 @@ export const MessageReplyPreview = memo(
     } else if (isFile) {
       typeLabel = t('lastMessage.file', 'Файл');
     } else if (isCall) {
-      typeLabel = t('lastMessage.call', 'Звонок');
+      // Вид звонка — из исходника в ленте; у превью сервера служебного
+      // JSON нет, там просто «Звонок» (#1073).
+      typeLabel =
+        repliedMessage &&
+        describeCallMessage(repliedMessage.content, repliedMessage.senderId, undefined).kind ===
+          'video'
+          ? t('call.history.videoCall', 'Видеозвонок')
+          : t('lastMessage.call', 'Звонок');
     } else if (isSticker) {
       typeLabel = t('lastMessage.sticker', 'Стикер');
     } else if (isGif) {
@@ -80,9 +95,10 @@ export const MessageReplyPreview = memo(
     }
 
     let displayText = '';
-    if (repliedMessage?.undecryptable) {
-      displayText = `🔒 ${t(`undecryptable.${repliedMessage.undecryptable}`, repliedMessage.content)}`;
-    } else if (textSnippet && typeLabel && !isImage) {
+    if (undecryptable) {
+      displayText = `🔒 ${t(`undecryptable.${undecryptable}`, textSnippet)}`;
+    } else if (textSnippet && typeLabel && !(isImage && mediaUrl)) {
+      // Миниатюры нет — тип называем словами.
       displayText = `${typeLabel}: ${textSnippet}`;
     } else if (textSnippet) {
       displayText = textSnippet;

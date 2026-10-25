@@ -52,41 +52,77 @@ func callRustMLS(ctx context.Context, cryptoURL, path string, body any) (mlsVali
 	return result, nil
 }
 
+// callCrypto — единственный путь chat в crypto, держит потолок одновременных вызовов.
+func (s *Service) callCrypto(ctx context.Context, cryptoURL, path string, body any) (mlsValidateResp, error) {
+	release, ok := s.mls.acquireCrypto()
+	if !ok {
+		return mlsValidateResp{}, &CryptoBusyError{RetryAfter: cryptoRetryAfter}
+	}
+	defer release()
+	return callRustMLS(ctx, cryptoURL, path, body)
+}
+
+func cryptoFailure(err error) error {
+	var busy *CryptoBusyError
+	if errors.As(err, &busy) {
+		return err
+	}
+	return errCryptoUnavailable
+}
+
+// Сначала проверяются все заготовки, потом они сохраняются одной транзакцией:
+// при отказе посреди клиент может повторить запрос, и ключи не задвоятся.
 func (s *Service) MLSUploadKeyPackages(ctx context.Context, userID string, packages []string, cryptoURL string) error {
 	if len(packages) == 0 || len(packages) > maxKeypackagesPerUpload {
 		return fmt.Errorf("keypackages array must have 1–%d entries", maxKeypackagesPerUpload)
 	}
+	keyIDs := make([]string, 0, len(packages))
 	for _, kpBytes := range packages {
-		v, err := callRustMLS(ctx, cryptoURL, "/api/v2/crypto/mls/validate-keypackage", map[string]string{"keypackage_bytes": kpBytes})
+		v, err := s.callCrypto(ctx, cryptoURL, "/api/v2/crypto/mls/validate-keypackage", map[string]string{"keypackage_bytes": kpBytes})
 		if err != nil {
-			return errors.New("crypto service unavailable")
+			return cryptoFailure(err)
 		}
 		if !v.Valid {
 			return errors.New("invalid keypackage format")
 		}
-		_, err = s.db.ExecContext(ctx, `
+		keyIDs = append(keyIDs, v.KeyID)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for i, kpBytes := range packages {
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO crypto.user_mls_keypackages (user_id, keypackage_id, keypackage_bytes, created_at)
 			VALUES ($1, $2, $3, NOW())
-		`, userID, v.KeyID, kpBytes)
+		`, userID, keyIDs[i], kpBytes)
 		if err != nil {
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (s *Service) MLSFetchKeyPackage(ctx context.Context, requesterID, targetUserID string) (MLSKeyPackage, error) {
-	var dummy int
+	// PostgreSQL нормализует все допустимые записи UUID до ключей лимитера.
+	// Иначе один адресат получает разные корзины для UUID с дефисами и без них.
 	err := s.db.QueryRowContext(ctx, `
-		SELECT 1 FROM chats.members a
+		SELECT a.user_id::text, b.user_id::text FROM chats.members a
 		JOIN chats.members b ON a.chat_id = b.chat_id
 		WHERE a.user_id = $1 AND b.user_id = $2 LIMIT 1
-	`, requesterID, targetUserID).Scan(&dummy)
+	`, requesterID, targetUserID).Scan(&requesterID, &targetUserID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return MLSKeyPackage{}, errors.New("access denied")
 	}
 	if err != nil {
 		return MLSKeyPackage{}, err
+	}
+
+	// после проверки общего чата, чтобы отказ по чату не тратил лимит адресата
+	if ok, wait := s.mls.allowKeyPackageFetch(requesterID, targetUserID); !ok {
+		return MLSKeyPackage{}, &RateLimitedError{RetryAfter: wait}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -132,12 +168,12 @@ func (s *Service) MLSCommit(ctx context.Context, userID, chatID string, commitBy
 	if err := s.assertMember(ctx, chatID, userID); err != nil {
 		return 0, err
 	}
-	v, err := callRustMLS(ctx, cryptoURL, "/api/v2/crypto/mls/validate-commit", map[string]any{
+	v, err := s.callCrypto(ctx, cryptoURL, "/api/v2/crypto/mls/validate-commit", map[string]any{
 		"commit_bytes":  commitBytes,
 		"current_epoch": currentEpoch,
 	})
 	if err != nil {
-		return 0, errors.New("crypto service unavailable")
+		return 0, cryptoFailure(err)
 	}
 	if !v.Valid {
 		return 0, errors.New("invalid commit format")
@@ -208,9 +244,9 @@ func (s *Service) MLSStoreWelcome(ctx context.Context, senderID, chatID, recipie
 	if err := s.assertMember(ctx, chatID, recipientID); err != nil {
 		return errors.New("recipient is not a group member")
 	}
-	v, err := callRustMLS(ctx, cryptoURL, "/api/v2/crypto/mls/validate-welcome", map[string]string{"welcome_bytes": welcomeBytes})
+	v, err := s.callCrypto(ctx, cryptoURL, "/api/v2/crypto/mls/validate-welcome", map[string]string{"welcome_bytes": welcomeBytes})
 	if err != nil {
-		return errors.New("crypto service unavailable")
+		return cryptoFailure(err)
 	}
 	if !v.Valid {
 		return errors.New("invalid welcome format")
@@ -257,12 +293,12 @@ func (s *Service) MLSAddProposal(ctx context.Context, senderID, chatID, proposal
 		return err
 	}
 
-	v, err := callRustMLS(ctx, cryptoURL, "/api/v2/crypto/mls/validate-proposal", map[string]string{
+	v, err := s.callCrypto(ctx, cryptoURL, "/api/v2/crypto/mls/validate-proposal", map[string]string{
 		"proposal_bytes": proposalBytes,
 		"proposal_type":  proposalType,
 	})
 	if err != nil {
-		return errors.New("crypto service unavailable")
+		return cryptoFailure(err)
 	}
 	if !v.Valid {
 		return errors.New("invalid proposal format")

@@ -1,9 +1,11 @@
+import { useChatMuted } from '../../model/notificationMute';
 import { ROUTES } from '@/shared/config';
 import { cn, formatChatListTime, receiptState, useLongPress } from '@/shared/lib';
 import type { TReceiptState } from '@/shared/lib';
 import { readDraftRich, subscribeToDraft } from '../../model/chatDraftsStore';
 import { useTypingLabel } from '../../model/typingLabel';
 import { getLastMessageText } from '../../model/getLastMessageText';
+import { getChatTitle, isSavedMessages } from '../../model/chatTitle';
 import { useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, useMatch } from 'react-router-dom';
@@ -37,7 +39,9 @@ interface Props {
 
 export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu }: Props) {
   const { t, i18n } = useTranslation();
-  const title = chat.title || t('untitledChat', 'Без названия');
+  const muted = useChatMuted(chat);
+  const title = getChatTitle(chat, t);
+  const saved = isSavedMessages(chat);
   const typingLabel = useTypingLabel(chat);
   const { contextMenu, handleContextMenu, closeContextMenu, openerRef } = useContextMenu();
 
@@ -64,7 +68,7 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
     useCallback(() => readDraftRich(chat.id), [chat.id])
   );
 
-  const lastMessage = typingLabel ?? getLastMessageText(chat.lastMessage, t);
+  const lastMessage = typingLabel ?? getLastMessageText(chat.lastMessage, t, currentUserId);
 
   const peerId = chat.peerId;
   const isPeerOnline = Boolean(chat.type === 'private' && (chat.peerIsOnline || typingLabel));
@@ -72,7 +76,12 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
   /* Кто написал последнее: своё — «Вы:», в группе — имя автора. В личном
      чате чужое без подписи: собеседник там один. */
   const last = chat.lastMessage;
-  const isOwnLast = Boolean(last && currentUserId && last.senderId === currentUserId);
+  // У звонка направление уже в подписи («Исходящий…»), а «прочитано» у него
+  // смысла не имеет: ни «Вы:», ни галочек (#1073). В «Избранном» всё своё,
+  // и читать его некому (#1075).
+  const isOwnLast = Boolean(
+    last && currentUserId && last.senderId === currentUserId && last.type !== 'call' && !saved
+  );
   const prefix =
     !typingLabel && last
       ? isOwnLast
@@ -115,7 +124,15 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
         to={ROUTES.CHAT_BY_ID(chat.id)}
         {...longPress}
       >
-        <Avatar id={peerId} name={title} online={isPeerOnline} size="lg" src={chat.avatarUrl} />
+        <Avatar
+          className="size-(--chat-row-avatar)"
+          icon={saved ? 'bookmark' : undefined}
+          id={peerId}
+          name={title}
+          online={isPeerOnline}
+          size="lg"
+          src={chat.avatarUrl}
+        />
 
         <div className="flex min-w-0 flex-1 flex-col gap-0.75">
           <div className="flex items-baseline gap-2">
@@ -127,7 +144,7 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
             >
               {title}
             </span>
-            {chat.isMuted && (
+            {muted && (
               <span
                 aria-label={t('chatList.muted', 'Без звука')}
                 className={cn('flex self-center text-ink-3', onCurrentRow)}
@@ -208,7 +225,7 @@ export function ChatListItem({ chat, pinnedCount = 0, currentUserId, renderMenu 
                     ? t('chatList.markedUnread', 'Отмечен непрочитанным')
                     : `${chat.unreadCount} ${t('unreadMessages', 'непрочитанных')}`
                 }
-                tone={chat.isMuted ? 'quiet' : 'brand'}
+                tone={muted ? 'quiet' : 'brand'}
               >
                 {chat.isMarkedUnread ? undefined : chat.unreadCount}
               </Badge>

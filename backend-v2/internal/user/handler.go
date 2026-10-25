@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -272,11 +273,15 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"settings": settings, "privacy": privacy})
 	case http.MethodPut:
-		var body map[string]any
-		if !decode(w, r, &body) {
+		body, ok := decodeSettingsPatch(w, r)
+		if !ok {
 			return
 		}
 		settings, err := h.service.UpdateSettings(r.Context(), current.ID, body)
+		if errors.Is(err, ErrInvalidSettings) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "settings update failed")
 			return
@@ -298,12 +303,12 @@ func (h *Handler) AllSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, settings)
 	case http.MethodPut:
-		var input AllSettings
-		if !decode(w, r, &input) {
+		input, ok := decodeSettingsBulkPatch(w, r)
+		if !ok {
 			return
 		}
 		if err := h.service.UpdateAllSettings(r.Context(), current.ID, input); err != nil {
-			if errors.Is(err, ErrInvalidPrivacy) {
+			if errors.Is(err, ErrInvalidPrivacy) || errors.Is(err, ErrInvalidSettings) {
 				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
 				return
 			}
@@ -348,18 +353,22 @@ func (h *Handler) Preference(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		settings, err := h.service.Preference(r.Context(), current.ID, spec.column, spec.fallback)
+		settings, err := h.service.Preference(r.Context(), current.ID, spec.column)
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "preference fetch failed")
 			return
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{spec.key: settings})
 	case http.MethodPut:
-		var body map[string]any
-		if !decode(w, r, &body) {
+		body, ok := decodeSettingsPatch(w, r)
+		if !ok {
 			return
 		}
 		settings, err := h.service.UpdatePreference(r.Context(), current.ID, spec.column, body)
+		if errors.Is(err, ErrInvalidSettings) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "preference update failed")
 			return
@@ -412,11 +421,15 @@ func (h *Handler) Storage(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"storage": usage, "settings": settings})
 	case path == "/api/v2/users/storage/settings" && r.Method == http.MethodPut:
-		var body map[string]any
-		if !decode(w, r, &body) {
+		body, ok := decodeSettingsPatch(w, r)
+		if !ok {
 			return
 		}
 		settings, err := h.service.UpdateStorageSettings(r.Context(), current.ID, body)
+		if errors.Is(err, ErrInvalidSettings) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "storage settings update failed")
 			return
@@ -535,7 +548,8 @@ func respondProfile(w http.ResponseWriter, r *http.Request, profile Profile, err
 func (h *Handler) Devices(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
 	if r.Method == http.MethodGet {
-		devices, err := h.service.Devices(r.Context(), current.ID)
+		token, _ := authctx.TokenFromRequest(r)
+		devices, err := h.service.Devices(r.Context(), current.ID, token)
 		if err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to fetch devices")
 			return
@@ -565,8 +579,12 @@ func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, _ := authctx.TokenFromRequest(r)
+	var tokenHash string
+	if token != "" {
+		tokenHash = authctx.TokenHash(token)
+	}
 	sessionID, err := h.service.RegisterDevice(
-		r.Context(), current.ID, authctx.TokenHash(token),
+		r.Context(), current.ID, tokenHash,
 		input.DeviceName, input.DeviceType, input.ClientIP, "Unknown", input.UserAgent,
 	)
 	if errors.Is(err, ErrAuthSessionInactive) {
@@ -581,6 +599,7 @@ func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteDevice(w http.ResponseWriter, r *http.Request) {
+	const method = "DeleteDevice"
 	if r.Method != http.MethodDelete {
 		httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
@@ -595,12 +614,26 @@ func (h *Handler) DeleteDevice(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid sessionId")
 		return
 	}
-	err := h.service.DeleteDevice(r.Context(), current.ID, sessionID)
+	token, _ := authctx.TokenFromRequest(r)
+	err := h.service.DeleteDevice(r.Context(), current.ID, sessionID, authctx.TokenHash(token))
 	switch {
+	case errors.Is(err, ErrAuthSessionInactive):
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "authorization token has been revoked")
+		return
 	case errors.Is(err, ErrNotFound):
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "not_found", "session not found")
 		return
+	case errors.Is(err, ErrCannotTerminateCurrentSession):
+		httpx.ErrorJSON(w, r, http.StatusConflict, "conflict_current_session", "cannot terminate current session")
+		return
 	case err != nil:
+		slog.ErrorContext(r.Context(), "failed to delete device session",
+			"layer", "handler",
+			"method", method,
+			"user_id", current.ID,
+			"session_id", sessionID,
+			"error", err,
+		)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "operation failed")
 		return
 	}
@@ -613,7 +646,12 @@ func (h *Handler) TerminateAllDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	current := authctx.MustUser(r)
-	err := h.service.TerminateAllDevices(r.Context(), current.ID)
+	token, _ := authctx.TokenFromRequest(r)
+	err := h.service.TerminateAllDevices(r.Context(), current.ID, authctx.TokenHash(token))
+	if errors.Is(err, ErrAuthSessionInactive) {
+		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "token_revoked", "authorization token has been revoked")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to terminate devices")
 		return
@@ -707,46 +745,21 @@ func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 }
 
 type preferenceRouteSpec struct {
-	column   string
-	key      string
-	fallback map[string]any
+	column string
+	key    string
 }
 
 func preferenceSpec(path string) (preferenceRouteSpec, bool) {
+	var column string
 	switch path {
 	case "/api/v2/users/notifications":
-		return preferenceRouteSpec{
-			column: "notification_settings",
-			key:    "settings",
-			fallback: map[string]any{
-				"privateChats": true, "groups": true, "channels": true, "calls": true,
-				"videoCalls": true, "inAppNotifications": true, "messagePreview": true,
-				"readReceipts": false, "reactions": true, "newContacts": true,
-			},
-		}, true
+		column = "notification_settings"
 	case "/api/v2/users/sounds":
-		return preferenceRouteSpec{
-			column: "sound_settings",
-			key:    "settings",
-			fallback: map[string]any{
-				"notificationsVolume": 80, "mediaVolume": 100, "notificationsSound": true,
-				"messagesSound": true, "sendSound": true, "callsSound": true,
-				"vibrateOnCall": true, "notificationSound": "default", "messageSound": "default",
-				"ringtone": "default",
-			},
-		}, true
+		column = "sound_settings"
 	case "/api/v2/users/advanced-settings":
-		return preferenceRouteSpec{
-			column: "advanced_settings",
-			key:    "settings",
-			fallback: map[string]any{
-				"autoReconnect": true, "fastConnection": true, "connectionType": "auto",
-				"dataCompression": true, "saveDrafts": true, "analytics": false,
-				"developerMode": false, "debugLog": false, "hardwareAcceleration": true,
-				"autoplayGifs": true,
-			},
-		}, true
+		column = "advanced_settings"
 	default:
 		return preferenceRouteSpec{}, false
 	}
+	return preferenceRouteSpec{column: column, key: "settings"}, true
 }

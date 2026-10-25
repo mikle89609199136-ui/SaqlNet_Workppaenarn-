@@ -45,66 +45,27 @@ export class UserService {
     return this.apiClient.get(API_ENDPOINTS.USER_STATUS(userId)).then((response) => response.data);
   }
 
+  /** Каноническое чтение settings и privacy (#498). */
   getSettings() {
     return this.apiClient.get(API_ENDPOINTS.USER_SETTINGS).then((response) => response.data);
   }
 
+  /** Частичный flat patch общих настроек, без envelope { settings: ... }. */
   updateSettings(settings) {
     return this.apiClient
       .put(API_ENDPOINTS.USER_SETTINGS, settings)
       .then((response) => response.data?.settings ?? response.data);
   }
 
+  /** Частичный patch правил; чтение — через getSettings(). */
   updatePrivacy(privacy) {
     return this.apiClient
       .put(API_ENDPOINTS.USER_PRIVACY, privacy)
       .then((response) => response.data?.privacy ?? response.data);
   }
 
-  getNotifications() {
-    return this.getPreference(API_ENDPOINTS.USER_NOTIFICATIONS);
-  }
-
-  updateNotifications(settings) {
-    return this.updatePreference(API_ENDPOINTS.USER_NOTIFICATIONS, settings);
-  }
-
-  getSounds() {
-    return this.getPreference(API_ENDPOINTS.USER_SOUNDS);
-  }
-
-  updateSounds(settings) {
-    return this.updatePreference(API_ENDPOINTS.USER_SOUNDS, settings);
-  }
-
-  getAdvancedSettings() {
-    return this.getPreference(API_ENDPOINTS.USER_ADVANCED_SETTINGS);
-  }
-
-  updateAdvancedSettings(settings) {
-    return this.updatePreference(API_ENDPOINTS.USER_ADVANCED_SETTINGS, settings);
-  }
-
-  getFolders() {
-    return this.apiClient
-      .get(API_ENDPOINTS.USER_FOLDERS)
-      .then((response) => response.data?.folders ?? []);
-  }
-
-  updateFolders(folders) {
-    return this.apiClient
-      .put(API_ENDPOINTS.USER_FOLDERS, { folders })
-      .then((response) => response.data);
-  }
-
   getStorage() {
     return this.apiClient.get(API_ENDPOINTS.USER_STORAGE).then((response) => response.data);
-  }
-
-  updateStorageSettings(settings) {
-    return this.apiClient
-      .put(API_ENDPOINTS.USER_STORAGE_SETTINGS, settings)
-      .then((response) => response.data?.settings ?? response.data);
   }
 
   clearStorageCache() {
@@ -181,17 +142,5 @@ export class UserService {
     return this.apiClient
       .post(API_ENDPOINTS.USER_DEVICES_TERMINATE_ALL)
       .then((response) => response.data);
-  }
-
-  getPreference(endpoint) {
-    return this.apiClient
-      .get(endpoint)
-      .then((response) => response.data?.settings ?? response.data);
-  }
-
-  updatePreference(endpoint, settings) {
-    return this.apiClient
-      .put(endpoint, settings)
-      .then((response) => response.data?.settings ?? response.data);
   }
 }

@@ -38,6 +38,11 @@ interface IChatState {
    * профиле (#842). Выполняет лента открытого чата и сбрасывает запрос.
    */
   jumpRequest: { chatId: string; messageId: string } | null;
+  /**
+   * Открыть профиль собеседника в чате — например, из истории звонков
+   * (#1074). Выполняет страница этого чата и сбрасывает запрос.
+   */
+  profileRequest: { chatId: string; userId: string } | null;
   /** Что удалить — открытый диалог «Удалить сообщение?» (#840). */
   deleteTargets: TMessagesList | null;
 }
@@ -54,8 +59,9 @@ interface IChatActions {
   setActionMenu: (menu: IActionMenu | null) => void;
   setHighlightedMessageId: (id: string | null) => void;
   setJumpRequest: (request: { chatId: string; messageId: string } | null) => void;
+  setProfileRequest: (request: { chatId: string; userId: string } | null) => void;
   setDeleteTargets: (targets: TMessagesList | null) => void;
-  resetChatState: () => void;
+  resetChatState: (keepJumpForChatId?: string) => void;
 }
 
 const initialChatState: IChatState = {
@@ -68,6 +74,7 @@ const initialChatState: IChatState = {
   actionMenu: null,
   highlightedMessageId: null,
   jumpRequest: null,
+  profileRequest: null,
   deleteTargets: null,
 };
 
@@ -98,7 +105,17 @@ export const useChatUiStore = create<InitialState>((set) => {
     setActionMenu: (actionMenu) => set({ actionMenu }),
     setHighlightedMessageId: (highlightedMessageId) => set({ highlightedMessageId }),
     setJumpRequest: (jumpRequest) => set({ jumpRequest }),
+    setProfileRequest: (profileRequest) => set({ profileRequest }),
     setDeleteTargets: (deleteTargets) => set({ deleteTargets }),
-    resetChatState: () => set(initialChatState),
+    // Запрос перехода, адресованный новому чату, переживает смену чата: его
+    // ставят перед переходом, а выполняет лента нового чата (#1076).
+    resetChatState: (keepJumpForChatId) =>
+      set((state) => ({
+        ...initialChatState,
+        jumpRequest:
+          keepJumpForChatId && state.jumpRequest?.chatId === keepJumpForChatId
+            ? state.jumpRequest
+            : null,
+      })),
   };
 });

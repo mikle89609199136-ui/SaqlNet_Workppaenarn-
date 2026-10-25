@@ -1,6 +1,6 @@
 import { EMOJI_CATEGORIES, EMOJI_KEYWORDS, type TEmojiCategoryKey } from '@/shared/config';
 import { cn } from '@/shared/lib';
-import { Icon } from '@/shared/ui/Icon';
+import { Input } from '@/shared/ui/Input';
 import { NotoEmoji } from '@/shared/ui/NotoEmoji';
 import { forwardRef, useMemo, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -72,17 +72,16 @@ export const EmojiPicker = forwardRef<HTMLDivElement, Props>(function EmojiPicke
       role="dialog"
       tabIndex={-1}
     >
-      <label className="flex h-9.5 items-center gap-2 rounded-icon bg-sheet-2 px-3 text-ink-3">
-        <Icon aria-hidden="true" className="size-4" name="search" />
-        <input
-          aria-label={t('emoji.search', 'Поиск эмодзи')}
-          className="min-w-0 grow border-0 bg-transparent text-ui text-ink outline-none placeholder:text-ink-3"
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={t('emoji.search', 'Поиск эмодзи')}
-          type="search"
-          value={query}
-        />
-      </label>
+      <Input
+        aria-label={t('emoji.search', 'Поиск эмодзи')}
+        className="shrink-0"
+        icon="search"
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder={t('emoji.search', 'Поиск эмодзи')}
+        size="sm"
+        type="search"
+        value={query}
+      />
 
       <div
         aria-label={t('emoji.categories', 'Категории эмодзи')}
@@ -97,7 +96,7 @@ export const EmojiPicker = forwardRef<HTMLDivElement, Props>(function EmojiPicke
               aria-label={label}
               aria-selected={selected}
               className={cn(
-                'flex h-8.5 cursor-pointer items-center justify-center rounded-field transition-[background-color,opacity] duration-[160ms]',
+                'flex h-8.5 cursor-pointer items-center justify-center rounded-field transition-[background-color,opacity] duration-160',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
                 selected ? 'bg-brand-soft' : 'opacity-70 hover:opacity-100'
               )}
@@ -118,7 +117,7 @@ export const EmojiPicker = forwardRef<HTMLDivElement, Props>(function EmojiPicke
 
       <div className="px-1 text-meta font-semibold text-ink-3">{title}</div>
 
-      <div className="h-52 overflow-y-auto [scrollbar-width:thin]" role="tabpanel">
+      <div className="h-52 overflow-y-auto scrollbar-thin" role="tabpanel">
         {shown.length > 0 ? (
           <div className="grid grid-cols-8 content-start gap-0.5">
             {shown.map((emoji) => (
@@ -142,19 +141,6 @@ export const EmojiPicker = forwardRef<HTMLDivElement, Props>(function EmojiPicke
             {t('emoji.nothingFound', 'Ничего не нашлось')}
           </p>
         )}
-      </div>
-
-      <div className="px-1 text-micro text-ink-3">
-        {t('emoji.attribution', 'Эмодзи:')}{' '}
-        <a
-          className="text-ink-2 underline decoration-1 underline-offset-2"
-          href="https://googlefonts.github.io/noto-emoji-animation/"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Noto Emoji
-        </a>
-        , Apache 2.0 {t('emoji.and', 'и')} CC BY 4.0
       </div>
     </div>
   );

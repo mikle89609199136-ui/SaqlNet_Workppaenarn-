@@ -12,19 +12,13 @@ import {
 } from './outboxSender';
 import { chatKeys } from '@/entities/chat';
 import { makeMessage } from '@/test/fixtures';
+import * as imageEncoder from '@/shared/lib/utils/encodeImage';
 
 // Пересжатие фото — вместо холста (его нет в тестовой среде) подставной результат.
-const encoded = vi.hoisted(() => ({
+const encoded = {
   file: new File(['webp'], 'photo.webp', { type: 'image/webp' }),
   calls: 0,
-}));
-vi.mock('@/shared/lib', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/shared/lib')>()),
-  encodeChatPhoto: async () => {
-    encoded.calls += 1;
-    return encoded.file;
-  },
-}));
+};
 
 describe('outboxSender: пересжатие фото', () => {
   beforeEach(() => {
@@ -32,6 +26,10 @@ describe('outboxSender: пересжатие фото', () => {
     resetInFlightForTests();
     vi.restoreAllMocks();
     encoded.calls = 0;
+    vi.spyOn(imageEncoder, 'encodeChatPhoto').mockImplementation(async () => {
+      encoded.calls += 1;
+      return encoded.file;
+    });
   });
 
   it('пересжимает до загрузки один раз: повтор после сбоя берёт готовый файл', async () => {
@@ -42,6 +40,7 @@ describe('outboxSender: пересжатие фото', () => {
       .mockRejectedValue(new Error('network'));
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-photo',
       chatId: 'chat-1',
       content: '',
@@ -69,6 +68,7 @@ describe('outboxSender: пересжатие фото', () => {
       .mockRejectedValue(new Error('network'));
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-original',
       chatId: 'chat-1',
       content: '',
@@ -111,6 +111,7 @@ describe('outboxSender', () => {
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Привет',
@@ -154,6 +155,7 @@ describe('outboxSender', () => {
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Упадёт',
@@ -190,6 +192,7 @@ describe('outboxSender', () => {
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Повтор',
@@ -229,6 +232,7 @@ describe('outboxSender', () => {
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Картинка',
@@ -259,6 +263,7 @@ describe('outboxSender', () => {
     vi.spyOn(services.messageService, 'sendMessage').mockResolvedValue(serverMessage);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-b1',
       chatId,
       content: 'msg1',
@@ -267,6 +272,7 @@ describe('outboxSender', () => {
       createdAt: new Date('2026-09-07T00:00:00Z'),
     });
     addOutboxItem({
+      senderId: 'user-1',
       tempId: 'temp-b2',
       chatId,
       content: 'msg2',
@@ -278,6 +284,43 @@ describe('outboxSender', () => {
     await retryAllOutboxMessages(queryClient, chatId);
 
     expect(services.messageService.sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  // Поводов повторить теперь несколько — сокет, сеть, вкладка (#1069). Два
+  // прохода разом отправили бы второе сообщение раньше первого.
+  it('одновременные повторы: каждое сообщение один раз и по порядку', async () => {
+    const chatId = 'chat-concurrent';
+    const sent: string[] = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    vi.spyOn(services.messageService, 'sendMessage').mockImplementation(async (_chat, content) => {
+      sent.push(content);
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= 1;
+      return makeMessage({ id: `server-${content}` });
+    });
+    for (const [index, content] of ['первое', 'второе'].entries()) {
+      addOutboxItem({
+        senderId: 'user-1',
+        tempId: `temp-c${index}`,
+        chatId,
+        content,
+        type: 'text',
+        status: 'failed',
+        createdAt: new Date(Date.UTC(2026, 9, 17, 0, 0, index)),
+      });
+    }
+
+    await Promise.all([
+      retryAllOutboxMessages(queryClient, chatId),
+      retryAllOutboxMessages(queryClient, chatId),
+    ]);
+
+    expect(sent).toEqual(['первое', 'второе']);
+    // Второе уходит, только когда первое доставлено.
+    expect(maxInFlight).toBe(1);
   });
 
   it('should send duplicate text message without silently dropping it', async () => {
@@ -308,6 +351,7 @@ describe('outboxSender', () => {
     queryClient.setQueryData(chatKeys.messages(chatId), initialPages);
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'ок',
@@ -335,6 +379,7 @@ describe('outboxSender', () => {
     const chatId = 'chat-limit';
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Сообщение с лимитом',
@@ -368,6 +413,7 @@ describe('outboxSender', () => {
     });
 
     addOutboxItem({
+      senderId: 'user-1',
       tempId,
       chatId,
       content: 'Отменяемое',

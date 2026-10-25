@@ -1,5 +1,6 @@
 import type { IChatDto } from '@/types';
 import type { TLastSeenApprox } from '@/shared/lib';
+import type { components } from '@/types/api.generated';
 
 export interface IUserDto {
   id: string;
@@ -13,11 +14,28 @@ export interface IUserDto {
   badges: string[]; // неизвестно какое dto у бэйджа
 }
 
-export interface ISettingsDto {
+type TNotificationPreferences = components['schemas']['MvpSettings'];
+
+type TAppearancePreferences = Pick<
+  components['schemas']['MvpSettings'],
+  | 'palette'
+  | 'accentPreset'
+  | 'textSize'
+  | 'chatDensity'
+  | 'showMessageTime'
+  | 'showMessageStatus'
+  | 'showMessageAvatars'
+  | 'groupConsecutiveMessages'
+>;
+
+/** Типы полей согласованы с каноническим User API. Старые ответы могут быть частичными. */
+export interface ISettingsDto
+  extends
+    TAppearancePreferences,
+    Required<Pick<TNotificationPreferences, 'notifications' | 'sounds'>>,
+    Pick<TNotificationPreferences, 'callSounds'> {
   language: string;
-  theme: 'dark' | 'light';
-  notifications: boolean;
-  sounds: boolean;
+  theme: NonNullable<components['schemas']['MvpSettings']['theme']>;
   /* Чем заменять фотографию, когда её нет: буквой или сеткой от
      идентификатора. Выбор вкусовой, поэтому вынесен человеку (#375). */
   avatarShape: 'letter' | 'grid';
@@ -35,14 +53,16 @@ export interface IPrivacyDto {
   photoVisibility: TPrivacyVisibility;
   /** Кто может ссылаться на мой аккаунт, пересылая мои сообщения (#785). */
   forwards: TPrivacyVisibility;
+  /** Кто может звонить (#714, #1043). */
+  calls: TPrivacyVisibility;
   messagesFromStrangers: boolean;
 }
 
 /**
  * Правила, у которых на экране есть исключения (#786) — те, что сервер
- * применяет. «Звонки» добавятся вместе с #714.
+ * применяет (#714, #1043).
  */
-export type TPrivacyRule = 'lastSeen' | 'photoVisibility' | 'forwards';
+export type TPrivacyRule = 'lastSeen' | 'photoVisibility' | 'forwards' | 'calls';
 
 /** allow — «Всегда разрешать», deny — «Никогда не разрешать». */
 export type TPrivacyExceptionMode = 'allow' | 'deny';
@@ -103,10 +123,11 @@ export interface IProfileModal {
   /** Чей профиль показывать. Сами данные читает панель — по этому идентификатору. */
   userId: string | null;
   /**
-   * Что в панели: профиль человека или сведения о группе (#822). Группа
-   * берётся из открытого чата, поэтому userId у неё пустой.
+   * Что в панели: профиль человека, сведения о группе (#822) или медиа и
+   * файлы «Избранного» (#1075). Группа и «Избранное» берутся из открытого
+   * чата, поэтому userId у них пустой.
    */
-  kind?: 'user' | 'group';
+  kind?: 'user' | 'group' | 'saved';
 }
 
 export interface IProfileState extends IProfileModal {

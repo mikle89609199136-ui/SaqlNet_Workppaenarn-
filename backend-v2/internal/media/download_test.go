@@ -206,6 +206,7 @@ func TestDownloadMissingDatabaseRowIsNotFound(t *testing.T) {
 	mock.ExpectQuery("SELECT bucket, object_key, content_type, size_bytes, is_encrypted, encryption_key_id").
 		WithArgs(testUploadID).
 		WillReturnRows(sqlmock.NewRows([]string{"bucket", "object_key", "content_type", "size_bytes", "is_encrypted", "encryption_key_id"}))
+	mock.ExpectQuery("SELECT bucket, object_key FROM media.stickers").WithArgs(testUploadID).WillReturnRows(sqlmock.NewRows([]string{"bucket", "object_key"}))
 	service := NewService(db, store, "crane-media", defaultTestMaxUploadBytes)
 	handler := NewHandler(service)
 
@@ -714,5 +715,46 @@ func TestDownloadIsCachedAsImmutable(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDownloadCatalogObject(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		t.Run(method, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			mock.ExpectQuery("SELECT bucket, object_key, content_type, size_bytes, is_encrypted, encryption_key_id").WithArgs(testUploadID).
+				WillReturnRows(sqlmock.NewRows([]string{"bucket", "object_key", "content_type", "size_bytes", "is_encrypted", "encryption_key_id"}))
+			mock.ExpectQuery("SELECT bucket, object_key FROM media.stickers").WithArgs(testUploadID).
+				WillReturnRows(sqlmock.NewRows([]string{"bucket", "object_key"}).AddRow("catalog", "owner/stickers/1"))
+			store := &downloadStore{get: func(_ context.Context, bucket, key string, options GetOptions) (*ObjectResponse, error) {
+				if bucket != "catalog" || key != "owner/stickers/1" || options.Head != (method == http.MethodHead) {
+					t.Fatalf("unexpected object request: %s %s %+v", bucket, key, options)
+				}
+				object := objectResponse(http.StatusOK, "sticker bytes")
+				object.ContentType = "image/webp"
+				return object, nil
+			}}
+			handler := NewHandler(NewService(db, store, "uploads", defaultTestMaxUploadBytes))
+			response := serveDownload(t, handler, method, nil)
+			if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/webp" || response.Header().Get("Content-Length") != "13" {
+				t.Fatalf("status=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
+			}
+			if method == http.MethodGet && response.Body.String() != "sticker bytes" {
+				t.Fatal(response.Body.String())
+			}
+			if method == http.MethodHead && response.Body.Len() != 0 {
+				t.Fatal("HEAD has body")
+			}
+			if store.presignCalls != 0 || response.Header().Get("Location") != "" {
+				t.Fatal("catalog download must not redirect")
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

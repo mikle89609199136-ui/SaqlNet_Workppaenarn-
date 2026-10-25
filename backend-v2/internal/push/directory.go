@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 
+	"craneapp/backend-v2/internal/platform/notificationpolicy"
+
 	"github.com/lib/pq"
 )
 
@@ -56,19 +58,25 @@ func (d DBDirectory) MembersExcept(ctx context.Context, chatID, userID string) (
 
 // Targets — подписки получателей. Выключил уведомления в настройках — его
 // подписок здесь нет; нет строки настроек — уведомления по умолчанию
-// включены, язык — русский.
-func (d DBDirectory) Targets(ctx context.Context, userIDs []string) ([]Target, error) {
+// включены, язык — русский. Personal mute фильтрует только message этого
+// чата, на всех устройствах; calls/missed_call от него не зависят (#559).
+func (d DBDirectory) Targets(ctx context.Context, userIDs []string, event Event) ([]Target, error) {
 	if len(userIDs) == 0 {
 		return nil, nil
 	}
 	rows, err := d.DB.QueryContext(ctx, `
 		SELECT ps.id::text, ps.user_id::text, ps.endpoint, ps.p256dh, ps.auth,
-		       COALESCE(us.settings->>'language', 'ru')
+		       COALESCE(us.settings->>'language', 'ru'), us.settings
 		FROM users.push_subscriptions ps
 		LEFT JOIN users.settings us ON us.user_id = ps.user_id
 		WHERE ps.user_id = ANY($1::uuid[])
-		  AND COALESCE(us.settings->>'notifications', 'true') <> 'false'
-	`, pq.Array(userIDs))
+		  AND ($3 <> 'message' OR NOT EXISTS (
+		    SELECT 1 FROM chats.user_chat_settings cs
+		    WHERE cs.user_id=ps.user_id AND cs.chat_id=$2::uuid
+		      AND cs.notifications_muted_at IS NOT NULL
+		      AND (cs.notifications_muted_until IS NULL OR cs.notifications_muted_until > NOW())
+		  ))
+	`, pq.Array(userIDs), event.ChatID, event.Kind)
 	if err != nil {
 		return nil, err
 	}
@@ -76,9 +84,21 @@ func (d DBDirectory) Targets(ctx context.Context, userIDs []string) ([]Target, e
 	var targets []Target
 	for rows.Next() {
 		var target Target
+		var rawSettings []byte
 		if err := rows.Scan(&target.SubscriptionID, &target.UserID, &target.Subscription.Endpoint,
-			&target.Subscription.Keys.P256dh, &target.Subscription.Keys.Auth, &target.Lang); err != nil {
+			&target.Subscription.Keys.P256dh, &target.Subscription.Keys.Auth, &target.Lang, &rawSettings); err != nil {
 			return nil, err
+		}
+		flags := notificationpolicy.Read(rawSettings)
+		if !flags.Notifications {
+			continue
+		}
+		target.Silent = true
+		switch event.Kind {
+		case KindMessage:
+			target.Silent = !flags.Sounds
+		case KindCall:
+			target.Silent = !flags.CallSounds
 		}
 		targets = append(targets, target)
 	}

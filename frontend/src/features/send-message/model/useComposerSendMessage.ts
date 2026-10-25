@@ -70,9 +70,9 @@ export function useComposerSendMessage({
     [chatId, queryClient, setError, t]
   );
 
-  function scrollToBottom() {
+  const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }));
-  }
+  }, [bottomRef]);
 
   const handleRetryMessage = useCallback(
     (message: IMessageDto) => {
@@ -175,6 +175,7 @@ export function useComposerSendMessage({
       const outboxItem: IOutboxItem = {
         tempId,
         chatId,
+        senderId: currentUser?.id ?? '',
         content: itemContent,
         entities: itemEntities,
         type,
@@ -214,5 +215,68 @@ export function useComposerSendMessage({
     })();
   }
 
-  return { isSending, handleSubmit, handleRetryMessage };
+  const sendCatalogMedia = useCallback(
+    async (mediaUrl: string, type: 'sticker' | 'gif') => {
+      const tempId = `temp-${Date.now()}-0-${Math.random().toString(36).slice(2, 9)}`;
+      const replyToId = replyToMessage?.id ?? null;
+      const optimisticMessage: IMediaItem = {
+        id: tempId,
+        tempId,
+        chatId,
+        senderId: currentUser?.id ?? '',
+        content: '',
+        type,
+        mediaType: type,
+        mediaUrl,
+        replyTo: replyToId,
+        replyToMessageId: replyToId,
+        status: 'pending',
+        createdAt: new Date(),
+        reactions: [],
+      };
+      putThreadMessage(queryClient, chatId, optimisticMessage);
+
+      const outboxItem: IOutboxItem = {
+        tempId,
+        chatId,
+        senderId: currentUser?.id ?? '',
+        content: '',
+        type,
+        mediaUrl,
+        replyToId,
+        status: 'pending',
+        createdAt: new Date(),
+      };
+      addOutboxItem(outboxItem);
+      setReplyToMessage(null);
+      scrollToBottom();
+
+      await sendOutboxItem(queryClient, outboxItem, {
+        onError: (err) => showSendError(err),
+        onSuccess: () => setError(''),
+      });
+    },
+    [
+      chatId,
+      currentUser?.id,
+      queryClient,
+      replyToMessage?.id,
+      scrollToBottom,
+      setError,
+      setReplyToMessage,
+      showSendError,
+    ]
+  );
+
+  const sendSticker = useCallback(
+    (stickerUrl: string) => sendCatalogMedia(stickerUrl, 'sticker'),
+    [sendCatalogMedia]
+  );
+
+  const sendGif = useCallback(
+    (gifUrl: string) => sendCatalogMedia(gifUrl, 'gif'),
+    [sendCatalogMedia]
+  );
+
+  return { isSending, handleSubmit, handleRetryMessage, sendSticker, sendGif };
 }

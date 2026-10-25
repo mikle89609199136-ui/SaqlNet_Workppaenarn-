@@ -166,6 +166,36 @@ func (s *Service) MessagePosition(ctx context.Context, userID, chatID, messageID
 	return int(position.Int64), nil
 }
 
+// MessageLocation — в каком чате сообщение (#1076). Пересланное в
+// «Избранное» хранит id оригинала, а чат оригинала клиенту неизвестен, и
+// позицию без чата не спросить.
+//
+// Условия те же, что у позиции: сообщение не удалено, не скрыто у
+// смотрящего, смотрящий сейчас участник его чата. Отказ один на все случаи
+// — ErrMessageNotFound: по ответу нельзя узнать о сообщениях чужих чатов.
+func (s *Service) MessageLocation(ctx context.Context, userID, messageID string) (string, error) {
+	var chatID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT m.chat_id::text FROM messages.messages m
+		WHERE m.id = $1 AND m.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)
+	`, messageID, userID).Scan(&chatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrMessageNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	member, err := s.IsMember(ctx, userID, chatID)
+	if err != nil {
+		return "", err
+	}
+	if !member {
+		return "", ErrMessageNotFound
+	}
+	return chatID, nil
+}
+
 // ListShared — GET /api/v2/chats/{chatID}/shared?kind=&before=&limit=.
 func (h *Handler) ListShared(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
@@ -233,5 +263,25 @@ func (h *Handler) MessagePosition(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to find message position")
 	default:
 		httpx.JSON(w, http.StatusOK, map[string]int{"position": position})
+	}
+}
+
+// MessageLocation — GET /api/v2/messages/{messageId}/location.
+func (h *Handler) MessageLocation(w http.ResponseWriter, r *http.Request) {
+	current := authctx.MustUser(r)
+	messageID := r.PathValue("messageId")
+	if validate.Var(messageID, "required,uuid") != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid messageId")
+		return
+	}
+
+	chatID, err := h.service.MessageLocation(r.Context(), current.ID, messageID)
+	switch {
+	case errors.Is(err, ErrMessageNotFound):
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "message_not_found", "message_not_found")
+	case err != nil:
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to find message")
+	default:
+		httpx.JSON(w, http.StatusOK, map[string]string{"chatId": chatID})
 	}
 }

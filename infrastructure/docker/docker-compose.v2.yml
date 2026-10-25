@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: craneapp
       POSTGRES_PASSWORD: craneapp-local
     healthcheck:
-      test: [ 'CMD-SHELL', 'pg_isready -U craneapp -d craneapp' ]
+      test: ['CMD-SHELL', 'pg_isready -U craneapp -d craneapp']
       interval: 5s
       timeout: 3s
       retries: 20
@@ -15,19 +15,19 @@ services:
 
   nats:
     image: nats:2.10-alpine
-    command: [ '-js', '-sd', '/data' ]
+    command: ['-js', '-sd', '/data']
     volumes:
       - nats_v2:/data
 
   redis:
     image: redis:7-alpine
-    command: [ 'redis-server', '--appendonly', 'yes' ]
+    command: ['redis-server', '--appendonly', 'yes']
     volumes:
       - redis_v2:/data
 
   minio:
     image: minio/minio:latest
-    command: [ 'server', '/data', '--console-address', ':9001' ]
+    command: ['server', '/data', '--console-address', ':9001']
     environment:
       MINIO_ROOT_USER: craneapp
       MINIO_ROOT_PASSWORD: craneapp-local-secret
@@ -132,7 +132,7 @@ services:
       MINIO_SECRET_KEY: craneapp-local-secret
       MINIO_REGION: us-east-1
       MEDIA_BUCKET: crane-media
-      MAX_FILE_SIZE: ${MAX_FILE_SIZE:?MAX_FILE_SIZE is required}
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-104857600}
     depends_on:
       migrate:
         condition: service_completed_successfully

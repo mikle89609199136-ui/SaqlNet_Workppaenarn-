@@ -3,6 +3,7 @@ import { registerAuthInterceptor } from '@/features/auth';
 import { startCryptoAutoInit } from '@/services/serviceContainer';
 import { clearLegacySessionToken } from '@/shared/api';
 import { App } from './App';
+import { AppErrorBoundary } from './AppErrorBoundary';
 import {
   preventStrayFileDrop,
   registerServiceWorker,
@@ -46,6 +47,8 @@ clearLegacySessionToken();
 startCryptoAutoInit();
 createRoot(document.getElementById('appRoot')!).render(
   <StrictMode>
-    <App />
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
   </StrictMode>
 );

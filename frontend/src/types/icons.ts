@@ -1,6 +1,7 @@
 export type TIconTypes =
   | 'bell'
   | 'bellOff'
+  | 'bookmark'
   | 'burger'
   | 'camera'
   | 'channel'
@@ -47,6 +48,7 @@ export type TIconTypes =
   | 'volume'
   | 'volumeMute'
   | 'maximize'
+  | 'minimize'
   | 'fastForward'
   | 'rewind'
   | 'undo'
@@ -99,4 +101,6 @@ export type TIconTypes =
   | 'ban'
   | 'laptop'
   | 'smartphone'
-  | 'more';
+  | 'more'
+  | 'heart'
+  | 'sticker';

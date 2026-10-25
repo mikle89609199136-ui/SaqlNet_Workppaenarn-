@@ -50,6 +50,8 @@ jobs:
           filters: |
             frontend:
               - 'frontend/**'
+              - 'backend-v2/contracts/openapi/**'
+              - 'backend-v2/internal/platform/settingsdefaults/defaults.json'
               - 'scripts/**'
               - '.github/workflows/ci.yml'
             backend:
@@ -88,6 +90,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check User API contract and generated types
+        run: |
+          npm run api:types
+          git diff --exit-code -- src/types/api.generated.ts
+          npm run api:check
 
       # Проверка типов из конвейера убрана: корневой tsconfig — файл-решение
       # со списком проектов и пустым files, поэтому `tsc --noEmit` завершался
@@ -189,6 +197,10 @@ jobs:
         run: |
           go test -tags=integration $(go list ./... | grep -v '/internal/chat')
           go test -race -tags=integration ./internal/chat/...
+
+      # Второй слой лимитов MLS в chat: выдача KeyPackage, потолок вызовов crypto (#916).
+      - name: Run chat MLS limits integration tests
+        run: go test -count=1 -tags=integration -v -run 'TestMLSKeyPackageLimitsOnRealSchema|TestMLSBusyCryptoAnswers503OnCommitWelcomeAndProposals|TestMLSNonMemberIsDeniedBeforeCryptoSlotIsTaken|TestMLSNormalGroupAdditionFitsDefaultLimits|TestMLSUploadIsAtomicWhenCryptoBecomesBusyMidway' ./internal/chat
 
       - name: Build services
         run: go build ./...

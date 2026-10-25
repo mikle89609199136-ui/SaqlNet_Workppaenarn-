@@ -102,7 +102,11 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
       position in details.index. 403 member_muted when the sender is muted;
       403 blocked_by_user when the other member of a private chat has blocked
       the sender — nothing is stored or delivered. One new_message event per
-      message, in order, after the commit.
+      message, in order, after the commit. Sticker and GIF mediaUrl must be a
+      relative /api/v2/media/{uuid} path to an available catalog item; external
+      URLs and encrypted catalog objects are rejected. Stickers cannot have
+      content or entities. Other attachments must remain the sender's own
+      uploads (#871). Catalog metadata uses the message type as mediaType.
     requestBody:
       required: true
       content:
@@ -195,6 +199,34 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
             schema: { $ref: '../components/schemas.yaml#/ReactionToggleResponse' }
       '400': *error
       '403': *error
+      '404': *error
+      '500': *error
+
+/messages/{messageId}/location:
+  parameters:
+    - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+  get:
+    tags: [Messages]
+    summary: Chat of a message
+    description: >-
+      Which chat a message is in (#1076): a message forwarded to Saved Messages
+      keeps the original message id, but not its chat. Only for a current
+      member of that chat; deleted and hidden-for-me messages are not found.
+      Every refusal is the same 404 message_not_found, so the answer reveals
+      nothing about messages of other chats.
+    operationId: getMessageLocation
+    security: *secure
+    responses:
+      '200':
+        description: Chat of the message
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chatId]
+              properties:
+                chatId: { type: string, format: uuid }
+      '400': *error
       '404': *error
       '500': *error
 

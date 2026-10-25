@@ -1,7 +1,14 @@
 import { useCall } from '@/features/call';
 import { MessageSearchBar, useMessageSearchStore } from '@/features/message-search';
 import type { IProfileModal } from '@/entities/user';
-import { chatQuery, getChatSubtitle, onlineMembersQuery, useTypingLabel } from '@/entities/chat';
+import {
+  chatQuery,
+  getChatSubtitle,
+  getChatTitle,
+  isSavedMessages,
+  onlineMembersQuery,
+  useTypingLabel,
+} from '@/entities/chat';
 import { cn, useNow } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';
 import type { Dispatch, SetStateAction } from 'react';
@@ -49,6 +56,8 @@ export const ChatThreadHeader = ({
   // Блокировка в любую сторону — звонков нет (#760).
   const callsBlocked = Boolean(chat.isBlockedByPeer || chat.isPeerBlocked);
   const isGroup = chat.type === 'group';
+  const saved = isSavedMessages(chat);
+  const title = getChatTitle(chat, t);
   const profileOpen = Boolean(profileModal?.isOpen);
 
   // Клик по шапке только называет, чей профиль показать: запрос делает
@@ -64,6 +73,11 @@ export const ChatThreadHeader = ({
 
     if (chat?.type === 'group') {
       setProfileModal({ isOpen: true, userId: null, kind: 'group' });
+      return;
+    }
+    // У «Избранного» вместо профиля — его медиа, файлы и ссылки (#1075).
+    if (chat?.type === 'self') {
+      setProfileModal({ isOpen: true, userId: null, kind: 'saved' });
       return;
     }
     if (chat?.type !== 'private' || !chat.peerId) return;
@@ -122,12 +136,14 @@ export const ChatThreadHeader = ({
       <button
         aria-controls="profile-slot"
         aria-expanded={profileOpen}
-        aria-label={`${chat.title} — ${
+        aria-label={`${title} — ${
           profileOpen
             ? t('hideProfile', 'скрыть')
             : isGroup
               ? t('openGroupInfo', 'открыть сведения')
-              : t('openProfile', 'открыть профиль')
+              : saved
+                ? t('savedMessages.openInfo', 'открыть медиа и файлы')
+                : t('openProfile', 'открыть профиль')
         }`}
         className={cn(
           'flex h-13 min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-button pr-3 pl-1.5 text-left',
@@ -138,23 +154,27 @@ export const ChatThreadHeader = ({
         type="button"
       >
         <Avatar
+          icon={saved ? 'bookmark' : undefined}
           id={chat.type === 'private' ? chat.peerId : null}
-          name={chat.title}
+          name={title}
           online={isPeerOnline}
           size="md"
           src={chat.avatarUrl}
           surface="chat"
         />
         <span className="flex min-w-0 flex-1 flex-col gap-px">
-          <span className="truncate text-subtitle leading-[1.25] font-semibold">{chat.title}</span>
-          <span
-            className={cn(
-              'truncate text-caption leading-[1.3] text-ink-2',
-              (isPeerOnline || typingLabel) && 'text-brand'
-            )}
-          >
-            {subtitle}
-          </span>
+          <span className="truncate text-subtitle leading-[1.25] font-semibold">{title}</span>
+          {/* У «Избранного» подзаголовка нет: «был давно» про себя ни к чему. */}
+          {subtitle && (
+            <span
+              className={cn(
+                'truncate text-caption leading-[1.3] text-ink-2',
+                (isPeerOnline || typingLabel) && 'text-brand'
+              )}
+            >
+              {subtitle}
+            </span>
+          )}
         </span>
       </button>
 
@@ -178,7 +198,7 @@ export const ChatThreadHeader = ({
               aria-label={t('audioCall', 'Позвонить')}
               disabled={callsBlocked}
               iconOnly
-              onClick={() => initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId)}
+              onClick={() => initiateCall(chatId, 'private', chat.title, 'audio', chat?.peerId)}
               title={t('audioCall', 'Позвонить')}
               variant="ghost"
             >
@@ -188,7 +208,7 @@ export const ChatThreadHeader = ({
               aria-label={t('videoCall', 'Видеозвонок')}
               disabled={callsBlocked}
               iconOnly
-              onClick={() => initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId)}
+              onClick={() => initiateCall(chatId, 'private', chat.title, 'video', chat?.peerId)}
               title={t('videoCall', 'Видеозвонок')}
               variant="ghost"
             >

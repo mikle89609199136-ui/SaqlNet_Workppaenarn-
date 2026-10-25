@@ -110,8 +110,8 @@ func TestCallInviteFromBlockedUserIsRefused(t *testing.T) {
 			require.NoError(t, err)
 			defer db.Close()
 			expectPeers(mock)
-			mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM users\.blocked_users`).WithArgs(blockerID, blockedID).
-				WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(tt.blocked))
+			mock.ExpectQuery(`FROM auth\.users`).WithArgs(blockerID, blockedID).
+				WillReturnRows(sqlmock.NewRows([]string{"privacy_settings", "blocked", "exceptions"}).AddRow([]byte(`{}`), tt.blocked, nil))
 			if tt.wantIncoming {
 				mock.ExpectQuery(`FROM auth\.users au`).WithArgs(blockedID).
 					WillReturnRows(sqlmock.NewRows([]string{"name", "avatar"}).AddRow("Игорь", ""))

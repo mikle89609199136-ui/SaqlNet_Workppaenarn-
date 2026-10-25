@@ -1,5 +1,11 @@
 # MVP: состояние фронтенда
 
+> **Настройки пересмотрены 16 октября 2026:** см.
+> [актуальный аудит настроек](settings-audit-2026-10-16.md).
+> Сведения ниже о настройках/сеансах относятся к 18 сентября и частично устарели.
+> Источник обязательного оформления — #728; animation/GIF controls исключены из MVP.
+
+
 Дата статического аудита: 2026-09-18  
 Проверенный commit: `d93a9ab`  
 Источник требований: `MVP_scope_draft.md`
@@ -34,10 +40,10 @@
 | 8. Звонки 1:1 | **Начато** | Аудио/видео вызов из чата, incoming/outgoing UI, accept/reject/end, mute/camera controls внутри call frame; REST room + WebSocket signaling + WebRTC/STUN/TURN. | Переключение камеры и reconnect нужно подтвердить/доделать E2E. Логика рассчитана также на группы, хотя групповые звонки исключены из MVP. Нет устойчивого восстановления звонка после reload/reconnect. |
 | 9. Недавние звонки | **Не сделано** | В чате отображаются итоговые call-сообщения со статусом и длительностью. Страница Meetings — заглушка. | Нужен отдельный список входящих/исходящих/пропущенных, repeat call, переходы в чат/профиль и API истории. |
 | 10. Мой профиль | **Начато** | Просмотр своего/чужого профиля, изменение имени/фамилии/bio; `GET/PUT /users/me`, `GET /users/{id}/profile`. | Кнопка смены фото disabled, username не редактируется. Хотя endpoints аватара/check-username есть, UI их не использует. |
-| 11. Устройства | **Начато** | Экран списка и logout-all; `GET /auth/sessions`, `POST /auth/logout-all`. | Нет действия завершить одну сессию. В UI «текущим» считается просто первый элемент. Есть параллельное `/users/devices` API, но экран работает не с ним — контракт нужно унифицировать. |
-| 12. Уведомления и звуки | **Начато** | Browser Notification на realtime `new_message`, безопасный preview, unread badge/count, mark-read; настройки notifications/sounds сохраняются через `PUT /users/settings`. | Флаги настроек не применяются в `NotificationManager`; звука нового сообщения нет; call ringtone не связан с настройкой; mute отдельного чата и настройка preview отсутствуют; Web Push/service worker нет. |
-| 13. Конфиденциальность | **Начато** | UI last-seen visibility и messages-from-strangers; API privacy; на клиенте есть экран blocked API methods. | Нет UI чёрного списка; нет настройки звонков; серверные privacy-значения не валидируются и ограничения не подтверждены во всех chat/call/profile сценариях. |
-| 14. Оформление | **Сделано частично** | Светлая/тёмная тема, применение ко всему UI, серверное сохранение и local projection до первого render. | Нет системной темы. Расширенный блок после разделителя разобран отдельно ниже. |
+| 11. Устройства | **Обновлено 16 октября** | Список, настоящий `isCurrent`, logout-all. | Завершение одной сессии — #720 после #706; [подробности](settings-audit-2026-10-16.md). |
+| 12. Уведомления и звуки | **Обновлено 16 октября** | Push/permission UI, per-chat preview, callSounds control и привязанный рингтон уже есть. | Global enable в fallback, звук сообщения и chat mute остаются; [#725 и смежные задачи](settings-audit-2026-10-16.md). |
+| 13. Конфиденциальность | **Обновлено 16 октября** | Last seen/photo/forwards, исключения, чёрный список; серверная validation/policy готовы. | Нет frontend calls rule; [остаток и постановка](settings-audit-2026-10-16.md). |
+| 14. Оформление | **Обновлено 16 октября** | Light/dark, локальные палитры/акценты, fallback avatar; renderer умеет группировку, аватары и статусы. | System/размеры/visibility controls, серверные palette/accent и синхронизация — [#728](settings-audit-2026-10-16.md). |
 | 15. Язык | **Сделано** | Выбор RU/EN, полные словари этих языков, сохранение, применение ко всему приложению, browser language detection для первого запуска. | Новые языки добавлять только вместе со словарями. Проверить первый вход и серверное значение в E2E. |
 | 16. Realtime | **Начато, основа готова** | Один WebSocket client, новые сообщения/read/reactions/chat updates, heartbeat, exponential reconnect, wake-up on online/visibility, resync, disconnect при logout. | Bearer передаётся в query string; нужен cookie handshake. Нужны нагрузочные/E2E проверки нескольких вкладок, logout-all и восстановления без дубликатов. |
 | 17. Технические требования | **Не выполнено полностью** | Есть обработка API errors, outbox/dedupe, reconnect/backoff, heartbeat, Origin check на сервере. | Главные blockers: token в `localStorage` и URL WebSocket; read hook повторно шлёт все видимые IDs, backend игнорирует IDs; нет cookie auth. |
@@ -60,29 +66,18 @@
 
 ## Отдельно: блок после `+**********************`
 
-### 7. Оформление — как у Telegram Web
+### 7. Оформление и 10. Язык — обновление 16 октября
 
-| Требование | Статус | Что сделано | Что сделать на фронте | Endpoint |
-|---|---|---|---|---|
-| Светлая / тёмная тема | **Сделано** | Выбор в `AppearanceSection`, CSS tokens, мгновенное применение и сохранение. | Только E2E/visual regression. | `GET/PUT /users/settings`, поля `theme: light\|dark` |
-| Тема «как в системе» | **Не сделано** | В коде явно оставлены только две темы. | Добавить `system`, слушать `matchMedia('(prefers-color-scheme: dark)')`, хранить выбор отдельно от вычисленной темы. | Тот же endpoint, `theme: system` |
-| Цвет акцента | **Не сделано** | Акцент задан статическими design tokens. | Добавить picker/presets и применять CSS variables к кнопкам, selected messages и ссылкам. | Тот же endpoint, предлагается `accentColor` или `accentPreset` |
-| Размер текста | **Не сделано** | Общие typographic tokens есть, пользовательского выбора нет. | Добавить 3 режима и root attribute/CSS scale. | Тот же endpoint, предлагается `textSize: small\|medium\|large` |
-| Размер элементов чата | **Не сделано** | Есть responsive layout, но нет density setting. | Добавить compact/normal/large и адаптировать bubble/list/composer spacing. | Тот же endpoint, предлагается `chatDensity` |
-| Показывать время | **Частично** | Время всегда показывается. | Добавить switch и условный render. | Тот же endpoint, `showMessageTime` |
-| Показывать статус | **Частично** | Есть pending/uploading/failed; read хранится в модели, но полноценные sent/delivered/read markers не нарисованы. | Сначала закончить receipt contract, затем switch и UI markers. | Тот же endpoint + исправленный `POST /messages/read`/realtime receipts |
-| Показывать аватары | **Не сделано как настройка** | В bubble нет управляемого отображения avatar каждого сообщения. | Добавить avatars в ленту и switch. | Тот же endpoint, `showMessageAvatars` |
-| Группировать сообщения автора | **Не сделано** | Каждое сообщение рисуется самостоятельным bubble. | Рассчитывать группы соседних сообщений и менять отступы/avatar/tail. | Тот же endpoint, `groupConsecutiveMessages` |
-| Анимации интерфейса | **Не сделано как настройка** | CSS transitions есть всегда. | Добавить флаг и учитывать `prefers-reduced-motion`. | Тот же endpoint, `interfaceAnimations` |
-| Анимация эмодзи | **Не сделано** | Специального renderer/setting нет. | Определить animated emoji asset/renderer и toggle. | Тот же endpoint, `animatedEmoji` |
-| Анимация стикеров | **Не сделано** | Sticker image поддержан, управление анимацией отсутствует. | Добавить pause/play policy и toggle. | Тот же endpoint, `animatedStickers` |
-| Автовоспроизведение GIF | **Не сделано как настройка** | GIF отображается обычным `<img>`, поэтому фактически проигрывается всегда. | Ввести preview/static frame и управляемое autoplay. | Тот же endpoint, `autoplayGifs` |
+См. [детальную матрицу реализации, контрактов и задач](settings-audit-2026-10-16.md).
 
-Все настройки оформления можно сохранить через уже существующий универсальный `PUT /api/v2/users/settings`. Но перед подключением UI желательно зафиксировать типизированный schema/enum-контракт: сейчас сервер принимает произвольный JSON, а `ISettingsDto` содержит только `language`, `theme`, `notifications`, `sounds`, `avatarShape`.
-
-### 10. Язык
-
-Статус: **сделано для RU/EN**. Используется `GET/PUT /api/v2/users/settings`, поле `language`. Есть автоопределение языка браузера и применение через i18next. Для каждого следующего языка нужен полный `frontend/public/locales/<lang>/translation.json`, пункт в `LANGUAGES` и E2E smoke test.
+- Light/dark, fallback avatar и RU/EN уже сохраняются и применяются.
+- Палитра и акцент уже имеют picker и применяются, но сохраняются только локально (#828).
+- Группировка сообщений, групповые аватары и delivery/read statuses уже существуют;
+  в #728 нужны пользовательские переключатели, а не повторная реализация renderer.
+- System theme, textSize, chatDensity и четыре visibility/grouping flags ещё не реализованы.
+- Для серверного хранения нужны schema/defaults/validation/migration (#453/#451/#495/#728),
+  согласование endpoints (#498) и синхронизации.
+- Анимации интерфейса, animated emoji/stickers и autoplay GIF **не входят в #728/MVP**.
 
 ### 11. Звонки — записывать последние звонки
 

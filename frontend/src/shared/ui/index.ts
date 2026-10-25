@@ -1,5 +1,11 @@
 export { AudioPlayer } from './AudioPlayer';
-export { Avatar, AvatarShapeProvider, useAvatarShape, type TAvatarShape } from './Avatar';
+export {
+  Avatar,
+  avatarColor,
+  AvatarShapeProvider,
+  useAvatarShape,
+  type TAvatarShape,
+} from './Avatar';
 export { Badge } from './Badge';
 export { Banner } from './Banner';
 export { Button, buttonStyles } from './Button';
@@ -7,6 +13,7 @@ export { Checkbox } from './Checkbox';
 export { Chip } from './Chip';
 export { ContextMenu, ContextMenuItem, ContextMenuSeparator, useContextMenu } from './ContextMenu';
 export { Highlight, highlightMatches } from './Highlight';
+export { ErrorScreen } from './ErrorScreen';
 export { Icon } from './Icon';
 export { Input } from './Input';
 export { ConfirmDialog, Modal } from './Modal';

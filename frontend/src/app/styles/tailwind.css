@@ -1,25 +1,25 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* Токены дизайн-системы. Пока только объявляют переменные и утилиты:
    ни одно существующее правило от них не меняется — проверено сравнением
    сборок, 402 правила до и после, расхождений ноль. Старый блок @theme
    ниже продолжает работать, имена не пересекаются. Он уедет, когда на
    него перестанут ссылаться экраны. */
-@import "./tokens/index.css";
+@import './tokens/index.css';
 
 @theme {
   /* Brand colors */
-  --color-accent:   #ff007f;
+  --color-accent: #ff007f;
   --color-accent-2: #9d00ff;
-  --color-bg:       var(--color-ground);
-  --color-panel:    rgba(20, 20, 20, 0.65);
-  --color-muted:    #a1a1aa;
+  --color-bg: var(--color-ground);
+  --color-panel: rgba(20, 20, 20, 0.65);
+  --color-muted: #a1a1aa;
 
   /* Extended palette */
-  --color-surface:  rgba(14, 14, 18, 0.6);
-  --color-border:   rgba(255, 255, 255, 0.08);
-  --color-rail:     var(--color-sheet);
-  --color-nav:      var(--color-sheet);
+  --color-surface: rgba(14, 14, 18, 0.6);
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-rail: var(--color-sheet);
+  --color-nav: var(--color-sheet);
 }
 
 /* =========================================================
@@ -27,19 +27,43 @@
    ========================================================= */
 
 /* Safe-area padding */
-@utility pt-safe     { padding-top:    env(safe-area-inset-top,    0px); }
-@utility pb-safe     { padding-bottom: env(safe-area-inset-bottom, 0px); }
-@utility pl-safe     { padding-left:   env(safe-area-inset-left,   0px); }
-@utility pr-safe     { padding-right:  env(safe-area-inset-right,  0px); }
-@utility pt-safe-4   { padding-top:    calc(1rem    + env(safe-area-inset-top,    0px)); }
-@utility pb-safe-4   { padding-bottom: calc(1rem    + env(safe-area-inset-bottom, 0px)); }
-@utility pb-safe-6   { padding-bottom: calc(1.5rem  + env(safe-area-inset-bottom, 0px)); }
-@utility pb-safe-nav { padding-bottom: calc(82px    + env(safe-area-inset-bottom, 0px)); }
-@utility h-nav       { height:         calc(60px    + env(safe-area-inset-bottom, 0px)); }
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@utility pl-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+@utility pr-safe {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+@utility pt-safe-4 {
+  padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+}
+@utility pb-safe-4 {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+@utility pb-safe-6 {
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+}
+@utility pb-safe-nav {
+  padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+}
+@utility h-nav {
+  height: calc(60px + env(safe-area-inset-bottom, 0px));
+}
 
 /* Backdrop glass */
-@utility glass    { backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
-@utility glass-sm { backdrop-filter: blur(14px);                -webkit-backdrop-filter: blur(14px); }
+@utility glass {
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+@utility glass-sm {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
 
 /* Наведение и нажатие — слоем поверх фона, а не заменой (#817). Пункт
    меню бывает отмечен подложкой brand-soft, строка списка — выбрана:
@@ -47,8 +71,12 @@
    ложится сверху и сохраняет её. Слой — градиентом, потому что
    background-image рисуется поверх background-color того же элемента.
    В разметке: hover:layer-hover active:layer-press. */
-@utility layer-hover { background-image: linear-gradient(var(--color-hover), var(--color-hover)); }
-@utility layer-press { background-image: linear-gradient(var(--color-press), var(--color-press)); }
+@utility layer-hover {
+  background-image: linear-gradient(var(--color-hover), var(--color-hover));
+}
+@utility layer-press {
+  background-image: linear-gradient(var(--color-press), var(--color-press));
+}
 
 /* Gradient text */
 @utility text-gradient {
@@ -58,32 +86,87 @@
   -webkit-text-fill-color: transparent;
 }
 
+/* Scrollbars */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Transitions */
+@utility duration-160 {
+  transition-duration: 160ms;
+}
+
 /* =========================================================
    @keyframes
    ========================================================= */
 /* Полоса времени до закрытия уведомления. Считает не она — считает
    таймер в компоненте, — но останавливаются они вместе: под курсором и
    тому и другому ставится пауза. */
-@keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes toast-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
 
 /* Появление содержимого, которое сменилось целиком: вкладка, шаг, новый
    код. Сдвиг в четыре пикселя — смену видно, но блок не «въезжает». */
-@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-in { animation: none; }
+  .animate-fade-in {
+    animation: none;
+  }
 }
 
 /* Бег полосы, когда доля неизвестна. Отрезок уходит за левый край и
    выходит за правый: так видно, что работа идёт, и не обещано, сколько
    осталось. Значения из кита — 38% ширины и полтора шага в секунду. */
-@keyframes progress-crawl { from { margin-left: -38%; } to { margin-left: 100%; } }
+@keyframes progress-crawl {
+  from {
+    margin-left: -38%;
+  }
+  to {
+    margin-left: 100%;
+  }
+}
 
 /* Перелив скелетона: полотно вдвое шире блока, чтобы блик успел пройти
    насквозь. Скорость и плавность — у утилиты в Skeleton (по макету #826). */
 @keyframes skeleton-sheen {
-  from { background-position: 200% 0; }
-  to   { background-position: -200% 0; }
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
 }
 /* --- Лента: эффекты из макета (#820) ------------------------------- */
 
@@ -97,60 +180,229 @@
     radial-gradient(circle, var(--dust) 0.7px, transparent 1.2px),
     radial-gradient(circle, var(--dust) 0.9px, transparent 1.4px),
     radial-gradient(circle, var(--dust) 0.55px, transparent 1px);
-  background-size: 7px 6px, 11px 9px, 5px 7px;
-  animation: spoiler-drift 3.2s linear infinite, spoiler-twinkle 1.3s ease-in-out infinite alternate;
+  background-size:
+    7px 6px,
+    11px 9px,
+    5px 7px;
+  animation:
+    spoiler-drift 3.2s linear infinite,
+    spoiler-twinkle 1.3s ease-in-out infinite alternate;
 }
-@utility spoiler-open { color: inherit; animation: spoiler-reveal 460ms ease-out; }
-@keyframes spoiler-drift { from { background-position: 0 0, 0 0, 0 0; } to { background-position: 14px -12px, -22px 18px, 10px 14px; } }
-@keyframes spoiler-twinkle { from { opacity: 0.65; } to { opacity: 1; } }
-@keyframes spoiler-reveal { from { filter: blur(5px); opacity: 0.3; } to { filter: blur(0); opacity: 1; } }
+@utility spoiler-open {
+  color: inherit;
+  animation: spoiler-reveal 460ms ease-out;
+}
+@keyframes spoiler-drift {
+  from {
+    background-position:
+      0 0,
+      0 0,
+      0 0;
+  }
+  to {
+    background-position:
+      14px -12px,
+      -22px 18px,
+      10px 14px;
+  }
+}
+@keyframes spoiler-twinkle {
+  from {
+    opacity: 0.65;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes spoiler-reveal {
+  from {
+    filter: blur(5px);
+    opacity: 0.3;
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
 
-/* Переход к сообщению (ответ, закреплённое): пузырь вспыхивает ярче и
-   гаснет за 1.2 секунды. */
-@keyframes msg-flash { 0%, 30% { filter: brightness(1.35); } 100% { filter: none; } }
+/* Переход к сообщению (ответ, закреплённое): быстрая выразительная вспышка
+   с плавным затуханием рамки и заливки. */
+@keyframes msg-flash {
+  0%,
+  15% {
+    box-shadow:
+      0 0 0 2px var(--color-chat-bg),
+      0 0 0 4px var(--color-brand),
+      0 0 20px var(--color-brand);
+    filter: brightness(1.15);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--color-chat-bg),
+      0 0 0 2.5px var(--color-brand),
+      0 0 10px var(--color-brand-soft);
+    filter: brightness(1.06);
+  }
+  80% {
+    box-shadow:
+      0 0 0 1px var(--color-chat-bg),
+      0 0 0 1px color-mix(in srgb, var(--color-brand) 30%, transparent),
+      0 0 4px transparent;
+    filter: brightness(1.01);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 transparent,
+      0 0 0 0 transparent,
+      0 0 0 0 transparent;
+    filter: none;
+  }
+}
+
+@keyframes msg-overlay-fade {
+  0%,
+  15% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+  80% {
+    opacity: 0.15;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@utility msg-flash {
+  animation: msg-flash 900ms ease-out forwards;
+}
+
+@utility msg-overlay {
+  animation: msg-overlay-fade 900ms ease-out forwards;
+}
 
 /* Своя реакция: отметка «хлопает» — сжимается и пружинит обратно. */
-@keyframes rx-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+@keyframes rx-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
 
 /* Запись голосового (#821): точка мигает, замок над кнопкой подпрыгивает,
    столбики волны сжимаются и растут. */
-@keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
-@keyframes lock-bounce { 0%, 100% { transform: translateY(3px); } 50% { transform: translateY(-3px); } }
-@keyframes rec-wave { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+@keyframes rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+@keyframes lock-bounce {
+  0%,
+  100% {
+    transform: translateY(3px);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+@keyframes rec-wave {
+  from {
+    transform: scaleY(0.25);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
 /* Круг записи на телефоне (#843) вырастает из кнопки. Анимируется `scale`,
    а не transform: transform круга занят смещением за пальцем. */
-@keyframes voice-circle-in { from { scale: 0.55; opacity: 0.5; } to { scale: 1; opacity: 1; } }
-
-/* Голосовое при воспроизведении: столбики волны «дышат». */
-@keyframes voice-bar { from { transform: scaleY(0.55); } to { transform: scaleY(1); } }
-
-@media (prefers-reduced-motion: reduce) {
-  .spoiler-dust, .spoiler-open { animation: none; }
+@keyframes voice-circle-in {
+  from {
+    scale: 0.55;
+    opacity: 0.5;
+  }
+  to {
+    scale: 1;
+    opacity: 1;
+  }
 }
 
-@keyframes cardIn  { from { opacity: 0; transform: translateY(32px) scale(0.92); } to { opacity: 1; transform: none; } }
+/* Голосовое при воспроизведении: столбики волны «дышат». */
+@keyframes voice-bar {
+  from {
+    transform: scaleY(0.55);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spoiler-dust,
+  .spoiler-open {
+    animation: none;
+  }
+}
+
+@keyframes call-ring {
+  from {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  to {
+    transform: scale(1.65);
+    opacity: 0;
+  }
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(32px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 /* =========================================================
    Base layer — global resets + CSS var aliases
    ========================================================= */
 @layer base {
   :root {
     /* Backward-compat aliases (JSX inline styles + @layer blocks reference these) */
-    --react-accent:      var(--color-accent);
-    --react-accent-2:    var(--color-accent-2);
-    --react-bg:          var(--color-bg);
-    --react-panel:       var(--color-panel);
-    --react-muted:       var(--color-muted);
-    --react-text:        var(--color-ink)fff;
-    --react-safe-top:    env(safe-area-inset-top,    0px);
+    --react-accent: var(--color-accent);
+    --react-accent-2: var(--color-accent-2);
+    --react-bg: var(--color-bg);
+    --react-panel: var(--color-panel);
+    --react-muted: var(--color-muted);
+    --react-text: var(--color-ink) fff;
+    --react-safe-top: env(safe-area-inset-top, 0px);
     --react-safe-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
   }
 
-  html, body, #appRoot { min-height: 100%; }
+  html,
+  body,
+  #appRoot {
+    min-height: 100%;
+  }
 
   body {
     margin: 0;
@@ -159,7 +411,9 @@
     font-family: var(--font-sans);
   }
 
-  body::before { display: none; }
+  body::before {
+    display: none;
+  }
 
   /* Сенсорные экраны: долгое нажатие открывает наше меню (сообщение,
      строка списка), а браузер на тех же ~0,5 с начинал выделять текст,
@@ -176,17 +430,19 @@
        предпросмотр страницы («Открыть в новой вкладке…») вместо нашего
        меню. contextmenu там не приходит, гасится только этим свойством —
        явно на ссылках и картинках, не полагаясь на наследование. */
-    a, img {
+    a,
+    img {
       -webkit-touch-callout: none;
     }
-    input, textarea, [contenteditable]:not([contenteditable="false"]),
-    [contenteditable]:not([contenteditable="false"]) * {
+    input,
+    textarea,
+    [contenteditable]:not([contenteditable='false']),
+    [contenteditable]:not([contenteditable='false']) * {
       -webkit-user-select: text;
       user-select: text;
       -webkit-touch-callout: default;
     }
   }
-
 }
 
 .styled-scrollbar {
@@ -198,25 +454,30 @@
    Components — Toast / App shells  (was app.css)
    ========================================================= */
 @layer components {
-
   .toast {
     @apply py-3 px-4 rounded-xl flex items-center gap-2 text-sm;
-    background: var(--color-sheet); border-left: 3px solid var(--color-danger);
-    &.success { border-left-color: var(--color-ok); }
+    background: var(--color-sheet);
+    border-left: 3px solid var(--color-danger);
+    &.success {
+      border-left-color: var(--color-ok);
+    }
   }
-
 }
 
 /* =========================================================
    Лента в колонке переписки на ПК и планшете (#818)
    ========================================================= */
 @layer components {
-
   .app-chat-pane .thread-page {
-    @media (min-width: 768px) { @apply w-full max-w-full h-full min-h-full p-0 m-0 flex flex-col; background: transparent; }
+    @media (min-width: 768px) {
+      @apply w-full max-w-full h-full min-h-full p-0 m-0 flex flex-col;
+      background: transparent;
+    }
   }
   .app-chat-pane .thread-messages {
-    @media (min-width: 768px) { @apply flex-1 overflow-y-auto; }
+    @media (min-width: 768px) {
+      @apply flex-1 overflow-y-auto;
+    }
   }
 }
 
@@ -224,41 +485,68 @@
    Лента на телефоне: открытый чат во весь экран (#818)
    ========================================================= */
 @layer components {
-
-	  .mobile-content { @apply flex-1 min-h-0 overflow-y-auto; }
-	  .mobile-content:has(> .thread-page) {
-	    overflow: hidden;
-	  }
-	  .mobile-content > .thread-page {
-	    @apply max-w-none overflow-hidden;
-	    position: fixed;
-	    inset: 0;
-	    width: 100%;
-	    height: 100dvh;
-	    min-height: 0;
-	  }
-	}
+  .mobile-content {
+    @apply flex-1 min-h-0 overflow-y-auto;
+  }
+  .mobile-content:has(> .thread-page) {
+    overflow: hidden;
+  }
+  .mobile-content > .thread-page {
+    @apply max-w-none overflow-hidden;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+  }
+  .call-bar-inset .mobile-content > .thread-page {
+    top: 44px;
+    height: calc(100dvh - 44px);
+  }
+}
 
 /* =========================================================
    Components — Call overlay  (was features.css)
    ========================================================= */
 @layer components {
-
-  .incoming-call-overlay { @apply fixed inset-0 z-[9999] flex items-center justify-center; background: var(--color-sheet); backdrop-filter: blur(14px); }
+  .incoming-call-overlay {
+    @apply fixed inset-0 z-[9999] flex items-center justify-center;
+    background: var(--color-sheet);
+    backdrop-filter: blur(14px);
+  }
   .incoming-call-card {
     @apply p-10 rounded-[24px] text-center;
-    background: var(--color-panel); border: 1px solid var(--color-line);
-    width: min(90%,360px); box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    background: var(--color-panel);
+    border: 1px solid var(--color-line);
+    width: min(90%, 360px);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
   }
-  .incoming-call-card h2 { @apply text-xl font-bold mb-1; }
-  .incoming-call-card p  { @apply text-sm; color: var(--color-ink-2); }
-  .incoming-call-actions { @apply flex justify-center gap-[30px] mt-[30px]; }
+  .incoming-call-card h2 {
+    @apply text-xl font-bold mb-1;
+  }
+  .incoming-call-card p {
+    @apply text-sm;
+    color: var(--color-ink-2);
+  }
+  .incoming-call-actions {
+    @apply flex justify-center gap-[30px] mt-[30px];
+  }
   .call-btn {
     @apply w-16 h-16 rounded-full border-0 text-[24px] cursor-pointer flex items-center justify-center;
     transition: transform 0.2s;
-    &:hover { transform: scale(1.1); }
-    &.accept { background: var(--color-ok); color: white; box-shadow: 0 8px 24px color-mix(in srgb, var(--color-ok) 40%, transparent); }
-    &.reject  { background: var(--color-danger); color: white; box-shadow: 0 8px 24px color-mix(in srgb, var(--color-danger) 40%, transparent); }
+    &:hover {
+      transform: scale(1.1);
+    }
+    &.accept {
+      background: var(--color-ok);
+      color: white;
+      box-shadow: 0 8px 24px color-mix(in srgb, var(--color-ok) 40%, transparent);
+    }
+    &.reject {
+      background: var(--color-danger);
+      color: white;
+      box-shadow: 0 8px 24px color-mix(in srgb, var(--color-danger) 40%, transparent);
+    }
   }
 }
 
@@ -266,16 +554,22 @@
    Components — Chat thread / messages  (was thread.css)
    ========================================================= */
 @layer components {
-
   .thread-page {
     @apply flex flex-col relative max-w-[920px] mx-auto;
     min-height: 100dvh;
     background: var(--color-sheet);
   }
 
-  .thread-messages { @apply min-h-0 h-full overflow-y-auto; }
+  .thread-messages {
+    @apply min-h-0 h-full overflow-y-auto;
+  }
 
-  .message-media { @apply block mb-[7px] rounded-[10px] object-contain; width: min(100%,360px); max-height: 360px; background: rgba(0,0,0,0.18); }
+  .message-media {
+    @apply block mb-[7px] rounded-[10px] object-contain;
+    width: min(100%, 360px);
+    max-height: 360px;
+    background: rgba(0, 0, 0, 0.18);
+  }
   .message-media-open {
     @apply block max-w-full border-0 bg-transparent cursor-zoom-in;
     width: auto;
@@ -283,18 +577,29 @@
     padding: 0;
     border-radius: 10px;
     color: inherit;
-    & .message-media { margin-bottom: 7px; }
+    & .message-media {
+      margin-bottom: 7px;
+    }
   }
-  .message-media-file, .message-media-unavailable {
+  .message-media-file,
+  .message-media-unavailable {
     @apply block max-w-full mb-[7px] rounded-lg text-white;
-    padding: 9px 10px; background: rgba(0,0,0,0.2); overflow-wrap: anywhere;
+    padding: 9px 10px;
+    background: rgba(0, 0, 0, 0.2);
+    overflow-wrap: anywhere;
   }
-  .message-media-file { @apply no-underline font-bold; }
-  .message-media-unavailable { font-size: 13px; color: var(--color-ink-2); }
+  .message-media-file {
+    @apply no-underline font-bold;
+  }
+  .message-media-unavailable {
+    font-size: 13px;
+    color: var(--color-ink-2);
+  }
   .image-viewer {
     @apply fixed inset-0 z-[1500] flex items-center justify-center;
-    padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
-    background: rgba(0,0,0,0.92);
+    padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+      max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+    background: rgba(0, 0, 0, 0.92);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     cursor: zoom-out;
@@ -321,20 +626,26 @@
     line-height: 1;
   }
 
-  .thread-inline-error { font-size: 13px; padding: 8px 14px; background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-ink-2); }
-
+  .thread-inline-error {
+    font-size: 13px;
+    padding: 8px 14px;
+    background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+    color: var(--color-ink-2);
+  }
 }
 
 /* =========================================================
    Components — Rate-limit page  (was rate-limit.css)
    ========================================================= */
 @layer components {
-
   .card {
     @apply relative rounded-[28px] text-center w-full max-w-[420px];
-    background: var(--color-sheet-2); border: 1px solid var(--color-line);
-    padding: 48px 40px; backdrop-filter: blur(20px); box-shadow: 0 24px 80px rgba(0,0,0,0.6);
-    animation: cardIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+    background: var(--color-sheet-2);
+    border: 1px solid var(--color-line);
+    padding: 48px 40px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+    animation: cardIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   }
   .logo {
     @apply absolute top-6 left-1/2 -translate-x-1/2 text-[13px] font-bold uppercase tracking-[0.08em];
@@ -416,22 +727,38 @@
 
 /* Пятна акцента на фоне входа (#827): медленно плывут и дышат. */
 @keyframes auth-glow {
-  from { transform: translate(0, 0) scale(1); }
-  to   { transform: translate(40px, -24px) scale(1.1); }
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(40px, -24px) scale(1.1);
+  }
 }
-.auth-glow { animation: auth-glow 10s ease-in-out infinite alternate; }
+.auth-glow {
+  animation: auth-glow 10s ease-in-out infinite alternate;
+}
 @media (prefers-reduced-motion: reduce) {
-  .auth-glow { animation: none; }
+  .auth-glow {
+    animation: none;
+  }
 }
 
 /* Линия видоискателя QR (#827): ходит вверх-вниз по рамке. */
 @keyframes qr-scanline {
-  from { top: 14%; }
-  to   { top: 84%; }
+  from {
+    top: 14%;
+  }
+  to {
+    top: 84%;
+  }
 }
-.qr-scanline { animation: qr-scanline 2.2s ease-in-out infinite alternate; }
+.qr-scanline {
+  animation: qr-scanline 2.2s ease-in-out infinite alternate;
+}
 @media (prefers-reduced-motion: reduce) {
-  .qr-scanline { animation: none; }
+  .qr-scanline {
+    animation: none;
+  }
 }
 
 /* Автозаполнение (#827). Браузер красит заполненное поле своим белым
@@ -445,7 +772,9 @@ input:-webkit-autofill:focus,
 input:-webkit-autofill:active {
   -webkit-text-fill-color: var(--color-ink);
   caret-color: var(--color-ink);
-  transition: background-color 600000s 0s, color 600000s 0s;
+  transition:
+    background-color 600000s 0s,
+    color 600000s 0s;
 }
 input:autofill {
   filter: none;

@@ -3,6 +3,13 @@ x-secure: &secure [{ sessionCookie: [] }]
   post:
     tags: [Media]
     summary: Upload media
+    description: >-
+      MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB).
+      Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body
+      limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies
+      must allow at least 140 MiB with the default file limit.
+      Oversized uploads return a flat 413 file_too_large error with message and requestId.
+      Voice uploads have a separate 8 MiB ciphertext limit.
     operationId: uploadMedia
     security: *secure
     requestBody:
@@ -24,6 +31,11 @@ x-secure: &secure [{ sessionCookie: [] }]
     tags: [Media]
     summary: Download media
     operationId: getMedia
+    description: >-
+      Streams an upload, managed sticker, or sticker-pack icon by UUID through
+      the media service. Catalog imageUrl and iconUrl use this relative path;
+      no redirect or direct storage URL is returned. Legacy catalog objects
+      without a verified storage identity are unavailable (#973).
     parameters: [{ name: Range, in: header, required: false, schema: { type: string } }]
     responses:
       '200':
@@ -88,15 +100,81 @@ x-secure: &secure [{ sessionCookie: [] }]
   get: { tags: [Media], summary: List favorite GIFs, operationId: listFavoriteGifs, security: *secure, responses: { '200': { description: Favorite GIFs } } }
 /gifs/{gifId}/favorite:
   parameters: [{ name: gifId, in: path, required: true, schema: { type: string, format: uuid } }]
-  post: { tags: [Media], summary: Favorite a GIF, operationId: favoriteGif, security: *secure, responses: { '201': { description: Favorited } } }
-  delete: { tags: [Media], summary: Unfavorite a GIF, operationId: unfavoriteGif, security: *secure, responses: { '200': { description: Unfavorited } } }
+  post:
+    tags: [Media]
+    summary: Favorite a GIF
+    description: >-
+      Adds an existing GIF to favorites. Repeated requests return 200 without creating a new record.
+      Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
+    operationId: favoriteGif
+    security: *secure
+    responses:
+      '201': { description: Added to favorites }
+      '200': { description: Already in favorites }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
+  delete:
+    tags: [Media]
+    summary: Unfavorite a GIF
+    description: >-
+      Removes a GIF from favorites. Returns 200 when the GIF exists but was not in favorites.
+      Returns 404 only when the GIF itself does not exist.
+      Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
+    operationId: unfavoriteGif
+    security: *secure
+    responses:
+      '200': { description: 'Removed from favorites, idempotent when the GIF is not in favorites' }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
 /stickers/packs:
   get: { tags: [Media], summary: List sticker packs, operationId: listStickerPacks, security: *secure, responses: { '200': { description: Sticker packs } } }
-  post: { tags: [Media], summary: Create a sticker pack, operationId: createStickerPack, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, description: { type: string }, icon: { type: string, format: byte } } } } } }, responses: { '201': { description: Created pack } } }
+  post:
+    tags: [Media]
+    summary: Create a sticker pack
+    description: >-
+      Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB;
+      the decoded icon is limited to MAX_FILE_SIZE.
+      Errors: 400 invalid_json, invalid_name, upload_error;
+      413 request_too_large, file_too_large; 500 db_error.
+    operationId: createStickerPack
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { type: object, required: [name], properties: { name: { type: string }, description: { type: string }, icon: { type: string, format: byte } } }
+    responses:
+      '201': { description: Created pack }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '413': { $ref: '../components/responses.yaml#/StickerTooLarge' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
 /stickers/packs/{packId}:
   parameters: [{ name: packId, in: path, required: true, schema: { type: string, format: uuid } }]
   get: { tags: [Media], summary: List stickers in a pack, operationId: listStickers, security: *secure, responses: { '200': { description: Stickers } } }
-  post: { tags: [Media], summary: Add a sticker, operationId: addSticker, security: *secure, requestBody: { required: true, content: { application/json: { schema: { type: object, required: [image], properties: { image: { type: string, format: byte } } } } } }, responses: { '201': { description: Added sticker } } }
+  post:
+    tags: [Media]
+    summary: Add a sticker
+    description: >-
+      Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB;
+      the decoded image is limited to MAX_FILE_SIZE.
+      Errors: 400 invalid_json, missing_image, invalid_path, upload_error;
+      404 not_found (pack missing or owned by another user);
+      413 request_too_large, file_too_large; 500 db_error.
+    operationId: addSticker
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { type: object, required: [image], properties: { image: { type: string, format: byte } } }
+    responses:
+      '201': { description: Added sticker }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+      '413': { $ref: '../components/responses.yaml#/StickerTooLarge' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
   delete: { tags: [Media], summary: Delete a sticker pack, operationId: deleteStickerPack, security: *secure, responses: { '200': { description: Deleted pack } } }
 /stickers/{stickerId}:
   delete: { tags: [Media], summary: Delete a sticker, operationId: deleteSticker, security: *secure, parameters: [{ name: stickerId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Deleted sticker } } }

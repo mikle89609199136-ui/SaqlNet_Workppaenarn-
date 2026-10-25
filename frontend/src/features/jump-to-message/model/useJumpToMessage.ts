@@ -5,7 +5,7 @@ import { services } from '@/services/serviceContainer';
 import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const HIGHLIGHT_DURATION_MS = 1800;
+const HIGHLIGHT_DURATION_MS = 1000;
 /** Сколько страниц догружать, если позицию сообщения узнать не удалось. */
 const MAX_LOAD_OLDER_ATTEMPTS = 5;
 /** Потолок даже по позиции: 400 страниц по 50 — двадцать тысяч сообщений. */
@@ -54,8 +54,16 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
 
   const applyHighlight = useCallback(
     (messageId: string) => {
-      setHighlightedMessageId(messageId);
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      if (useChatUiStore.getState().highlightedMessageId === messageId) {
+        // Сброс и повторный взвод в следующем кадре для надёжного перезапуска CSS-анимации
+        setHighlightedMessageId(null);
+        requestAnimationFrame(() => {
+          setHighlightedMessageId(messageId);
+        });
+      } else {
+        setHighlightedMessageId(messageId);
+      }
       highlightTimerRef.current = setTimeout(() => {
         if (useChatUiStore.getState().highlightedMessageId === messageId) {
           setHighlightedMessageId(null);
@@ -90,8 +98,6 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
       // 3. Если сообщение выше в истории — догрузить до него (по позиции с сервера)
       const initialOpts = optionsRef.current;
       if (initialOpts?.loadOlder && initialOpts?.hasMoreOlder) {
-        showToast('info', t('loadingOlderForJump', 'Загрузка истории для перехода к сообщению...'));
-
         pendingJumpTargetRef.current = messageId;
         let attempts = 0;
         // Позиция — сколько сообщений новее: столько страниц и нужно
@@ -116,26 +122,30 @@ export function useJumpToMessage(options?: IUseJumpToMessageOptions) {
           while (attempts < maxAttempts) {
             attempts++;
 
-            // Ждем реактивного коммита через эффект списка либо фоллбэк по таймеру
-            const waitForUpdate = new Promise<boolean>((resolve) => {
-              const timer = setTimeout(() => {
-                pendingResolveRef.current = null;
-                resolve(optionsRef.current?.onScrollToMessage?.(messageId) ?? false);
-              }, 30);
-
-              pendingResolveRef.current = (found) => {
-                clearTimeout(timer);
-                resolve(found);
-              };
-            });
-
             try {
               await optionsRef.current?.loadOlder?.({ isJump: true });
             } catch {
               break;
             }
 
-            const found = await waitForUpdate;
+            // Проверяем сразу после разрешения сетевого запроса
+            let found = optionsRef.current?.onScrollToMessage?.(messageId) ?? false;
+
+            // Если реактивный коммит ленты ещё в процессе, ждём эффект списка или следующий тик
+            if (!found) {
+              found = await new Promise<boolean>((resolve) => {
+                const timer = setTimeout(() => {
+                  pendingResolveRef.current = null;
+                  resolve(optionsRef.current?.onScrollToMessage?.(messageId) ?? false);
+                }, 40);
+
+                pendingResolveRef.current = (res) => {
+                  clearTimeout(timer);
+                  resolve(res);
+                };
+              });
+            }
+
             if (found) {
               applyHighlight(messageId);
               return true;

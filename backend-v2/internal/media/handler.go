@@ -64,7 +64,7 @@ func addRequestOverhead(payloadBytes, overheadBytes int64) int64 {
 }
 
 func (h *Handler) jsonBodyLimit() int64 {
-	return addRequestOverhead(base64EncodedSize(h.service.maxUploadBytes), jsonRequestOverheadBytes)
+	return addRequestOverhead(base64EncodedSize(h.service.encryptedUploadLimit()), jsonRequestOverheadBytes)
 }
 
 func (h *Handler) multipartBodyLimit() int64 {
@@ -104,6 +104,10 @@ func uploadLimitMessage(maxBytes int64) string {
 		return fmt.Sprintf("file exceeds %d MB limit", maxBytes/mebibyte)
 	}
 	return fmt.Sprintf("file exceeds %d byte limit", maxBytes)
+}
+
+func requestLimitMessage(maxBytes int64) string {
+	return fmt.Sprintf("request body exceeds %d byte limit", maxBytes)
 }
 
 func (h *Handler) writeFileTooLarge(w http.ResponseWriter, r *http.Request) {

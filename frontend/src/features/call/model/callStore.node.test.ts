@@ -1,16 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECONNECT_TIMEOUT_MS, useCallStore, _resetCancelledRoomsForTest } from './callStore';
 import { services } from '@/services/serviceContainer';
-import { startRingtone, stopRingtone } from '@/services/ringtone';
+import * as callRingtone from './callRingtone';
 import { useProfileStore, blockedUsersQuery, userKeys } from '@/entities/user';
 import { chatKeys } from '@/entities/chat';
 import { queryClient } from '@/shared/api';
 import type { WebSocketClient } from '@/services/WebSocketClient';
-
-vi.mock('@/services/ringtone', () => ({
-  startRingtone: vi.fn(),
-  stopRingtone: vi.fn(),
-}));
 
 describe('useCallStore', () => {
   const mockSend = vi.fn();
@@ -21,6 +16,11 @@ describe('useCallStore', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(services.userService, 'getSettings').mockImplementation(async () =>
+      queryClient.getQueryData(userKeys.settings())!
+    );
+    vi.spyOn(callRingtone, 'startRingtone').mockReturnValue(undefined);
+    vi.spyOn(callRingtone, 'stopRingtone').mockReturnValue(undefined);
     _resetCancelledRoomsForTest();
     services.userService.listBlocked = vi.fn().mockResolvedValue([]);
     queryClient.setQueryData(blockedUsersQuery().queryKey, []);
@@ -124,6 +124,10 @@ describe('useCallStore', () => {
         sounds: true,
       } as any,
     });
+    queryClient.setQueryData(userKeys.settings(), {
+      settings: { notifications: true, sounds: true, callSounds: true },
+      privacy: {},
+    });
   });
 
   it('обрабатывает входящий вызов в состоянии idle и запускает рингтон', async () => {
@@ -139,7 +143,7 @@ describe('useCallStore', () => {
     expect(state.incomingCall).not.toBeNull();
     expect(state.incomingCall?.roomId).toBe('room-1');
     expect(state.incomingCall?.from).toBe('caller-1');
-    expect(startRingtone).toHaveBeenCalledTimes(1);
+    expect(callRingtone.startRingtone).toHaveBeenCalledTimes(1);
   });
 
   it('автоматически отклоняет входящий вызов как busy, если уже идет звонок', () => {
@@ -181,7 +185,7 @@ describe('useCallStore', () => {
 
     useCallStore.getState().acceptCall();
 
-    expect(stopRingtone).toHaveBeenCalledTimes(1);
+    expect(callRingtone.stopRingtone).toHaveBeenCalledTimes(1);
     expect(mockSend).toHaveBeenCalledWith({
       type: 'call_invite_response',
       to: 'caller-1',
@@ -206,7 +210,7 @@ describe('useCallStore', () => {
 
     useCallStore.getState().rejectCall();
 
-    expect(stopRingtone).toHaveBeenCalledTimes(1);
+    expect(callRingtone.stopRingtone).toHaveBeenCalledTimes(1);
     expect(mockSend).toHaveBeenCalledWith({
       type: 'call_invite_response',
       to: 'caller-1',
@@ -488,7 +492,7 @@ describe('useCallStore', () => {
     expect(useCallStore.getState().fsm.endReason).toBe('busy');
   });
 
-  it('не запускает рингтон, если звуки выключены в настройках профиля', async () => {
+  it('запускает рингтон, если выключены только звуки сообщений sounds: false (#1002)', async () => {
     useProfileStore.setState({
       settings: {
         sounds: false,
@@ -502,7 +506,51 @@ describe('useCallStore', () => {
     });
 
     expect(useCallStore.getState().fsm.state).toBe('incoming');
-    expect(startRingtone).not.toHaveBeenCalled();
+    expect(callRingtone.startRingtone).toHaveBeenCalledTimes(1);
+  });
+
+  it('не запускает рингтон, если callSounds: false в настройках (#1002)', async () => {
+    queryClient.setQueryData(userKeys.settings(), {
+      settings: { notifications: true, callSounds: false },
+      privacy: {},
+    });
+    useProfileStore.setState({
+      settings: {
+        sounds: true,
+        callSounds: false,
+      } as any,
+    });
+
+    await useCallStore.getState().handleIncoming({
+      roomId: 'room-mute-2',
+      from: 'caller-mute',
+      kind: 'audio',
+    });
+
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(callRingtone.startRingtone).not.toHaveBeenCalled();
+  });
+
+  it('global notifications=false не отменяет incoming state, но исключает рингтон', async () => {
+    queryClient.setQueryData(userKeys.settings(), {
+      settings: { notifications: false, sounds: true, callSounds: true },
+      privacy: {},
+    });
+    await useCallStore
+      .getState()
+      .handleIncoming({ roomId: 'global-off', from: 'caller-mute', kind: 'audio' });
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(callRingtone.startRingtone).not.toHaveBeenCalled();
+  });
+
+  it('ошибка проверки settings не разрешает звонковое оповещение', async () => {
+    vi.mocked(services.userService.getSettings).mockRejectedValueOnce(new Error('offline'));
+    await useCallStore
+      .getState()
+      .handleIncoming({ roomId: 'settings-error', from: 'caller-mute', kind: 'audio' });
+    expect(useCallStore.getState().fsm.state).toBe('incoming');
+    expect(useCallStore.getState().incomingAlertsReady).toBe(false);
+    expect(callRingtone.startRingtone).not.toHaveBeenCalled();
   });
 
   it('тихо игнорирует входящий вызов от пользователя из чёрного списка', async () => {
@@ -519,7 +567,7 @@ describe('useCallStore', () => {
     // Карточка не создаётся, рингтон не звенит, FSM остаётся в idle
     expect(useCallStore.getState().fsm.state).toBe('idle');
     expect(useCallStore.getState().incomingCall).toBeNull();
-    expect(startRingtone).not.toHaveBeenCalled();
+    expect(callRingtone.startRingtone).not.toHaveBeenCalled();
     expect(mockSend).not.toHaveBeenCalled();
   });
 
@@ -554,7 +602,7 @@ describe('useCallStore', () => {
 
     expect(services.userService.listBlocked).toHaveBeenCalledTimes(1);
     expect(useCallStore.getState().fsm.state).toBe('idle');
-    expect(startRingtone).not.toHaveBeenCalled();
+    expect(callRingtone.startRingtone).not.toHaveBeenCalled();
   });
 
   it('отмена исходящего вызова через cancelCall отправляет leave и сбрасывает FSM', () => {
@@ -605,7 +653,7 @@ describe('useCallStore', () => {
       roomId: 'multi-tab-room',
     });
 
-    expect(stopRingtone).toHaveBeenCalledTimes(1);
+    expect(callRingtone.stopRingtone).toHaveBeenCalledTimes(1);
     expect(useCallStore.getState().fsm.state).toBe('idle');
     expect(useCallStore.getState().incomingCall).toBeNull();
   });
@@ -908,6 +956,90 @@ describe('useCallStore', () => {
     expect(state.fsm.endReason).toBe('network_error');
     expect(state.fsm.outgoingPhase).toBe('failed');
     expect(state.outgoingCall?.phase).toBe('failed');
+  });
+
+  it('initiateCall переводит вызов в phase: declined при ошибке calls_forbidden (#1043)', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce({
+        code: 'calls_forbidden',
+        status: 403,
+      });
+
+      await useCallStore
+        .getState()
+        .initiateCall('chat-1', 'p2p', 'Тест', 'audio', 'peer-1', null, 'Алиса');
+
+      let state = useCallStore.getState();
+      expect(state.fsm.state).toBe('ended');
+      expect(state.fsm.endReason).toBe('declined');
+      expect(state.fsm.outgoingPhase).toBe('declined');
+      expect(state.outgoingCall?.phase).toBe('declined');
+
+      vi.advanceTimersByTime(1500);
+
+      state = useCallStore.getState();
+      expect(state.fsm.state).toBe('idle');
+      expect(state.outgoingCall).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('initiateCall переводит вызов в phase: declined при ошибке blocked_by_user (#1043)', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce({
+        code: 'blocked_by_user',
+        status: 403,
+      });
+
+      await useCallStore
+        .getState()
+        .initiateCall('chat-1', 'p2p', 'Тест', 'audio', 'peer-1', null, 'Алиса');
+
+      let state = useCallStore.getState();
+      expect(state.fsm.state).toBe('ended');
+      expect(state.fsm.endReason).toBe('declined');
+      expect(state.fsm.outgoingPhase).toBe('declined');
+      expect(state.outgoingCall?.phase).toBe('declined');
+
+      vi.advanceTimersByTime(1500);
+
+      state = useCallStore.getState();
+      expect(state.fsm.state).toBe('idle');
+      expect(state.outgoingCall).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('initiateCall при 403 с code access_denied оставляет сбой failed и network_error (#1043)', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(services.callService, 'createRoom').mockRejectedValueOnce({
+        code: 'access_denied',
+        status: 403,
+      });
+
+      await useCallStore
+        .getState()
+        .initiateCall('chat-1', 'p2p', 'Тест', 'audio', 'peer-1', null, 'Алиса');
+
+      let state = useCallStore.getState();
+      expect(state.fsm.state).toBe('ended');
+      expect(state.fsm.endReason).toBe('network_error');
+      expect(state.fsm.outgoingPhase).toBe('failed');
+      expect(state.outgoingCall?.phase).toBe('failed');
+
+      vi.advanceTimersByTime(1500);
+
+      state = useCallStore.getState();
+      expect(state.fsm.state).toBe('idle');
+      expect(state.outgoingCall).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   describe('восстановление связи и реконнект (PR 1 / #775)', () => {

@@ -2,6 +2,7 @@ import type { TIconTypes } from '@/types';
 import { cn } from '@/shared/lib';
 import {
   AlertTriangle,
+  Bookmark,
   Bold,
   Code,
   Italic,
@@ -39,6 +40,7 @@ import {
   Lock,
   LogOut,
   Maximize,
+  Minimize2,
   Megaphone,
   Menu,
   MessageCircle,
@@ -104,6 +106,8 @@ import {
   Laptop,
   Smartphone,
   MoreHorizontal,
+  Heart,
+  Sticker,
 } from 'lucide-react';
 
 const sizes = { xs: 'size-3', sm: 'size-4', md: 'size-5', lg: 'size-6', xl: 'size-8' } as const;
@@ -114,6 +118,7 @@ interface Props extends Omit<LucideProps, 'size' | 'ref'> {
 }
 
 const iconsConfig: Record<TIconTypes, LucideIcon> = {
+  bookmark: Bookmark,
   bold: Bold,
   italic: Italic,
   underline: Underline,
@@ -150,6 +155,7 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   lock: Lock,
   logOut: LogOut,
   maximize: Maximize,
+  minimize: Minimize2,
   monitor: Monitor,
   palette: Palette,
   pause: Pause,
@@ -215,6 +221,8 @@ const iconsConfig: Record<TIconTypes, LucideIcon> = {
   laptop: Laptop,
   smartphone: Smartphone,
   more: MoreHorizontal,
+  heart: Heart,
+  sticker: Sticker,
 };
 
 export const Icon = ({ name, size = 'md', className, ...props }: Props) => {

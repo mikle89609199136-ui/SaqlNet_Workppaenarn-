@@ -33,26 +33,43 @@ describe('AuthService session metadata', () => {
   });
 });
 
-describe('AuthService.logoutAll', () => {
-  it('clears the local profile only after the server confirms revocation', async () => {
-    const post = vi.fn().mockResolvedValue({ data: { success: true } });
-    const clearProfile = vi.fn();
-    const service = new AuthService({ post }, { clearProfile });
+describe('AuthService.login', () => {
+  it('returns the user without publishing an incomplete login session', async () => {
+    const user = { id: 'user-id', username: 'anna' };
+    const post = vi.fn().mockResolvedValue({ data: { user } });
+    const setUser = vi.fn();
+    const service = new AuthService({ post }, { setUser });
 
-    await service.logoutAll();
-
-    expect(clearProfile).toHaveBeenCalledOnce();
+    await expect(service.login({ username: 'anna', password: 'secret' })).resolves.toEqual({
+      user,
+    });
+    expect(setUser).not.toHaveBeenCalled();
   });
+});
 
-  it('keeps the local profile when server-side revocation fails', async () => {
-    const failure = new Error('service unavailable');
-    const post = vi.fn().mockRejectedValue(failure);
-    const clearProfile = vi.fn();
-    const service = new AuthService({ post }, { clearProfile });
+/* Профиль стирает только clearAuthSession (#1072): иначе она видела бы
+   «уже вышел» и не чистила вкладку. Ошибку сервера решает вызывающий. */
+describe('AuthService: выход не трогает профиль', () => {
+  it.each(['logout', 'logoutAll'] as const)(
+    '%s отдаёт ошибку сервера вызывающему',
+    async (method) => {
+      const failure = new Error('service unavailable');
+      const post = vi.fn().mockRejectedValue(failure);
+      const service = new AuthService({ post, delete: vi.fn() }, { setUser: vi.fn() });
 
-    await expect(service.logoutAll()).rejects.toBe(failure);
-    expect(clearProfile).not.toHaveBeenCalled();
-  });
+      await expect(service[method]()).rejects.toBe(failure);
+    }
+  );
+
+  it.each(['logout', 'logoutAll'] as const)(
+    '%s при успехе завершается без ошибок',
+    async (method) => {
+      const post = vi.fn().mockResolvedValue({ data: { success: true } });
+      const service = new AuthService({ post, delete: vi.fn() }, { setUser: vi.fn() });
+
+      await expect(service[method]()).resolves.toBeUndefined();
+    }
+  );
 });
 
 /* Выход — push этому устройству больше не нужен (#882). */
@@ -110,16 +127,16 @@ describe('AuthService: push при выходе', () => {
 
   it('сбой удаления на сервере не мешает выйти', async () => {
     withSubscription();
-    const clearProfile = vi.fn();
+    const post = vi.fn().mockResolvedValue({ data: {} });
     const service = new AuthService(
       {
-        post: vi.fn().mockResolvedValue({ data: {} }),
+        post,
         delete: vi.fn().mockRejectedValue(new Error('500')),
       },
-      { clearProfile }
+      { setUser: vi.fn() }
     );
 
-    await service.logout();
-    expect(clearProfile).toHaveBeenCalled();
+    await expect(service.logout()).resolves.toBeUndefined();
+    expect(post).toHaveBeenCalledWith('/auth/logout');
   });
 });

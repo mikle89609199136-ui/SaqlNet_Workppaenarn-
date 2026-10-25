@@ -32,6 +32,7 @@ const PRIVACY_TITLES: Record<TPrivacySubsection, readonly [string, string]> = {
   'last-seen': ['settings.privacy.lastSeen', 'Последняя активность'],
   photo: ['settings.privacy.photo', 'Фото профиля'],
   forwards: ['settings.privacy.forwards', 'Пересылка сообщений'],
+  calls: ['settings.privacy.calls', 'Кто может звонить'],
   blocked: ['settings.privacy.blocked', 'Чёрный список'],
 };
 

@@ -105,7 +105,8 @@ describe('пересылка сообщения в другой чат', () => {
     // отдаёт два чата. Страница чата сама список не запрашивает — его
     // наполняет родительская страница списка чатов, которой в этом дереве нет.
     // Дальше сценария (клик по целевому чату → отправка) отсюда не пройти.
-    expect(screen.getByText('Чаты не найдены')).toBeInTheDocument();
+    // «Избранное» в окне есть всегда, даже без списка чатов (#1075).
+    expect(screen.getByRole('button', { name: 'Избранное' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: new RegExp(targetChat.title) })).toBeNull();
     expect(forwardCalls).toHaveLength(0);
   });

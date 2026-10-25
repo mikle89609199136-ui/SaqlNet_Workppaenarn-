@@ -1,4 +1,5 @@
 export { clearAuthSession } from './model/clearAuthSession';
+export { signOut } from './model/signOut';
 export { isUserFacingAuthError } from './model/authErrors';
 export { handleAuthUnauthorized, registerAuthInterceptor } from './model/registerAuthInterceptor';
 export { createLoginFormSchema, type TLoginForm } from './model/loginSchema';
@@ -11,3 +12,4 @@ export {
 } from './model/registerSchema';
 export { LoginForm } from './ui/LoginForm';
 export { RegisterWizard } from './ui/RegisterWizard/RegisterWizard';
+export { safeReturnPath } from './model/safeReturnPath';

@@ -1,5 +1,6 @@
 import { ContextMenu } from '@/shared/ui';
 import { Icon } from '@/shared/ui/Icon';
+import { getChatTitle, isSavedMessages, isChatMuted } from '@/entities/chat';
 import { useChatActions } from '../model/useChatActions';
 import type { IChatDto } from '@/types';
 import type { RefObject } from 'react';
@@ -71,8 +72,15 @@ export function ChatRowMenu({
   hidden = false,
 }: IChatRowMenuProps) {
   const { t } = useTranslation();
-  const { togglePin, toggleArchive, markRead, toggleNotificationPreview, isNotificationPending } =
-    useChatActions();
+  const {
+    togglePin,
+    toggleArchive,
+    markRead,
+    toggleNotificationPreview,
+    isNotificationPending,
+    toggleMute,
+    isMutePending,
+  } = useChatActions();
   const previewHidden = Boolean(chat.hideNotificationPreview);
 
   /** Действие и закрытие меню — одним нажатием. */
@@ -85,7 +93,7 @@ export function ChatRowMenu({
 
   return (
     <ContextMenu
-      aria-label={t('chatActionsFor', 'Действия: {{title}}', { title: chat.title })}
+      aria-label={t('chatActionsFor', 'Действия: {{title}}', { title: getChatTitle(chat, t) })}
       onClose={onClose}
       open={!hidden}
       returnFocusRef={returnFocusRef}
@@ -114,22 +122,26 @@ export function ChatRowMenu({
         )
       )}
 
-      <ContextMenu.Item
-        icon={<Icon name={previewHidden ? 'eye' : 'eyeOff'} />}
-        disabled={isNotificationPending}
-        onClick={run(() => toggleNotificationPreview(chat))}
-      >
-        {previewHidden
-          ? t('showNotificationPreview', 'Показывать текст в уведомлениях')
-          : t('hideNotificationPreview', 'Скрывать текст в уведомлениях')}
-      </ContextMenu.Item>
-
-      {mute && (
+      {/* Уведомлений у «Избранного» нет — и прятать в них нечего (#1075). */}
+      {!isSavedMessages(chat) && (
         <ContextMenu.Item
-          icon={<Icon name={mute.muted ? 'bell' : 'bellOff'} />}
-          onClick={run(mute.onToggle)}
+          icon={<Icon name={previewHidden ? 'eye' : 'eyeOff'} />}
+          disabled={isNotificationPending}
+          onClick={run(() => toggleNotificationPreview(chat))}
         >
-          {mute.muted
+          {previewHidden
+            ? t('showNotificationPreview', 'Показывать текст в уведомлениях')
+            : t('hideNotificationPreview', 'Скрывать текст в уведомлениях')}
+        </ContextMenu.Item>
+      )}
+
+      {!isSavedMessages(chat) && (
+        <ContextMenu.Item
+          icon={<Icon name={(mute?.muted ?? isChatMuted(chat)) ? 'bell' : 'bellOff'} />}
+          disabled={isMutePending}
+          onClick={run(mute?.onToggle ?? (() => toggleMute(chat)))}
+        >
+          {(mute?.muted ?? isChatMuted(chat))
             ? t('unmuteChat', 'Включить уведомления')
             : t('muteChat', 'Отключить уведомления')}
         </ContextMenu.Item>

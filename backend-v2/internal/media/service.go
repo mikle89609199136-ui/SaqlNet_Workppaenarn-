@@ -81,6 +81,7 @@ type ObjectResponse struct {
 	Body          io.ReadCloser
 	StatusCode    int
 	ContentLength int64
+	ContentType   string
 	ContentRange  string
 	AcceptRanges  string
 }
@@ -120,7 +121,11 @@ func sanitizeFilename(filename string) string {
 }
 
 func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType string, data []byte, isEncrypted bool, encryptionJSON string) (Upload, error) {
-	if int64(len(data)) > s.maxUploadBytes {
+	limit := s.maxUploadBytes
+	if isEncrypted {
+		limit = s.encryptedUploadLimit()
+	}
+	if int64(len(data)) > limit {
 		return Upload{}, ErrTooBig
 	}
 
@@ -162,7 +167,7 @@ func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType s
 }
 
 func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64Ciphertext, encryptionJSON, contentType string) (Upload, error) {
-	data, err := decodeBase64Payload(base64Ciphertext, s.maxUploadBytes)
+	data, err := decodeBase64Payload(base64Ciphertext, s.encryptedUploadLimit())
 	if err != nil {
 		if errors.Is(err, ErrTooBig) {
 			return Upload{}, err
@@ -240,6 +245,20 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		SELECT bucket, object_key, content_type, size_bytes, is_encrypted, encryption_key_id
 		FROM media.uploads WHERE id = $1
 	`, uploadID).Scan(&bucket, &objectKey, &contentType, &sizeBytes, &isEncrypted, &encryptionJSON)
+
+	catalogObject := false
+	if errors.Is(err, sql.ErrNoRows) {
+		// Стикеры и иконки уже имеют идентификаторы хранилища (#973).
+		// URL из базы не скачиваем: только управляемые bucket/object_key.
+		err = s.db.QueryRowContext(ctx, `
+			SELECT bucket, object_key FROM media.stickers
+			WHERE id = $1 AND bucket <> '' AND object_key <> ''
+			UNION ALL
+			SELECT icon_bucket, icon_object_key FROM media.sticker_packs
+			WHERE id = $1 AND icon_bucket <> '' AND icon_object_key <> ''
+		`, uploadID).Scan(&bucket, &objectKey)
+		catalogObject = err == nil
+	}
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
@@ -330,6 +349,11 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		return nil
 	default:
 		return ErrStorage
+	}
+
+	if catalogObject {
+		contentType = object.ContentType
+		sizeBytes = object.ContentLength
 	}
 
 	mediaType, allowed := allowedMediaType(contentType)

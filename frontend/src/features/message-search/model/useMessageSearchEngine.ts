@@ -44,8 +44,10 @@ export function useMessageSearchEngine({ chatId, loadedMessages, hasOlder }: Par
   // фильтрует уже собранный текст. Закрытие или смена чата всё выбрасывают.
   const [scanFor, setScanFor] = useState<string | null>(null);
   const openChatId = isOpen ? chatId : null;
-  if (scanFor !== null && scanFor !== openChatId) setScanFor(null);
-  else if (scanFor === null && openChatId && query && hasOlder) setScanFor(openChatId);
+  if (scanFor !== null && scanFor !== openChatId) {
+    setScanFor(null);
+    setScan(null);
+  } else if (scanFor === null && openChatId && query && hasOlder) setScanFor(openChatId);
 
   useEffect(() => {
     if (!scanFor) return undefined;
@@ -85,7 +87,9 @@ export function useMessageSearchEngine({ chatId, loadedMessages, hasOlder }: Par
 
   const history = scan && scan.chatId === scanFor ? scan : null;
   const historyStatus: THistoryStatus = !scanFor ? 'complete' : (history?.status ?? 'loading');
-  const scannedCount = loadedMessages.length + (history?.messages.length ?? 0);
+  const scannedCount = new Set(
+    [...loadedMessages, ...(history?.messages ?? [])].map((message) => message.id)
+  ).size;
 
   const results = useMemo(() => {
     if (!isOpen || !query) return [];

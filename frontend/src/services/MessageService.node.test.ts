@@ -7,8 +7,12 @@ import { server } from '@/test/msw/server';
 import { secretText } from '@/test/msw/plaintextGuard';
 import type { IMessageDto } from '@/types';
 import type { CryptoService } from './CryptoService';
-import { MessageService } from './MessageService';
+import { isCatalogMediaUrl, isOwnMediaUrl, MessageService } from './MessageService';
 import { setChatResolver } from '@/entities/chat/model/chatResolver';
+import {
+  clearMediaObjectUrls,
+  resolveMediaObjectUrl,
+} from '@/entities/media/model/mediaObjectUrls';
 import type { ILastMessageDto } from '@/entities/chat/model/types';
 import type { IMessageEntity } from '@/shared/lib/richText';
 
@@ -416,58 +420,685 @@ describe('MessageService: голосовое', () => {
   });
 });
 
-describe('MessageService: пересылка голосового (#843)', () => {
-  afterEach(() => setChatResolver(null));
+/* Пересылка файла (#1060). Файл пересылаемого лежит в настоящем реестре
+   расшифрованного медиа: прочитать его по адресу blob: через fetch на
+   прод-сборке не даёт CSP, поэтому fetch здесь не подменяется. */
+describe('MessageService: пересылка файла (#1060)', () => {
+  const SOURCE_CHAT = 'chat-source';
+  const sourcePath = (n: number) => `/api/v2/media/00000000-0000-4000-8000-0000000000a${n}`;
+  const sealedFile = {
+    version: 2,
+    encrypted: true,
+    algorithm: 'AES-GCM',
+    iv: 'AAAAAAAAAAAAAAAA',
+    ciphertext: 'AAAA',
+    mimeType: 'image/png',
+    sizeBytes: 3,
+    keyEpoch: 1,
+  };
 
-  it('длительность и волна уезжают в конверт целевого чата', async () => {
-    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+  afterEach(() => {
+    setChatResolver(null);
+    clearMediaObjectUrls();
+  });
+
+  /** Сервер загрузок: запоминает, сколько файлов к нему пришло. */
+  function serveUpload() {
+    const uploads: unknown[] = [];
     server.use(
-      http.post(api('/media'), () =>
-        HttpResponse.json({ url: '/api/v2/media/00000000-0000-4000-8000-00000000000a' })
-      )
+      http.post(api('/media'), async ({ request }) => {
+        uploads.push(await request.json());
+        return HttpResponse.json({
+          url: `/api/v2/media/00000000-0000-4000-8000-0000000001${uploads.length}0`,
+        });
+      })
     );
-    serveSend();
-    const encryptMessage = vi.fn(async () => 'sealed');
-    const crypto = {
+    return uploads;
+  }
+
+  function mediaCrypto(decrypted: Blob = new Blob(['png'])) {
+    return {
       ...passthroughCrypto,
-      encryptMessage,
-      encryptMedia: vi.fn(async () => ({
-        version: 2,
-        encrypted: true,
-        algorithm: 'AES-GCM',
-        iv: 'AAAAAAAAAAAAAAAA',
-        ciphertext: 'AAAA',
-        mimeType: 'audio/ogg; codecs=opus',
-        sizeBytes: 3,
-        keyEpoch: 1,
-      })),
-      decryptMedia: vi.fn(async () => new Blob(['ogg'])),
-    } as unknown as CryptoService;
-    // Файл пересылаемого уже расшифрован и лежит по адресу blob: — отдаём его.
-    // Остальное — в тот fetch, что сейчас действует (его подменяет msw).
+      encryptMessage: vi.fn(async () => 'sealed'),
+      encryptMedia: vi.fn(async () => sealedFile),
+      decryptMedia: vi.fn(async () => decrypted),
+    };
+  }
+
+  /** Сообщение с файлом в том виде, в каком его держит лента. */
+  function mediaMessage(
+    id: string,
+    type: IMessageDto['type'],
+    path: string,
+    objectUrl: string
+  ): IMessageDto {
+    return {
+      ...message(id, SOURCE_CHAT, ''),
+      type,
+      mediaUrl: objectUrl,
+      metadata: { mediaUrl: path, mediaEncrypted: true },
+    } as unknown as IMessageDto;
+  }
+
+  /** Все обращения к fetch за время теста — чтобы убедиться, что blob: не читается. */
+  function watchFetch() {
     const originalFetch = globalThis.fetch;
-    const fetchSpy = vi
+    return vi
       .spyOn(globalThis, 'fetch')
-      .mockImplementation((input, init) =>
-        String(input).startsWith('blob:')
-          ? Promise.resolve(new Response(new Blob(['ogg'])))
-          : originalFetch(input, init)
-      );
-    const voice = { durationMs: 9100, waveform: [4, 31] };
-    const original = {
-      ...message('m-voice', 'chat-source', ''),
-      type: 'voice',
-      mediaUrl: 'blob:local-voice',
-      voice,
-    } as IMessageDto;
+      .mockImplementation((input, init) => originalFetch(input, init));
+  }
+
+  function forwardedUrls(spy: ReturnType<typeof watchFetch>) {
+    return spy.mock.calls.map(([input]) => String(input instanceof Request ? input.url : input));
+  }
+
+  it('файл берётся из реестра, а не чтением blob: через fetch', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    const uploads = serveUpload();
+    const requests = serveSend();
+    const crypto = mediaCrypto();
+    const photo = new Blob(['photo-bytes'], { type: 'image/png' });
+    const objectUrl = await resolveMediaObjectUrl(sourcePath(1), async () => photo);
+    const fetchSpy = watchFetch();
 
     try {
-      await new MessageService(createApiClient(), crypto).forwardMessages(TARGET_CHAT, [original]);
+      await new MessageService(createApiClient(), crypto as never).forwardMessages(TARGET_CHAT, [
+        mediaMessage('m-photo', 'image', sourcePath(1), objectUrl),
+      ]);
     } finally {
       fetchSpy.mockRestore();
     }
 
-    expect(encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, '', [], voice);
+    expect(forwardedUrls(fetchSpy).filter((url) => url.startsWith('blob:'))).toEqual([]);
+    expect(crypto.encryptMedia).toHaveBeenCalledWith(TARGET_CHAT, photo);
+    expect(crypto.decryptMedia).not.toHaveBeenCalledWith(SOURCE_CHAT, expect.anything());
+    expect(uploads).toHaveLength(1);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages[0]).toMatchObject({ type: 'image', forwardedFrom: 'm-photo' });
+  });
+
+  it('файл, отпущенный реестром, скачивается заново и расшифровывается ключом исходного чата', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    const uploads = serveUpload();
+    const requests = serveSend();
+    const downloaded = vi.fn();
+    server.use(
+      http.get(api('/media/00000000-0000-4000-8000-0000000000a2'), () => {
+        downloaded();
+        return HttpResponse.json(sealedFile);
+      })
+    );
+    const restored = new Blob(['photo-again'], { type: 'image/png' });
+    const crypto = mediaCrypto(restored);
+    // Адрес остался в снимке сообщения, а файл реестр уже отпустил.
+    const staleUrl = await resolveMediaObjectUrl(sourcePath(2), async () => new Blob(['old']));
+    clearMediaObjectUrls();
+
+    await new MessageService(createApiClient(), crypto as never).forwardMessages(TARGET_CHAT, [
+      mediaMessage('m-evicted', 'image', sourcePath(2), staleUrl),
+    ]);
+
+    expect(downloaded).toHaveBeenCalledTimes(1);
+    expect(crypto.decryptMedia).toHaveBeenCalledWith(SOURCE_CHAT, sealedFile);
+    expect(crypto.encryptMedia).toHaveBeenCalledWith(TARGET_CHAT, restored);
+    expect(uploads).toHaveLength(1);
+    expect(requests[0].messages[0]).toMatchObject({ forwardedFrom: 'm-evicted' });
+  });
+
+  it('файла нет ни в реестре, ни на сервере — в целевой чат ничего не уходит', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    const uploads = serveUpload();
+    const requests = serveSend();
+    server.use(
+      http.get(api('/media/00000000-0000-4000-8000-0000000000a3'), () =>
+        HttpResponse.json({ error: 'not found' }, { status: 404 })
+      )
+    );
+    const crypto = mediaCrypto();
+    const staleUrl = await resolveMediaObjectUrl(sourcePath(3), async () => new Blob(['old']));
+    clearMediaObjectUrls();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await expect(
+        new MessageService(createApiClient(), crypto as never).forwardMessages(TARGET_CHAT, [
+          mediaMessage('m-gone', 'image', sourcePath(3), staleUrl),
+        ])
+      ).rejects.toThrow();
+    } finally {
+      warn.mockRestore();
+    }
+
+    expect(crypto.encryptMedia).not.toHaveBeenCalled();
+    expect(uploads).toHaveLength(0);
+    expect(requests).toHaveLength(0);
+  });
+
+  it('несколько файлов уходят одной пачкой в прежнем порядке', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    const uploads = serveUpload();
+    const requests = serveSend();
+    const crypto = mediaCrypto();
+    const photoUrl = await resolveMediaObjectUrl(sourcePath(4), async () => new Blob(['photo']));
+    const fileUrl = await resolveMediaObjectUrl(sourcePath(5), async () => new Blob(['pdf']));
+
+    await new MessageService(createApiClient(), crypto as never).forwardMessages(TARGET_CHAT, [
+      mediaMessage('m-photo', 'image', sourcePath(4), photoUrl),
+      mediaMessage('m-file', 'file', sourcePath(5), fileUrl),
+    ]);
+
+    expect(uploads).toHaveLength(2);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages).toEqual([
+      expect.objectContaining({ type: 'image', forwardedFrom: 'm-photo' }),
+      expect.objectContaining({ type: 'file', forwardedFrom: 'm-file' }),
+    ]);
+  });
+
+  it('голосовое: длительность и волна уезжают в конверт целевого чата (#843)', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    serveUpload();
+    serveSend();
+    const crypto = mediaCrypto(new Blob(['ogg']));
+    const voiceUrl = await resolveMediaObjectUrl(sourcePath(6), async () => new Blob(['ogg']));
+    const voice = { durationMs: 9100, waveform: [4, 31] };
+
+    await new MessageService(createApiClient(), crypto as never).forwardMessages(TARGET_CHAT, [
+      { ...mediaMessage('m-voice', 'voice', sourcePath(6), voiceUrl), voice } as IMessageDto,
+    ]);
+
+    expect(crypto.encryptMessage).toHaveBeenCalledWith(TARGET_CHAT, '', [], voice);
+  });
+});
+
+/* Стикер и GIF сервер принимает только ссылкой на каталог: шифрованную
+   копию он отклоняет (#1061). А звонок и вложение без файла не уйдут
+   вовсе — пачка с ними не должна ничего загружать. */
+describe('MessageService: пересылка стикеров, GIF и непересылаемого (#1061)', () => {
+  const stickerUrl = '/api/v2/media/11111111-1111-4111-8111-111111111111';
+  const gifUrl = '/api/v2/media/22222222-2222-4222-8222-222222222222';
+
+  afterEach(() => setChatResolver(null));
+
+  /** Сервис со счётчиками загрузок и шифрования файлов. */
+  function forwarding() {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    const uploads: unknown[] = [];
+    server.use(
+      http.post(api('/media'), async ({ request }) => {
+        uploads.push(await request.json());
+        return HttpResponse.json({ url: '/api/v2/media/00000000-0000-4000-8000-0000000002a0' });
+      })
+    );
+    const requests = serveSend();
+    const crypto = {
+      ...passthroughCrypto,
+      encryptMedia: vi.fn(async () => ({ encrypted: true })),
+      decryptMedia: vi.fn(async () => new Blob(['x'])),
+    };
+    const service = new MessageService(createApiClient(), crypto as never);
+    return { uploads, requests, crypto, service };
+  }
+
+  /** Стикер или GIF в том виде, в каком его держит лента. */
+  const catalog = (id: string, type: 'sticker' | 'gif', url: string | null, extra = {}) =>
+    ({
+      ...message(id, 'chat-source', ''),
+      type,
+      mediaUrl: url,
+      mediaOriginalUrl: url ?? undefined,
+      mediaEncrypted: false,
+      mediaUnavailable: !url,
+      ...extra,
+    }) as unknown as IMessageDto;
+
+  it.each([
+    ['стикер', 'sticker', stickerUrl],
+    ['GIF', 'gif', gifUrl],
+  ] as const)('%s пересылается ссылкой на каталог, без загрузки', async (_name, type, url) => {
+    const { uploads, requests, crypto, service } = forwarding();
+
+    await service.forwardMessages(TARGET_CHAT, [catalog('m-catalog', type, url)]);
+
+    expect(uploads).toHaveLength(0);
+    expect(crypto.encryptMedia).not.toHaveBeenCalled();
+    expect(requests[0].messages[0]).toEqual({
+      content: '',
+      type,
+      replyTo: null,
+      mediaUrl: url,
+      mediaType: type,
+      mediaEncrypted: false,
+      forwardedFrom: 'm-catalog',
+    });
+  });
+
+  it('стикер не из каталога не пересылается и запросов нет', async () => {
+    const { uploads, requests, service } = forwarding();
+
+    await expect(
+      service.forwardMessages(TARGET_CHAT, [
+        catalog('m-foreign', 'sticker', null, { mediaUnavailableReason: 'foreign' }),
+      ])
+    ).rejects.toThrow();
+
+    expect(uploads).toHaveLength(0);
+    expect(requests).toHaveLength(0);
+  });
+
+  it('звонок не пересылается', async () => {
+    const { requests, service } = forwarding();
+    const call = { ...message('m-call', 'chat-source', '{"status":"missed"}'), type: 'call' };
+
+    await expect(service.forwardMessages(TARGET_CHAT, [call as IMessageDto])).rejects.toThrow();
+
+    expect(requests).toHaveLength(0);
+  });
+
+  it.each(['', 'подпись'])('фото без файла не пересылается (подпись: «%s»)', async (caption) => {
+    const { uploads, requests, service } = forwarding();
+    const photo = {
+      ...message('m-photo', 'chat-source', caption),
+      type: 'image',
+      mediaUrl: null,
+      mediaUnavailable: true,
+    } as unknown as IMessageDto;
+
+    await expect(service.forwardMessages(TARGET_CHAT, [photo])).rejects.toThrow();
+
+    expect(uploads).toHaveLength(0);
+    expect(requests).toHaveLength(0);
+  });
+
+  it('пачка [фото, звонок] не загружает и фото', async () => {
+    const { uploads, requests, crypto, service } = forwarding();
+    const photoUrl = await resolveMediaObjectUrl(
+      '/api/v2/media/00000000-0000-4000-8000-0000000002a1',
+      async () => new Blob(['photo'])
+    );
+    const photo = {
+      ...message('m-photo', 'chat-source', ''),
+      type: 'image',
+      mediaUrl: photoUrl,
+      metadata: { mediaUrl: '/api/v2/media/00000000-0000-4000-8000-0000000002a1' },
+    } as unknown as IMessageDto;
+    const call = { ...message('m-call', 'chat-source', '{}'), type: 'call' } as IMessageDto;
+
+    try {
+      await expect(service.forwardMessages(TARGET_CHAT, [photo, call])).rejects.toThrow();
+    } finally {
+      clearMediaObjectUrls();
+    }
+
+    expect(crypto.encryptMedia).not.toHaveBeenCalled();
+    expect(uploads).toHaveLength(0);
+    expect(requests).toHaveLength(0);
+  });
+});
+
+/* Сбой скачивания и сбой расшифровки — разные причины (#1062): первое
+   лечится повтором, второе нет. Раньше оба показывались «ошибкой
+   расшифровки». */
+describe('MessageService: ошибки скачивания вложения (#1062)', () => {
+  const id = '00000000-0000-4000-8000-0000000003a0';
+  const photo = () =>
+    ({
+      ...message('m-photo', TARGET_CHAT, ''),
+      type: 'image',
+      metadata: { mediaUrl: `/api/v2/media/${id}`, mediaEncrypted: true },
+    }) as unknown as IMessageDto;
+
+  afterEach(() => {
+    clearMediaObjectUrls();
+    vi.restoreAllMocks();
+  });
+
+  function serviceWith(decryptMedia = vi.fn(async () => new Blob(['png']))) {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    return new MessageService(createApiClient(), { ...passthroughCrypto, decryptMedia } as never);
+  }
+
+  it.each([
+    ['сеть', 'downloadFailed', () => HttpResponse.error()],
+    ['500', 'downloadFailed', () => HttpResponse.json({}, { status: 500 })],
+    ['502', 'downloadFailed', () => HttpResponse.json({}, { status: 502 })],
+    ['429', 'downloadFailed', () => HttpResponse.json({}, { status: 429 })],
+    ['404', 'notFound', () => HttpResponse.json({}, { status: 404 })],
+    ['410', 'notFound', () => HttpResponse.json({}, { status: 410 })],
+    ['403', 'forbidden', () => HttpResponse.json({}, { status: 403 })],
+    [
+      'битый JSON',
+      'downloadFailed',
+      () => new HttpResponse('{', { headers: { 'content-type': 'application/json' } }),
+    ],
+  ] as const)('скачивание: %s → %s', async (_name, reason, respond) => {
+    server.use(http.get(api(`/media/${id}`), respond));
+
+    const patch = await serviceWith().resolveMediaForDisplay(TARGET_CHAT, photo());
+
+    expect(patch).toMatchObject({
+      mediaUrl: null,
+      mediaUnavailable: true,
+      mediaUnavailableReason: reason,
+    });
+  });
+
+  it('файл скачался, но не расшифровался → decryptFailed', async () => {
+    server.use(http.get(api(`/media/${id}`), () => HttpResponse.json({ encrypted: true })));
+    const decryptMedia = vi.fn(async () => {
+      throw new Error('tag mismatch');
+    });
+
+    const patch = await serviceWith(decryptMedia).resolveMediaForDisplay(TARGET_CHAT, photo());
+
+    expect(patch).toMatchObject({
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'decryptFailed',
+    });
+  });
+
+  it('после сбоя повторный вызов скачивает файл заново', async () => {
+    let attempts = 0;
+    server.use(
+      http.get(api(`/media/${id}`), () => {
+        attempts += 1;
+        return attempts === 1 ? HttpResponse.error() : HttpResponse.json({ encrypted: true });
+      })
+    );
+    const service = serviceWith();
+
+    const failed = await service.resolveMediaForDisplay(TARGET_CHAT, photo());
+    const retried = await service.resolveMediaForDisplay(TARGET_CHAT, photo());
+
+    expect(failed).toMatchObject({ mediaUnavailableReason: 'downloadFailed' });
+    expect(retried).toMatchObject({ mediaUnavailable: false });
+    expect(String(retried.mediaUrl)).toMatch(/^blob:/);
+    expect(attempts).toBe(2);
+  });
+});
+
+/* Превью исходного сообщения в ответе (#1065): в шифрованном чате это
+   конверт, и ни одним путём он не должен уйти в интерфейс шифрованным. */
+describe('MessageService: превью ответа (#1065)', () => {
+  afterEach(() => setChatResolver(null));
+
+  /** «Шифрование»: `sealed:<текст>` открывается, `broken` — нет. */
+  const sealedCrypto = {
+    ...passthroughCrypto,
+    encryptMessage: async (_chatId: string, content: string) => `sealed:${content}`,
+    decryptMessage: vi.fn(async (_chatId: string, content: string) =>
+      content === 'broken'
+        ? { text: '', undecryptable: 'beforeJoin' }
+        : {
+            text: content.replace(/^sealed:/, ''),
+            entities: [{ type: 'bold', offset: 0, length: 3 }],
+          }
+    ),
+  };
+
+  function serviceIn(type: 'private' | 'channel') {
+    setChatResolver(async (chatId) => ({ id: chatId, type }) as never);
+    sealedCrypto.decryptMessage.mockClear();
+    return new MessageService(createApiClient(), sealedCrypto as never);
+  }
+
+  const preview = (content: string, type = 'text') => ({
+    id: 'm-old',
+    content,
+    type,
+    senderId: 'user-2',
+    senderName: 'Анна',
+    reactions: [],
+  });
+
+  const reply = (replyPreview?: ReturnType<typeof preview>) =>
+    ({
+      ...message('m-reply', TARGET_CHAT, 'sealed:ответ'),
+      replyTo: 'm-old',
+      ...(replyPreview ? { replyPreview } : {}),
+    }) as unknown as IMessageDto;
+
+  it('история: превью расшифровано тем же ключом чата, с форматированием', async () => {
+    const shown = await serviceIn('private').processMessageForDisplay(
+      TARGET_CHAT,
+      reply(preview('sealed:давнее'))
+    );
+
+    expect(shown.content).toBe('ответ');
+    expect(shown.replyPreview).toMatchObject({
+      content: 'давнее',
+      entities: [{ type: 'bold', offset: 0, length: 3 }],
+    });
+  });
+
+  it('нерасшифрованное превью помечено, а сам ответ расшифрован', async () => {
+    const shown = await serviceIn('private').processMessageForDisplay(
+      TARGET_CHAT,
+      reply(preview('broken'))
+    );
+
+    expect(shown.content).toBe('ответ');
+    expect(shown.replyPreview).toMatchObject({ undecryptable: 'beforeJoin' });
+  });
+
+  it('превью звонка не расшифровывается и без служебного JSON', async () => {
+    const shown = await serviceIn('private').processMessageForDisplay(
+      TARGET_CHAT,
+      reply(preview('{"callKind":"audio"}', 'call'))
+    );
+
+    expect(shown.replyPreview).toMatchObject({ type: 'call', content: '' });
+    expect(sealedCrypto.decryptMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('без превью — лишних расшифровок нет', async () => {
+    const shown = await serviceIn('private').processMessageForDisplay(TARGET_CHAT, reply());
+
+    expect(shown).not.toHaveProperty('replyPreview');
+    expect(sealedCrypto.decryptMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('ответ на отправку и на правку отдаёт открытое превью', async () => {
+    const service = serviceIn('private');
+    server.use(
+      http.post(api(`/messages/${TARGET_CHAT}`), () =>
+        HttpResponse.json({
+          messages: [{ ...reply(preview('sealed:давнее')), content: 'sealed:новый' }],
+        })
+      ),
+      http.put(api('/messages/m-reply'), () =>
+        HttpResponse.json({ ...reply(preview('sealed:давнее')), content: 'sealed:правка' })
+      )
+    );
+
+    const sent = await service.sendMessage(TARGET_CHAT, 'новый', 'text', 'm-old');
+    const edited = await service.editMessage('m-reply', TARGET_CHAT, 'правка');
+
+    expect(sent.replyPreview?.content).toBe('давнее');
+    expect(edited.replyPreview?.content).toBe('давнее');
+  });
+
+  it('канал: превью открытое, отдаётся как есть', async () => {
+    const shown = await serviceIn('channel').processMessageForDisplay(
+      TARGET_CHAT,
+      reply(preview('открытый текст'))
+    );
+
+    expect(shown.replyPreview?.content).toBe('открытый текст');
+    expect(sealedCrypto.decryptMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('MessageService: стикеры и GIF (#593, #871, #973, #1003)', () => {
+  const validStickerUrl = '/api/v2/media/11111111-1111-4111-8111-111111111111';
+  const validGifUrl = '/api/v2/media/22222222-2222-4222-8222-222222222222';
+
+  it('isCatalogMediaUrl и isOwnMediaUrl пропускают только относительные пути /api/v2/media/{uuid}', () => {
+    expect(isCatalogMediaUrl(validStickerUrl)).toBe(true);
+    expect(isCatalogMediaUrl(validGifUrl)).toBe(true);
+    expect(isOwnMediaUrl(validStickerUrl)).toBe(true);
+    expect(isOwnMediaUrl(validGifUrl)).toBe(true);
+    expect(isCatalogMediaUrl('/api/v2/stickers/packs/11111111-1111-4111-8111-111111111111')).toBe(
+      false
+    );
+    expect(isOwnMediaUrl('/api/v2/stickers/packs/11111111-1111-4111-8111-111111111111')).toBe(
+      false
+    );
+    expect(
+      isCatalogMediaUrl(
+        'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678'
+      )
+    ).toBe(false);
+    expect(
+      isOwnMediaUrl(
+        'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678'
+      )
+    ).toBe(false);
+    expect(isCatalogMediaUrl('https://example.com/dance.gif')).toBe(false);
+    expect(isOwnMediaUrl('https://example.com/dance.gif')).toBe(false);
+  });
+
+  it('sendSticker отправляет сообщение типа sticker с mediaUrl', async () => {
+    const requests = serveSend();
+    const service = createService();
+
+    const sent = await service.sendSticker(TARGET_CHAT, validStickerUrl);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages[0]).toMatchObject({
+      type: 'sticker',
+      mediaUrl: validStickerUrl,
+      content: '',
+    });
+    expect(sent).toMatchObject({
+      type: 'sticker',
+      mediaUrl: validStickerUrl,
+      mediaUnavailable: false,
+    });
+  });
+
+  it('sendGif отправляет сообщение типа gif с mediaUrl', async () => {
+    const requests = serveSend();
+    const service = createService();
+
+    const sent = await service.sendGif(TARGET_CHAT, validGifUrl);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages[0]).toMatchObject({
+      type: 'gif',
+      mediaUrl: validGifUrl,
+      content: '',
+    });
+    expect(sent).toMatchObject({
+      type: 'gif',
+      mediaUrl: validGifUrl,
+      mediaUnavailable: false,
+    });
+  });
+
+  it('resolveMediaForDisplay не блокирует URL каталога для стикеров и GIF', async () => {
+    const service = createService();
+    const stickerMsg = {
+      ...message('m-sticker', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: { mediaUrl: validStickerUrl } as never,
+    };
+    const gifMsg = {
+      ...message('m-gif', TARGET_CHAT, ''),
+      type: 'gif' as const,
+      mediaUrl: validGifUrl,
+    } as unknown as IMessageDto;
+
+    const patchSticker = await service.resolveMediaForDisplay(TARGET_CHAT, stickerMsg);
+    const patchGif = await service.resolveMediaForDisplay(TARGET_CHAT, gifMsg);
+
+    expect(patchSticker).toEqual({
+      mediaUrl: validStickerUrl,
+      mediaOriginalUrl: validStickerUrl,
+      mediaEncrypted: false,
+      mediaUnavailable: false,
+    });
+    expect(patchGif).toEqual({
+      mediaUrl: validGifUrl,
+      mediaOriginalUrl: validGifUrl,
+      mediaEncrypted: false,
+      mediaUnavailable: false,
+    });
+  });
+
+  it('resolveMediaForDisplay блокирует сторонние (не из каталога) URL для стикеров и GIF (#871, #1003)', async () => {
+    const service = createService();
+    const foreignStickerMsg = {
+      ...message('m-sticker-foreign', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: { mediaUrl: 'https://evil.com/leak.png' } as never,
+    };
+    const traversalStickerMsg = {
+      ...message('m-sticker-traversal', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: { mediaUrl: '/api/v2/stickers/../leak.png' } as never,
+    };
+    const minioStickerMsg = {
+      ...message('m-sticker-minio', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: {
+        mediaUrl:
+          'http://minio:9000/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678',
+      } as never,
+    };
+    const evilBypassStickerMsg = {
+      ...message('m-sticker-evil', TARGET_CHAT, ''),
+      type: 'sticker' as const,
+      metadata: {
+        mediaUrl:
+          'https://evil.com/crane-media/11111111-1111-4111-8111-111111111111/stickers/1712345678',
+      } as never,
+    };
+    const foreignGifMsg = {
+      ...message('m-gif-foreign', TARGET_CHAT, ''),
+      type: 'gif' as const,
+      mediaUrl: 'https://example.com/dance.gif',
+    } as unknown as IMessageDto;
+
+    const patchSticker = await service.resolveMediaForDisplay(TARGET_CHAT, foreignStickerMsg);
+    const patchTraversal = await service.resolveMediaForDisplay(TARGET_CHAT, traversalStickerMsg);
+    const patchMinioSticker = await service.resolveMediaForDisplay(TARGET_CHAT, minioStickerMsg);
+    const patchEvilSticker = await service.resolveMediaForDisplay(
+      TARGET_CHAT,
+      evilBypassStickerMsg
+    );
+    const patchGif = await service.resolveMediaForDisplay(TARGET_CHAT, foreignGifMsg);
+
+    expect(patchSticker).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchTraversal).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchMinioSticker).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchEvilSticker).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
+    expect(patchGif).toEqual({
+      mediaUrl: null,
+      mediaEncrypted: false,
+      mediaUnavailable: true,
+      mediaUnavailableReason: 'foreign',
+    });
   });
 });
 

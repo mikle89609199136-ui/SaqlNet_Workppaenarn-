@@ -80,6 +80,22 @@ describe('полоска ответа и правки', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  // В content звонка служебный JSON — в полосе вид звонка (#1073).
+  it('ответ на звонок — «Звонок», без JSON', () => {
+    useChatUiStore.setState({
+      replyToMessage: makeMessage({
+        senderId: 'u-2',
+        type: 'call',
+        content: JSON.stringify({ callKind: 'audio', status: 'missed' }),
+      }),
+    });
+
+    renderPart(<ComposerContextBanner onCancel={vi.fn()} />);
+
+    expect(screen.getByText('Звонок')).toBeInTheDocument();
+    expect(screen.queryByText(/\{/)).toBeNull();
+  });
+
   it('ответ на своё — «Вы»', () => {
     useProfileStore.setState({ user: makeUser({ id: 'me' }) });
     useChatUiStore.setState({ replyToMessage: makeMessage({ senderId: 'me', content: 'моё' }) });

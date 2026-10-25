@@ -16,27 +16,32 @@ import (
 	"strings"
 	"time"
 
+	"craneapp/backend-v2/internal/auth"
+	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/blockevent"
+	"craneapp/backend-v2/internal/platform/notificationpolicy"
 	"craneapp/backend-v2/internal/platform/privacy"
 	"craneapp/backend-v2/internal/platform/profileevent"
 	usernamepolicy "craneapp/backend-v2/internal/platform/username"
+
 	"github.com/lib/pq"
 )
 
 const UsernameChangeCooldown = 24 * time.Hour
 
 var (
-	ErrNotFound              = errors.New("user not found")
-	ErrSelfBlock             = errors.New("cannot block yourself")
-	ErrAlreadyBlocked        = errors.New("user already blocked")
-	ErrInvalidInput          = errors.New("invalid input")
-	ErrInvalidPrivacy        = errors.New("invalid privacy settings")
-	ErrInvalidUsernameFormat = errors.New("wrong username format")
-	ErrUsernameTaken         = errors.New("username already exists")
-	ErrUsernameCooldown      = errors.New("username change cooldown is active")
-	ErrWrongPasscode         = errors.New("wrong passcode")
-	ErrNoPasscodeSet         = errors.New("no passcode set")
-	ErrAuthSessionInactive   = errors.New("auth session is no longer active")
+	ErrNotFound                      = errors.New("user not found")
+	ErrSelfBlock                     = errors.New("cannot block yourself")
+	ErrAlreadyBlocked                = errors.New("user already blocked")
+	ErrInvalidInput                  = errors.New("invalid input")
+	ErrInvalidPrivacy                = errors.New("invalid privacy settings")
+	ErrInvalidUsernameFormat         = errors.New("wrong username format")
+	ErrUsernameTaken                 = errors.New("username already exists")
+	ErrUsernameCooldown              = errors.New("username change cooldown is active")
+	ErrWrongPasscode                 = errors.New("wrong passcode")
+	ErrNoPasscodeSet                 = errors.New("no passcode set")
+	ErrAuthSessionInactive           = errors.New("auth session is no longer active")
+	ErrCannotTerminateCurrentSession = errors.New("can not terminate current session")
 )
 
 type UsernameCooldownError struct {
@@ -555,51 +560,50 @@ func (s *Service) Status(ctx context.Context, viewerID, userID string) (map[stri
 }
 
 func (s *Service) Settings(ctx context.Context, userID string) (map[string]any, map[string]any, error) {
+	return s.readSettings(ctx, userID, "settings")
+}
+
+func (s *Service) readSettings(ctx context.Context, userID, section string) (map[string]any, map[string]any, error) {
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, nil, err
 	}
-	var settings map[string]any
+	var rawSettings []byte
 	var rawPrivacy []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT settings, privacy_settings FROM users.settings WHERE user_id = $1
-	`, userID).Scan((*jsonMap)(&settings), &rawPrivacy)
+	`, userID).Scan(&rawSettings, &rawPrivacy)
 	if err != nil {
-		return settings, nil, err
+		return nil, nil, err
 	}
 	// Отдаём канонический вид: старые «contacts» и «none» — уже «nobody».
-	return settings, privacy.Parse(rawPrivacy).Map(), nil
+	return normalizeStoredSettings(section, rawSettings), privacy.Parse(rawPrivacy).Map(), nil
 }
 
 func (s *Service) AllSettings(ctx context.Context, userID string) (AllSettings, error) {
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return AllSettings{}, err
 	}
-	var out AllSettings
-	var folders jsonArray
-	var rawPrivacy []byte
-	err := s.db.QueryRowContext(ctx, `
-		SELECT settings, privacy_settings, notification_settings, sound_settings,
-		       storage_settings, advanced_settings, folders, passcode_enabled, passcode_timeout
-		FROM users.settings WHERE user_id = $1
-	`, userID).Scan(
-		(*jsonMap)(&out.Settings),
-		&rawPrivacy,
-		(*jsonMap)(&out.NotificationSettings),
-		(*jsonMap)(&out.SoundSettings),
-		(*jsonMap)(&out.StorageSettings),
-		(*jsonMap)(&out.AdvancedSettings),
-		&folders,
-		&out.PasscodeEnabled,
-		&out.PasscodeTimeout,
-	)
-	out.Folders = []any(folders)
-	if err == nil {
-		out.PrivacySettings = privacy.Parse(rawPrivacy).Map()
-	}
-	return out, err
+	return scanAllSettings(s.db.QueryRowContext(ctx, selectAllSettings, userID))
 }
 
 func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input AllSettings) error {
+	// Сначала проверить ВСЕ sections, затем выполнять любой SQL, включая ensure.
+	for _, section := range []struct {
+		name  string
+		patch map[string]any
+	}{
+		{"legacy_settings", input.Settings},
+		{"notification_settings", input.NotificationSettings},
+		{"sound_settings", input.SoundSettings},
+		{"storage_settings", input.StorageSettings},
+		{"advanced_settings", input.AdvancedSettings},
+	} {
+		if section.patch != nil {
+			if err := validateSettingsPatch(section.name, section.patch); err != nil {
+				return err
+			}
+		}
+	}
 	// Тот же вход в настройки приватности, что и PUT /users/privacy: без
 	// проверки здесь её можно было бы обойти.
 	if input.PrivacySettings != nil {
@@ -609,55 +613,36 @@ func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input Al
 		}
 		input.PrivacySettings = normalized
 	}
-	if err := s.ensureSettings(ctx, userID); err != nil {
-		return err
+	if len(input.Settings)+len(input.PrivacySettings)+len(input.NotificationSettings)+
+		len(input.SoundSettings)+len(input.StorageSettings)+len(input.AdvancedSettings) == 0 && input.Folders == nil {
+		return nil
 	}
-	current, err := s.AllSettings(ctx, userID)
+	// Проверены оба поля, включая alias, проигравший canonical textSize.
+	input.Settings = appearancePatch(input.Settings)
+	input, err := notificationPatch(input)
 	if err != nil {
 		return err
 	}
-	merge := func(base, patch map[string]any) map[string]any {
-		if base == nil {
-			base = map[string]any{}
-		}
-		for key, value := range patch {
-			base[key] = value
-		}
-		return base
-	}
-	current.Settings = merge(current.Settings, input.Settings)
-	current.PrivacySettings = merge(current.PrivacySettings, input.PrivacySettings)
-	current.NotificationSettings = merge(current.NotificationSettings, input.NotificationSettings)
-	current.SoundSettings = merge(current.SoundSettings, input.SoundSettings)
-	current.StorageSettings = merge(current.StorageSettings, input.StorageSettings)
-	current.AdvancedSettings = merge(current.AdvancedSettings, input.AdvancedSettings)
-	if input.Folders != nil {
-		current.Folders = input.Folders
-	}
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE users.settings SET
-			settings = $2::jsonb,
-			privacy_settings = $3::jsonb,
-			notification_settings = $4::jsonb,
-			sound_settings = $5::jsonb,
-			storage_settings = $6::jsonb,
-			advanced_settings = $7::jsonb,
-			folders = $8::jsonb,
-			updated_at = NOW()
-		WHERE user_id = $1
-	`, userID, jsonMap(current.Settings), jsonMap(current.PrivacySettings), jsonMap(current.NotificationSettings), jsonMap(current.SoundSettings), jsonMap(current.StorageSettings), jsonMap(current.AdvancedSettings), jsonArray(current.Folders))
+	_, err = s.mutateSettings(ctx, userID, input)
 	return err
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, userID string, settings map[string]any) (map[string]any, error) {
+	if err := validateSettingsPatch("settings", settings); err != nil {
+		return nil, err
+	}
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, err
 	}
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE users.settings SET settings = settings || $2::jsonb, updated_at = NOW() WHERE user_id = $1
-	`, userID, jsonMap(settings))
-	if err != nil {
-		return nil, err
+	if len(settings) > 0 {
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE users.settings SET settings =
+				(CASE WHEN jsonb_typeof(settings) = 'object' THEN settings ELSE $3::jsonb END) || $2::jsonb,
+				updated_at = NOW() WHERE user_id = $1
+		`, userID, jsonMap(settings), jsonMap(closedSettings("settings")))
+		if err != nil {
+			return nil, err
+		}
 	}
 	next, _, err := s.Settings(ctx, userID)
 	return next, err
@@ -681,32 +666,58 @@ func (s *Service) UpdatePrivacy(ctx context.Context, userID string, patch map[st
 	return next, err
 }
 
-func (s *Service) Preference(ctx context.Context, userID, column string, fallback map[string]any) (map[string]any, error) {
+func (s *Service) Preference(ctx context.Context, userID, column string) (map[string]any, error) {
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return nil, err
 	}
 	current, err := s.jsonColumn(ctx, userID, column)
 	if err != nil {
 		return nil, err
-	}
-	if len(current) == 0 {
-		return fallback, nil
 	}
 	return current, nil
 }
 
 func (s *Service) UpdatePreference(ctx context.Context, userID, column string, patch map[string]any) (map[string]any, error) {
-	if err := s.ensureSettings(ctx, userID); err != nil {
+	switch column {
+	case "notification_settings", "sound_settings", "storage_settings", "advanced_settings":
+	default:
+		return nil, fmt.Errorf("%w: unknown preference section", ErrInvalidSettings)
+	}
+	if err := validateSettingsPatch(column, patch); err != nil {
 		return nil, err
 	}
-	current, err := s.jsonColumn(ctx, userID, column)
+	if len(patch) == 0 {
+		return s.Preference(ctx, userID, column)
+	}
+	input := AllSettings{}
+	var result func(AllSettings) map[string]any
+	switch column {
+	case "notification_settings":
+		input.NotificationSettings = patch
+		result = func(state AllSettings) map[string]any { return state.NotificationSettings }
+	case "sound_settings":
+		input.SoundSettings = patch
+		result = func(state AllSettings) map[string]any { return state.SoundSettings }
+	case "storage_settings":
+		input.StorageSettings = patch
+		result = func(state AllSettings) map[string]any { return state.StorageSettings }
+	case "advanced_settings":
+		input.AdvancedSettings = patch
+		result = func(state AllSettings) map[string]any { return state.AdvancedSettings }
+	}
+	input, err := notificationPatch(input)
 	if err != nil {
 		return nil, err
 	}
-	for key, value := range patch {
-		current[key] = value
+	current, err := s.mutateSettings(ctx, userID, input)
+	if err != nil {
+		return nil, err
 	}
-	return current, s.updateJsonColumn(ctx, userID, column, current)
+	out := withSettingsDefaults(column, result(current))
+	if column == "sound_settings" {
+		notificationpolicy.FromMap(current.Settings).ProjectSound(out)
+	}
+	return out, nil
 }
 
 func (s *Service) Folders(ctx context.Context, userID string) ([]any, error) {
@@ -782,9 +793,6 @@ func (s *Service) DeleteAllData(ctx context.Context, userID string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM users.settings WHERE user_id = $1`, userID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM public.user_sessions WHERE user_id = $1`, userID); err != nil {
-		return err
-	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM users.blocked_users WHERE user_id = $1 OR blocked_user_id = $1`, userID); err != nil {
 		return err
 	}
@@ -796,7 +804,7 @@ func (s *Service) Export(ctx context.Context, userID string) (ExportData, error)
 	if err != nil {
 		return ExportData{}, err
 	}
-	settings, privacy, err := s.Settings(ctx, userID)
+	settings, privacy, err := s.readSettings(ctx, userID, "legacy_settings")
 	if err != nil {
 		return ExportData{}, err
 	}
@@ -962,13 +970,19 @@ func (s *Service) ensureSettings(ctx context.Context, userID string) error {
 }
 
 func (s *Service) jsonColumn(ctx context.Context, userID, column string) (map[string]any, error) {
-	var current map[string]any
+	var raw []byte
 	var q string
 	switch column {
 	case "notification_settings":
 		q = `SELECT notification_settings FROM users.settings WHERE user_id = $1`
 	case "sound_settings":
-		q = `SELECT sound_settings FROM users.settings WHERE user_id = $1`
+		var settings []byte
+		if err := s.db.QueryRowContext(ctx, `SELECT sound_settings, settings FROM users.settings WHERE user_id=$1`, userID).Scan(&raw, &settings); err != nil {
+			return nil, err
+		}
+		out := normalizeStoredSettings(column, raw)
+		notificationpolicy.Read(settings).ProjectSound(out)
+		return out, nil
 	case "advanced_settings":
 		q = `SELECT advanced_settings FROM users.settings WHERE user_id = $1`
 	case "storage_settings":
@@ -976,26 +990,10 @@ func (s *Service) jsonColumn(ctx context.Context, userID, column string) (map[st
 	default:
 		return nil, ErrInvalidInput
 	}
-	err := s.db.QueryRowContext(ctx, q, userID).Scan((*jsonMap)(&current))
-	return current, err
-}
-
-func (s *Service) updateJsonColumn(ctx context.Context, userID, column string, value map[string]any) error {
-	var q string
-	switch column {
-	case "notification_settings":
-		q = `UPDATE users.settings SET notification_settings = $2::jsonb, updated_at = NOW() WHERE user_id = $1`
-	case "sound_settings":
-		q = `UPDATE users.settings SET sound_settings = $2::jsonb, updated_at = NOW() WHERE user_id = $1`
-	case "advanced_settings":
-		q = `UPDATE users.settings SET advanced_settings = $2::jsonb, updated_at = NOW() WHERE user_id = $1`
-	case "storage_settings":
-		q = `UPDATE users.settings SET storage_settings = $2::jsonb, updated_at = NOW() WHERE user_id = $1`
-	default:
-		return ErrInvalidInput
+	if err := s.db.QueryRowContext(ctx, q, userID).Scan(&raw); err != nil {
+		return nil, err
 	}
-	_, err := s.db.ExecContext(ctx, q, userID, jsonMap(value))
-	return err
+	return normalizeStoredSettings(column, raw), nil
 }
 
 type Session struct {
@@ -1010,132 +1008,143 @@ type Session struct {
 	IsCurrent  bool   `json:"isCurrent"`
 }
 
+// RegisterDevice enriches the caller's existing session. User-Agent is metadata,
+// never an identity key: two identical browsers can hold independent sessions.
 func (s *Service) RegisterDevice(ctx context.Context, userID, accessTokenHash, deviceName, deviceType, ipAddress, location, userAgent string) (string, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = tx.Rollback() }()
-
 	var sessionID string
-	err = tx.QueryRowContext(ctx, `SELECT id FROM public.user_sessions WHERE user_id = $1 AND user_agent = $2 LIMIT 1`, userID, userAgent).Scan(&sessionID)
-	if err == nil {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE public.user_sessions
-			SET device_name = $2, device_type = $3, ip_address = $4,
-				location = $5, last_active = NOW(), is_current = TRUE
-			WHERE id = $1
-		`, sessionID, deviceName, deviceType, ipAddress, location); err != nil {
-			return "", err
-		}
-	} else if errors.Is(err, sql.ErrNoRows) {
-		err = tx.QueryRowContext(ctx, `
-		INSERT INTO public.user_sessions (id, user_id, device_name, device_type, ip_address, location, user_agent, last_active, first_login, is_current)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW(), TRUE)
-		RETURNING id
-	`, userID, deviceName, deviceType, ipAddress, location, userAgent).Scan(&sessionID)
-		if err != nil {
-			return "", err
-		}
-	} else {
-		return "", err
+	err := s.db.QueryRowContext(ctx, `
+		UPDATE auth.sessions s
+		SET device_name = $3, device_type = $4, ip_address = $5,
+			location = $6, user_agent = $7, last_active = NOW()
+		FROM auth.users u
+		WHERE s.user_id = $1 AND s.access_token_hash = $2 AND u.id = s.user_id
+			AND s.revoked_at IS NULL AND s.expires_at > NOW()
+			AND s.token_generation = u.token_generation
+			AND NOT EXISTS (SELECT 1 FROM auth.revoked_tokens rt
+				WHERE rt.token_hash = s.access_token_hash AND rt.expires_at > NOW())
+		RETURNING s.id::text
+	`, userID, accessTokenHash, deviceName, deviceType, ipAddress, location, userAgent).Scan(&sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrAuthSessionInactive
 	}
-
-	if _, err := tx.ExecContext(ctx, `UPDATE public.user_sessions SET is_current = FALSE WHERE user_id = $1 AND id != $2`, userID, sessionID); err != nil {
-		return "", err
-	}
-
-	if accessTokenHash != "" {
-		var authSessionID string
-		err := tx.QueryRowContext(ctx, `
-			SELECT id::text
-			FROM auth.sessions
-			WHERE user_id = $1 AND access_token_hash = $2
-				AND revoked_at IS NULL AND expires_at > NOW()
-			FOR UPDATE
-		`, userID, accessTokenHash).Scan(&authSessionID)
-		if errors.Is(err, sql.ErrNoRows) {
-			var knownCredential bool
-			if err := tx.QueryRowContext(ctx, `
-				SELECT EXISTS (
-					SELECT 1 FROM auth.sessions
-					WHERE user_id = $1 AND access_token_hash = $2
-				)
-			`, userID, accessTokenHash).Scan(&knownCredential); err != nil {
-				return "", err
-			}
-			if knownCredential {
-				return "", ErrAuthSessionInactive
-			}
-		} else if err != nil {
-			return "", err
-		} else {
-			// The most recent registration owns this legacy device record. Moving
-			// the optional link is safe; credential revocation remains per token.
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE auth.sessions
-				SET device_session_id = NULL
-				WHERE device_session_id = $1 AND id != $2
-			`, sessionID, authSessionID); err != nil {
-				return "", err
-			}
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE auth.sessions SET device_session_id = $2 WHERE id = $1
-			`, authSessionID, sessionID); err != nil {
-				return "", err
-			}
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return "", err
-	}
-	return sessionID, nil
+	return sessionID, err
 }
 
-func (s *Service) Devices(ctx context.Context, userID string) ([]Session, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, COALESCE(device_name, ''), COALESCE(device_type, ''), COALESCE(ip_address, ''), COALESCE(location, ''), COALESCE(user_agent, ''), last_active::text, first_login::text, COALESCE(is_current, false)
-		FROM public.user_sessions
-		WHERE user_id = $1
-		ORDER BY last_active DESC
-	`, userID)
+func (s *Service) Devices(ctx context.Context, userID, currentToken string) ([]Session, error) {
+	canonical, err := auth.NewService(s.db, nil).Sessions(ctx, userID, currentToken)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		rows.Close()
-	}()
-	var sessions []Session
-	for rows.Next() {
-		var sess Session
-		if err := rows.Scan(&sess.ID, &sess.DeviceName, &sess.DeviceType, &sess.IPAddress, &sess.Location, &sess.UserAgent, &sess.LastActive, &sess.FirstLogin, &sess.IsCurrent); err != nil {
-			return nil, err
-		}
-		sessions = append(sessions, sess)
+	sessions := make([]Session, 0, len(canonical))
+	for _, item := range canonical {
+		sessions = append(sessions, Session{
+			ID: item.ID, DeviceName: item.DeviceName, DeviceType: item.DeviceType,
+			IPAddress: item.IPAddress, Location: item.Location, UserAgent: item.UserAgent,
+			LastActive: item.LastActive.Format(time.RFC3339Nano),
+			FirstLogin: item.CreatedAt.Format(time.RFC3339Nano), IsCurrent: item.IsCurrent,
+		})
 	}
-	return sessions, rows.Err()
+	return sessions, nil
 }
 
-func (s *Service) DeleteDevice(ctx context.Context, userID, sessionID string) error {
-	var isCurrent bool
-	err := s.db.QueryRowContext(ctx, `SELECT is_current FROM public.user_sessions WHERE id = $1 AND user_id = $2`, sessionID, userID).Scan(&isCurrent)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+func (s *Service) DeleteDevice(ctx context.Context, userID, sessionID, currentTokenHash string) error {
+	return s.revokeDevices(ctx, userID, sessionID, currentTokenHash)
+}
+
+// TerminateAllDevices preserves the caller; /auth/logout-all also revokes it.
+func (s *Service) TerminateAllDevices(ctx context.Context, userID, currentTokenHash string) error {
+	return s.revokeDevices(ctx, userID, "", currentTokenHash)
+}
+
+func (s *Service) revokeDevices(ctx context.Context, userID, sessionID, currentTokenHash string) error {
+	if currentTokenHash == "" {
+		return ErrAuthSessionInactive
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if isCurrent {
-		return errors.New("cannot terminate current session")
-	}
-	_, err = s.db.ExecContext(ctx, `DELETE FROM public.user_sessions WHERE id = $1`, sessionID)
-	return err
-}
+	defer func() { _ = tx.Rollback() }()
 
-func (s *Service) TerminateAllDevices(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM public.user_sessions WHERE user_id = $1 AND is_current = FALSE`, userID)
-	return err
+	// Serialize with logout-all and issuance's generation check. Session row
+	// locks below serialize metadata updates with selective revocation.
+	var generation int64
+	if err := tx.QueryRowContext(ctx, `SELECT token_generation FROM auth.users WHERE id = $1 FOR UPDATE`, userID).Scan(&generation); err != nil {
+		return err
+	}
+	var callerActive bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM auth.sessions s WHERE s.user_id = $1 AND s.access_token_hash = $2
+			AND s.revoked_at IS NULL AND s.expires_at > NOW() AND s.token_generation = $3
+			AND NOT EXISTS (SELECT 1 FROM auth.revoked_tokens rt
+				WHERE rt.token_hash = s.access_token_hash AND rt.expires_at > NOW())
+	)`, userID, currentTokenHash, generation).Scan(&callerActive); err != nil {
+		return err
+	}
+	if !callerActive {
+		return ErrAuthSessionInactive
+	}
+	var hashes []string
+	if sessionID != "" {
+		var hash string
+		err := tx.QueryRowContext(ctx, `
+			SELECT access_token_hash FROM auth.sessions
+			WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+				AND expires_at > NOW() AND token_generation = $3 AND access_token_hash IS NOT NULL
+			FOR UPDATE
+		`, sessionID, userID, generation).Scan(&hash)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if hash == currentTokenHash {
+			return ErrCannotTerminateCurrentSession
+		}
+		hashes = append(hashes, hash)
+	} else {
+		rows, err := tx.QueryContext(ctx, `
+			SELECT access_token_hash FROM auth.sessions
+			WHERE user_id = $1 AND access_token_hash != $2 AND revoked_at IS NULL
+				AND expires_at > NOW() AND token_generation = $3
+			FOR UPDATE
+		`, userID, currentTokenHash, generation)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var hash string
+			if err := rows.Scan(&hash); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			hashes = append(hashes, hash)
+		}
+		err = rows.Err()
+		_ = rows.Close()
+		if err != nil {
+			return err
+		}
+	}
+	for _, hash := range hashes {
+		if _, err := tx.ExecContext(ctx, `
+			WITH revoked AS (
+				UPDATE auth.sessions SET revoked_at = NOW()
+				WHERE user_id = $1 AND access_token_hash = $2 AND revoked_at IS NULL
+				RETURNING access_token_hash, user_id, expires_at
+			)
+			INSERT INTO auth.revoked_tokens (token_hash, user_id, expires_at)
+			SELECT access_token_hash, user_id, expires_at FROM revoked
+			ON CONFLICT DO NOTHING
+		`, userID, hash); err != nil {
+			return err
+		}
+		if err := authctx.NotifyRevocation(ctx, tx, authctx.RevocationEvent{UserID: userID, TokenHash: hash}); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Service) Passcode(ctx context.Context, userID string) (PasscodeState, error) {
