@@ -1,8 +1,9 @@
+import { useQuery } from '@tanstack/react-query';
 import { useFeedKeyboardNavigation } from '../model/useFeedKeyboardNavigation';
 import { useVirtualMessagesFeed } from '../model/useVirtualMessagesFeed';
 import type { IReadMark } from '../model/unread';
 import { useJumpToMessage } from '@/features/jump-to-message';
-import { useProfileStore } from '@/entities/user';
+import { useProfileStore, settingsQuery, normalizePreferences } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
 import type { IMessageDto, TMessagesList } from '@/types';
 import {
@@ -37,6 +38,10 @@ interface Props {
   onRetryMessage?: (message: IMessageDto) => void;
   /** Отмена/удаление сообщения из Outbox (#552). */
   onCancelMessage?: (message: IMessageDto) => void;
+  /** Скачать ещё раз вложение, которое не скачалось (#1062). */
+  onRetryMedia?: (message: IMessageDto) => Promise<void> | void;
+  /** К исходному сообщению пересланного — в «Избранном» (#1076). */
+  onOpenOriginal?: (messageId: string) => void;
   /** Профиль автора пересланного сообщения (#785). */
   onOpenProfile?: (userId: string) => void;
   /**
@@ -60,7 +65,11 @@ interface Props {
    */
   readMark?: IReadMark;
   onMessagesSeen?: (messages: IMessageDto[]) => void;
+  searchQuery?: string;
+  searchCurrentId?: string | null;
   chatId?: string;
+  /** Сообщения истории чата для разрешения цитируемых сообщений (#1084). */
+  threadMessages?: TMessagesList;
 }
 
 export const MessagesList = memo(
@@ -78,17 +87,27 @@ export const MessagesList = memo(
     onRetryMessage,
     onOpenProfile,
     onCancelMessage,
+    onRetryMedia,
+    onOpenOriginal,
     showDeliveryStatus = false,
     isGroupChat = false,
     trackUnread = true,
     handleJumpRequests = false,
     readMark,
     onMessagesSeen,
+    searchQuery,
+    searchCurrentId,
     chatId,
+    threadMessages,
   }: Props) => {
     const { t } = useTranslation();
+    const { data: preferences } = useQuery({ ...settingsQuery(), enabled: false });
+    const appearance = normalizePreferences(preferences?.settings);
     const user = useProfileStore((state) => state.user);
     const translations = useChatUiStore((state) => state.translations);
+
+    // Чат ленты — по переданному пропу или сообщениям
+    const activeChatId = chatId || messages.find((message) => message.chatId)?.chatId;
 
     const {
       activeDate,
@@ -113,6 +132,9 @@ export const MessagesList = memo(
       loadOlder,
       hasOlder,
       onMessagesSeen,
+      chatId: activeChatId,
+      threadMessages,
+      appearance,
     });
 
     const scrollToFeedIndex = useCallback(
@@ -131,8 +153,6 @@ export const MessagesList = memo(
         ? activeMessageId
         : renderedMessageIds.at(-1);
 
-    // Чат ленты — по переданному пропу или сообщениям
-    const activeChatId = chatId || messages.find((message) => message.chatId)?.chatId;
     const { jumpToMessage: handleJumpToMessage } = useJumpToMessage({
       onScrollToMessage: jumpToMessage,
       loadOlder,
@@ -147,9 +167,19 @@ export const MessagesList = memo(
     useEffect(() => {
       if (!handleJumpRequests || !jumpRequest) return;
       if (jumpRequest.chatId && activeChatId && jumpRequest.chatId !== activeChatId) return;
+      // Пока лента грузится, искать не в чем: переход в другой чат искал
+      // сообщение в пустом списке и сдавался (#1076).
+      if (isLoading) return;
       setJumpRequest(null);
       void handleJumpToMessage(jumpRequest.messageId);
-    }, [handleJumpRequests, handleJumpToMessage, jumpRequest, setJumpRequest, activeChatId]);
+    }, [
+      handleJumpRequests,
+      handleJumpToMessage,
+      jumpRequest,
+      setJumpRequest,
+      activeChatId,
+      isLoading,
+    ]);
 
     return (
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -203,7 +233,9 @@ export const MessagesList = memo(
                   <div
                     className={cn(
                       'w-full absolute top-0 left-0',
-                      item.type === 'message' && item.isDifferentAuthor && 'pt-2'
+                      item.type === 'message' &&
+                        (!appearance.groupConsecutiveMessages || item.isDifferentAuthor) &&
+                        'pt-(--chat-group-gap)'
                     )}
                     data-index={virtualRow.index}
                     key={item.id}
@@ -219,9 +251,9 @@ export const MessagesList = memo(
                     ) : (
                       <MessageBubble
                         currentUserId={user.id}
-                        isFirstInGroup={item.isFirstInGroup}
+                        isFirstInGroup={!appearance.groupConsecutiveMessages || item.isFirstInGroup}
                         isGroupChat={isGroupChat}
-                        isLastInGroup={item.isLastInGroup}
+                        isLastInGroup={!appearance.groupConsecutiveMessages || item.isLastInGroup}
                         message={item.message}
                         onJumpToMessage={handleJumpToMessage}
                         onOpenProfile={onOpenProfile}
@@ -229,9 +261,16 @@ export const MessagesList = memo(
                         onReact={onReact}
                         onRetryMessage={onRetryMessage}
                         onCancelMessage={onCancelMessage}
+                        onRetryMedia={onRetryMedia}
+                        onOpenOriginal={onOpenOriginal}
                         onSelection={toggleMessageSelection}
                         repliedMessage={replyId ? messagesById.get(replyId) : undefined}
+                        showMessageTime={appearance.showMessageTime}
+                        showMessageStatus={appearance.showMessageStatus}
+                        showMessageAvatars={appearance.showMessageAvatars}
                         showDeliveryStatus={showDeliveryStatus}
+                        isSearchCurrent={item.id === searchCurrentId}
+                        searchQuery={searchQuery}
                         tabIndex={item.id === tabStopId ? 0 : -1}
                         translations={translations}
                       />

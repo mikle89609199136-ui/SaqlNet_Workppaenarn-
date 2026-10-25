@@ -31,7 +31,11 @@ x-secure: &secure [{ sessionCookie: [] }]
     tags: [Media]
     summary: Download media
     operationId: getMedia
+    security: *secure
     description: >-
+      uploadId is not a capability: knowing the identifier does not grant access.
+      Downloads require authentication and access through a live attachment, or ownership of a never-attached upload.
+      Range is not supported for the encrypted JSON envelope; its successful response is always 200.
       Streams an upload, managed sticker, or sticker-pack icon by UUID through
       the media service. Catalog imageUrl and iconUrl use this relative path;
       no redirect or direct storage URL is returned. Legacy catalog objects
@@ -47,6 +51,8 @@ x-secure: &secure [{ sessionCookie: [] }]
           application/octet-stream: { schema: { type: string, format: binary } }
           application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } }
       '206': { description: Partial media stream }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+      '403': { $ref: '../components/responses.yaml#/Error' }
       '404': { $ref: '../components/responses.yaml#/Error' }
       '416': { description: Requested range is not satisfiable }
       '502': { $ref: '../components/responses.yaml#/Error' }
@@ -54,9 +60,16 @@ x-secure: &secure [{ sessionCookie: [] }]
     tags: [Media]
     summary: Get media headers
     operationId: headMedia
+    security: *secure
+    description: >-
+      uploadId is not a capability: knowing the identifier does not grant access.
+      Downloads require authentication and access through a live attachment, or ownership of a never-attached upload.
+      Range is not supported for the encrypted JSON envelope; its successful response is always 200.
     responses:
       '200': { description: Media headers }
       '206': { description: Partial media headers }
+      '401': { $ref: '../components/responses.yaml#/Error' }
+      '403': { $ref: '../components/responses.yaml#/Error' }
       '404': { $ref: '../components/responses.yaml#/Error' }
       '416': { description: Requested range is not satisfiable }
       '502': { $ref: '../components/responses.yaml#/Error' }

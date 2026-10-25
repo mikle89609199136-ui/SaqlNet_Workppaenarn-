@@ -280,3 +280,127 @@ describe('реакции на чужое сообщение', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 });
+
+/* Флаг «моя реакция» сервер в событии не присылает (#149): прежде после
+   чужого лайка своя реакция теряла выделение до перезагрузки (#1063). */
+describe('своя реакция после события reaction_updated', () => {
+  function serveChat(chat: ReturnType<typeof makeChat>, message: ReturnType<typeof makeMessage>) {
+    server.use(
+      http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
+      http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
+      http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] }))
+    );
+  }
+
+  it('остаётся выделенной, когда реакцию ставит собеседник', async () => {
+    const chat = makeChat({ id: 'chat-reaction-peer' });
+    const message = makeMessage({
+      chatId: chat.id,
+      senderId: 'user-2',
+      content: 'сообщение с двумя реакциями',
+      reactions: [{ emoji: '👍', count: 1, myReaction: true }],
+    });
+    serveChat(chat, message);
+
+    renderChatThread({ chat, messages: [message], currentUser: makeUser({ id: 'user-1' }) });
+    await screen.findByText('сообщение с двумя реакциями');
+
+    fakeSocket.emit('reaction_updated', {
+      chatId: chat.id,
+      messageId: message.id,
+      actorId: 'user-2',
+      change: { action: 'added', emoji: '❤️', previousEmoji: null },
+      reactions: [
+        { emoji: '👍', count: 1 },
+        { emoji: '❤️', count: 1 },
+      ],
+    });
+
+    const heart = await screen.findByRole('button', { name: '❤️ 1' });
+    expect(heart).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '👍 1' })).toHaveAttribute('aria-pressed', 'true');
+
+    // И в меню действий 👍 по-прежнему «ваша реакция».
+    fireEvent.contextMenu(screen.getByText('сообщение с двумя реакциями'), {
+      clientX: 40,
+      clientY: 40,
+    });
+    expect(
+      await screen.findByRole('menuitem', { name: 'Нравится — ваша реакция' })
+    ).toBeInTheDocument();
+  });
+
+  it('замена со второго своего устройства выделяет новую реакцию', async () => {
+    const chat = makeChat({ id: 'chat-reaction-own-device' });
+    const message = makeMessage({
+      chatId: chat.id,
+      senderId: 'user-2',
+      content: 'сообщение с заменой',
+      reactions: [{ emoji: '👍', count: 1, myReaction: true }],
+    });
+    serveChat(chat, message);
+
+    renderChatThread({ chat, messages: [message], currentUser: makeUser({ id: 'user-1' }) });
+    await screen.findByRole('button', { name: '👍 1' });
+
+    fakeSocket.emit('reaction_updated', {
+      chatId: chat.id,
+      messageId: message.id,
+      actorId: 'user-1',
+      change: { action: 'replaced', emoji: '😂', previousEmoji: '👍' },
+      reactions: [{ emoji: '😂', count: 1 }],
+    });
+
+    expect(await screen.findByRole('button', { name: '😂 1' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(screen.queryByRole('button', { name: '👍 1' })).toBeNull();
+  });
+
+  it('нажатие на свою реакцию после чужого события снимает её без «+1»', async () => {
+    const chat = makeChat({ id: 'chat-reaction-toggle' });
+    const message = makeMessage({
+      chatId: chat.id,
+      senderId: 'user-2',
+      content: 'сообщение для снятия',
+      reactions: [{ emoji: '👍', count: 1, myReaction: true }],
+    });
+    serveChat(chat, message);
+    const sent: string[] = [];
+    let respond!: () => void;
+    server.use(
+      http.post(api('/messages/:messageId/reactions'), async ({ params, request }) => {
+        const body = (await request.json()) as { emoji: string };
+        if (params.messageId === message.id) sent.push(body.emoji);
+        await new Promise<void>((resolve) => {
+          respond = resolve;
+        });
+        return HttpResponse.json({ reactions: [{ emoji: '❤️', count: 1, myReaction: false }] });
+      })
+    );
+
+    renderChatThread({ chat, messages: [message], currentUser: makeUser({ id: 'user-1' }) });
+    await screen.findByText('сообщение для снятия');
+    fakeSocket.emit('reaction_updated', {
+      chatId: chat.id,
+      messageId: message.id,
+      actorId: 'user-2',
+      change: { action: 'added', emoji: '❤️', previousEmoji: null },
+      reactions: [
+        { emoji: '👍', count: 1 },
+        { emoji: '❤️', count: 1 },
+      ],
+    });
+    const thumb = await screen.findByRole('button', { name: '👍 1' });
+    await waitFor(() => expect(thumb).toHaveAttribute('aria-pressed', 'true'));
+
+    await userEvent.click(thumb);
+
+    // Снята сразу, до ответа сервера, и «👍 2» не появлялось.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^👍/ })).toBeNull());
+    expect(screen.queryByRole('button', { name: '👍 2' })).toBeNull();
+    await waitFor(() => expect(sent).toEqual(['👍']));
+    respond();
+  });
+});

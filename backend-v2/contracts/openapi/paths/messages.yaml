@@ -45,6 +45,33 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
             schema: { $ref: '../components/schemas.yaml#/MessageListResponse' }
       '400': *error
       '500': *error
+/messages/{messageId}/location:
+  parameters:
+    - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+  get:
+    tags: [Messages]
+    summary: Chat of a message
+    description: >-
+      Which chat a message is in (#1076): a message forwarded to Saved Messages
+      keeps the original message id, but not its chat. Only for a current
+      member of that chat; deleted and hidden-for-me messages are not found.
+      Every refusal is the same 404 message_not_found, so the answer reveals
+      nothing about messages of other chats.
+    operationId: getMessageLocation
+    security: *secure
+    responses:
+      '200':
+        description: Chat of the message
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chatId]
+              properties:
+                chatId: { type: string, format: uuid }
+      '400': *error
+      '404': *error
+      '500': *error
 
 /messages/favorites:
   get:
@@ -201,6 +228,73 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
       '403': *error
       '404': *error
       '500': *error
+
+/messages/{messageId}/reactions/users:
+  get:
+    tags: [Messages]
+    summary: Authors of one reaction on a message
+    description: >-
+      Paginated list of chat members who reacted to a message with the given
+      emoji (#709). Each item is a minimal public profile of the author; the
+      avatar is empty when the author's photoVisibility rule (with the block
+      list and exceptions) hides the photo from the caller. Only current
+      members of the chat get a result; a stranger or a former member gets
+      403, a non-existent, deleted, or hidden message gets 404. Ordering is stable
+      newest-first, (created_at DESC, user_id DESC); pass nextCursor as
+      cursor for the next page. total is the count of this emoji on the
+      message and matches Reaction.count — the author list is not filtered
+      by privacy, only the avatar is.
+    operationId: listReactionAuthors
+    security: *secure
+    parameters:
+      - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: emoji
+        in: query
+        required: true
+        description: >-
+          Exactly one emoji string. Same validation as POST
+          /messages/{messageId}/reactions: at most 64 UTF-8 bytes and no
+          HTML-hostile characters (< > " ' & / \).
+        schema: { type: string, minLength: 1, maxLength: 64 }
+      - name: cursor
+        in: query
+        required: false
+        description: nextCursor of the previous page; omit for the newest authors.
+        schema: { type: string }
+      - name: limit
+        in: query
+        required: false
+        schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    responses:
+      '200':
+        description: A page of reaction authors
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/ReactionAuthorsPage' } } }
+      '400':
+        description: 'validation_failed: invalid messageId, missing or duplicated emoji, invalid limit, or a malformed cursor.'
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/Error' }
+            examples:
+              emojiMissing:
+                value: { code: validation_failed, message: emoji required }
+              emojiDuplicated:
+                value: { code: validation_failed, message: emoji required }
+              badCursor:
+                value: { code: validation_failed, message: invalid input }
+              badLimit:
+                value: { code: validation_failed, message: invalid limit }
+      '403':
+        description: 'access_denied: the caller is not a member of the chat (or left it).'
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } }
+      '404':
+        description: 'not_found: the message does not exist, is deleted, or is hidden from the caller.'
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } }
+      '405':
+        description: Method not allowed
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } }
+      '500':
+        description: Internal server error
+        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/Error' } } }
 
 /messages/{messageId}/favorite:
   parameters:

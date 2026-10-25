@@ -54,11 +54,12 @@ describe('обзор «Конфиденциальности» (#786)', () => {
       // При «Все» список «Всегда» не действует — в число не идёт.
       person('vera', 'Вера', 'lastSeen', 'allow'),
       person('gleb', 'Глеб', 'photoVisibility', 'allow'),
+      person('ivan', 'Иван', 'calls', 'deny'),
     ]);
 
     renderSettings({
       section: 'privacy',
-      privacy: { lastSeen: 'all', photoVisibility: 'nobody', forwards: 'all' },
+      privacy: { lastSeen: 'all', photoVisibility: 'nobody', forwards: 'all', calls: 'all' },
     });
 
     const row = (name: RegExp) => screen.findByRole('link', { name });
@@ -67,6 +68,7 @@ describe('обзор «Конфиденциальности» (#786)', () => {
     );
     expect(await row(/Фото профиля/)).toHaveTextContent('Никто (+1)');
     expect(await row(/Пересылка сообщений/)).toHaveTextContent(/Все$/);
+    expect(await row(/Кто может звонить/)).toHaveTextContent('Все (−1)');
   });
 
   it('строка правила ведёт на его подстраницу', async () => {
@@ -78,6 +80,17 @@ describe('обзор «Конфиденциальности» (#786)', () => {
     expect(
       await screen.findByRole('radiogroup', { name: 'Кто видит моё фото' })
     ).toHaveAccessibleDescription('При «Никто» другие увидят вместо фото букву или узор.');
+  });
+
+  it('строка правила «Кто может звонить» ведёт на его подстраницу (#1043)', async () => {
+    serveExceptions([]);
+    renderSettings({ section: 'privacy', privacy: {} });
+
+    await userEvent.click(await screen.findByRole('link', { name: /Кто может звонить/ }));
+
+    expect(
+      await screen.findByRole('radiogroup', { name: 'Кто может мне звонить' })
+    ).toHaveAccessibleDescription(/входящие звонки будут отклоняться/);
   });
 });
 
@@ -164,5 +177,67 @@ describe('подстраница правила (#786)', () => {
     renderSettings({ section: 'privacy', subsection: 'last-seen', privacy: {} });
 
     expect(await screen.findByText(/Чёрный список сильнее исключений/)).toBeInTheDocument();
+  });
+
+  it('подстраница «Кто может звонить»: переключает на «Никто» и сохраняет настройку (#1043)', async () => {
+    serveExceptions([person('dina', 'Дина', 'calls', 'allow')]);
+    let savedPrivacy: unknown = null;
+    server.use(
+      http.put(api('/users/privacy'), async ({ request }) => {
+        savedPrivacy = await request.json();
+        return HttpResponse.json({ privacy: { calls: 'nobody' } });
+      }),
+      http.get(api('/users/settings'), () =>
+        HttpResponse.json({ settings: {}, privacy: { calls: 'nobody' } })
+      )
+    );
+    renderSettings({ section: 'privacy', subsection: 'calls', privacy: { calls: 'all' } });
+
+    const group = await screen.findByRole('radiogroup', { name: 'Кто может мне звонить' });
+    await userEvent.click(within(group).getByRole('radio', { name: 'Никто' }));
+
+    await waitFor(() => expect(savedPrivacy).toEqual({ calls: 'nobody' }));
+    const always = await screen.findByRole('region', { name: 'Исключения' });
+    await within(always).findByRole('button', { name: /^Всегда разрешать/ });
+    expect(await within(always).findByText('Дина')).toBeInTheDocument();
+    expect(always).toHaveTextContent(/Этим людям разрешено звонить вам/);
+    expect(always).toHaveTextContent(/заблокированный пользователь не сможет позвонить вам/);
+  });
+
+  it('подстраница «Кто может звонить»: добавляет и удаляет исключения (#1043)', async () => {
+    const calls = serveExceptions([person('ivan', 'Иван', 'calls', 'deny')]);
+    server.use(
+      http.get(api('/users/search'), () =>
+        HttpResponse.json({
+          users: [{ id: 'vera', username: 'vera', firstName: 'Вера', lastName: '', avatarUrl: '' }],
+        })
+      )
+    );
+    renderSettings({
+      section: 'privacy',
+      subsection: 'calls',
+      privacy: { calls: 'all' },
+      currentUser: makeUser({ id: 'me' }),
+    });
+
+    const exceptionsRegion = await screen.findByRole('region', { name: 'Исключения' });
+    expect(exceptionsRegion).toHaveTextContent(/Этим людям запрещено звонить вам/);
+    expect(exceptionsRegion).toHaveTextContent(
+      /заблокированный пользователь не сможет позвонить вам/
+    );
+
+    // Удаляем Ивана из deny
+    await userEvent.click(await screen.findByRole('button', { name: 'Убрать Иван' }));
+    await waitFor(() => expect(screen.queryByText('Иван')).not.toBeInTheDocument());
+    expect(calls).toContain('delete calls ivan');
+
+    // Добавляем Веру в deny
+    await userEvent.click(await screen.findByRole('button', { name: /^Никогда не разрешать/ }));
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Найти человека' }), 'ве');
+    await userEvent.click(await screen.findByRole('button', { name: 'Добавить Вера' }));
+
+    const never = screen.getByRole('region', { name: 'Исключения' });
+    expect(await within(never).findByText('Вера')).toBeInTheDocument();
+    expect(calls).toContain('put calls vera deny');
   });
 });

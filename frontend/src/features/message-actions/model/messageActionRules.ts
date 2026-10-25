@@ -1,3 +1,4 @@
+import { isUnsent } from '@/entities/message';
 import type { IMediaItem, TMediaMessageType } from '@/types';
 
 /**
@@ -42,16 +43,6 @@ const EDITABLE = ['text', 'image', 'video', 'file'];
 /** У этих типов в content нет текста для человека. */
 const NO_TEXT = ['sticker', 'gif', 'voice', 'call'];
 
-export function isUnsent(message: IMediaItem): boolean {
-  return (
-    message.status === 'pending' ||
-    message.status === 'uploading' ||
-    message.status === 'failed' ||
-    Boolean(message.tempId) ||
-    message.id.startsWith('temp-')
-  );
-}
-
 export function messageMediaType(message: IMediaItem): TMediaMessageType | null {
   const type = message.mediaType || message.type;
   return type === 'text' || type === 'call' ? null : type;
@@ -65,6 +56,16 @@ export function hasCopyableText(message: IMediaItem): boolean {
 
 function hasAvailableMedia(message: IMediaItem): boolean {
   return Boolean(message.mediaUrl) && !message.mediaUnavailable;
+}
+
+/**
+ * Можно ли переслать (#1061): отправленное и расшифрованное, не звонок —
+ * его сервер от клиента не принимает, — а вложение только с открывшимся
+ * файлом: без него пересылать нечего.
+ */
+export function canForwardMessage(message: IMediaItem): boolean {
+  if (isUnsent(message) || message.undecryptable || message.type === 'call') return false;
+  return messageMediaType(message) === null || hasAvailableMedia(message);
 }
 
 export function availableMessageActions(
@@ -102,7 +103,7 @@ export function availableMessageActions(
     actions.add('edit');
   }
   actions.add(isPinned ? 'unpin' : 'pin');
-  if (!message.undecryptable) actions.add('forward');
+  if (canForwardMessage(message)) actions.add('forward');
 
   return actions;
 }

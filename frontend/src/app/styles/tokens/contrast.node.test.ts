@@ -248,6 +248,19 @@ describe('токены: контраст во всех палитрах, тем�
     expect(result).toEqual([]);
   });
 
+  it('найденное в тексте читается на подсветке текущего совпадения (#841)', () => {
+    const result = failures((color, scope) =>
+      need(
+        scope,
+        'on-hl-current на hl-current',
+        ratio(color('on-hl-current'), color('hl-current')),
+        4.5
+      )
+    );
+
+    expect(result).toEqual([]);
+  });
+
   it('галочки своего сообщения видны на заливке любого акцента (#657)', () => {
     const result = failures((color, scope) => [
       ...need(scope, 'out-tick на brand-fill', ratio(color('out-tick'), color('brand-fill')), 3),

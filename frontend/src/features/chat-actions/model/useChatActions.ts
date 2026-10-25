@@ -1,6 +1,6 @@
 import { showToast } from '@/shared/ui';
 import { describeApiError } from '@/shared/api';
-import { chatKeys } from '@/entities/chat';
+import { chatKeys, isChatMuted } from '@/entities/chat';
 import { services } from '@/services/serviceContainer';
 import type { IChatDto } from '@/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -60,6 +60,7 @@ export function useChatActions() {
   });
 
   const notificationMutation = useMutation({
+    mutationKey: ['chat', 'notification-preview'],
     mutationFn: (chat: IChatDto) =>
       services.chatService.setNotificationPreview(chat.id, !chat.hideNotificationPreview),
     onSuccess: async (_, chat) => {
@@ -69,6 +70,58 @@ export function useChatActions() {
       ]);
     },
     onError: reportFailure,
+  });
+
+  const muteMutation = useMutation({
+    mutationKey: ['chat', 'mute'],
+    mutationFn: ({ chat, muted }: { chat: IChatDto; muted: boolean }) =>
+      muted ? services.chatService.muteChat(chat.id) : services.chatService.unmuteChat(chat.id),
+    onMutate: async ({ chat, muted }) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: chatKeys.list() }),
+        queryClient.cancelQueries({ queryKey: chatKeys.archived() }),
+        queryClient.cancelQueries({ queryKey: chatKeys.detail(chat.id), exact: true }),
+      ]);
+      const previous = {
+        list: queryClient
+          .getQueryData<IChatDto[]>(chatKeys.list())
+          ?.find((item) => item.id === chat.id),
+        archived: queryClient
+          .getQueryData<IChatDto[]>(chatKeys.archived())
+          ?.find((item) => item.id === chat.id),
+        detail: queryClient.getQueryData<IChatDto>(chatKeys.detail(chat.id)),
+      };
+      const update = (item: IChatDto) => ({ ...item, isMuted: muted, mutedUntil: undefined });
+      for (const key of [chatKeys.list(), chatKeys.archived()])
+        queryClient.setQueryData<IChatDto[]>(key, (list) =>
+          list?.map((item) => (item.id === chat.id ? update(item) : item))
+        );
+      queryClient.setQueryData<IChatDto>(chatKeys.detail(chat.id), (item) =>
+        item ? update(item) : undefined
+      );
+      return previous;
+    },
+    onError: (error: Error, { chat }, previous) => {
+      // Возвращаем только поля mute этого чата: новые сообщения/unread не откатываются.
+      const restore = (item: IChatDto, old?: IChatDto) =>
+        old ? { ...item, isMuted: old.isMuted, mutedUntil: old.mutedUntil } : item;
+      for (const [key, old] of [
+        [chatKeys.list(), previous?.list],
+        [chatKeys.archived(), previous?.archived],
+      ] as const)
+        queryClient.setQueryData<IChatDto[]>(key, (list) =>
+          list?.map((item) => (item.id === chat.id ? restore(item, old) : item))
+        );
+      queryClient.setQueryData<IChatDto>(chatKeys.detail(chat.id), (item) =>
+        item ? restore(item, previous?.detail) : item
+      );
+      reportFailure(error);
+    },
+    onSettled: (_data, _error, { chat }) =>
+      Promise.all([
+        refreshBothLists(),
+        queryClient.invalidateQueries({ queryKey: chatKeys.detail(chat.id), exact: true }),
+      ]),
   });
 
   const archiveMutation = useMutation({
@@ -143,6 +196,10 @@ export function useChatActions() {
 
   return {
     togglePin,
+    toggleMute: (chat: IChatDto) => {
+      if (!muteMutation.isPending) muteMutation.mutate({ chat, muted: !isChatMuted(chat) });
+    },
+    isMutePending: muteMutation.isPending,
     toggleNotificationPreview: notificationMutation.mutate,
     isNotificationPending: notificationMutation.isPending,
     toggleArchive,

@@ -19,6 +19,10 @@ interface IUseThreadMessagesOptions {
  * ручная проверка идентификатора, которая не срабатывала при смене чата:
  * компонент перемонтировался, и сравнение шло с собственным значением
  * старого экземпляра (#258).
+ *
+ * Ради исходника цитаты история при открытии не догружается: его текст
+ * приходит с сервера в превью ответа (#1065). Прежняя догрузка (#553)
+ * вставала над лентой, и длинный чат открывался посередине.
  */
 export function useThreadMessages({ chatId, containerRef }: IUseThreadMessagesOptions) {
   const { t } = useTranslation();
@@ -26,10 +30,9 @@ export function useThreadMessages({ chatId, containerRef }: IUseThreadMessagesOp
 
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
   const inFlightPromiseRef = useRef<Promise<unknown> | null>(null);
-  const preloadedChatIdRef = useRef<string | null>(null);
 
   const loadOlder = useCallback(
-    async (options?: { isJump?: boolean; isPreload?: boolean }) => {
+    async (options?: { isJump?: boolean }) => {
       if (inFlightPromiseRef.current) {
         await inFlightPromiseRef.current;
         return;
@@ -63,52 +66,6 @@ export function useThreadMessages({ chatId, containerRef }: IUseThreadMessagesOp
     },
     [containerRef, fetchNextPage, hasNextPage]
   );
-
-  const preloadCountRef = useRef(0);
-
-  // Сброс отметки автоподгрузки при смене чата
-  useEffect(() => {
-    if (preloadedChatIdRef.current !== chatId) {
-      preloadedChatIdRef.current = chatId;
-      preloadCountRef.current = 0;
-    }
-  }, [chatId]);
-
-  // Проверяем, есть ли среди загруженных сообщений ответы на сообщения вне текущего среза
-  const hasUnresolvedReplies = useCallback(() => {
-    if (!query.data || query.data.length === 0) return false;
-    const knownIds = new Set(query.data.map((m) => m.id));
-    return query.data.some((msg) => {
-      const replyId = msg.replyTo || msg.replyToMessageId;
-      return Boolean(replyId && !knownIds.has(replyId));
-    });
-  }, [query.data]);
-
-  // Подгрузка истории сразу при загрузке чата после показа первых 50 сообщений,
-  // если есть цитируемые сообщения, оставшиеся за пределами текущего среза (#553)
-  useEffect(() => {
-    if (
-      chatId &&
-      !query.isPending &&
-      query.data &&
-      query.data.length > 0 &&
-      hasNextPage &&
-      !isFetchingNextPage &&
-      preloadCountRef.current < 2 &&
-      hasUnresolvedReplies()
-    ) {
-      preloadCountRef.current += 1;
-      void loadOlder({ isPreload: true });
-    }
-  }, [
-    chatId,
-    query.isPending,
-    query.data,
-    hasNextPage,
-    isFetchingNextPage,
-    hasUnresolvedReplies,
-    loadOlder,
-  ]);
 
   useEffect(() => {
     const container = containerRef.current;

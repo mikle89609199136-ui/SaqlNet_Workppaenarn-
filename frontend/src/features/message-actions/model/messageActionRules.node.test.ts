@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { makeMessage } from '@/test/fixtures';
 import type { IMediaItem } from '@/types';
-import { availableMessageActions, type IMessageActionContext } from './messageActionRules';
+import {
+  availableMessageActions,
+  canForwardMessage,
+  type IMessageActionContext,
+} from './messageActionRules';
 
 const base: IMessageActionContext = {
   mine: true,
@@ -109,5 +113,44 @@ describe('состав меню сообщения (#655)', () => {
     const got = actions(makeMessage({ content: '🔒', undecryptable: 'beforeJoin' }));
     expect(got).not.toContain('forward');
     expect(got).not.toContain('copyText');
+  });
+});
+
+/* Пересылать можно только то, что сервер примет (#1061): звонок он от
+   клиента не принимает, а вложение без файла уйти не может. */
+describe('«Переслать» в меню сообщения (#1061)', () => {
+  const sticker = (extra: Partial<IMediaItem> = {}) =>
+    makeMessage({
+      type: 'sticker',
+      content: '',
+      mediaUrl: '/api/v2/media/11111111-1111-4111-8111-111111111111',
+      ...extra,
+    } as never) as IMediaItem;
+
+  it.each<[string, IMediaItem]>([
+    ['звонок', makeMessage({ type: 'call', content: '{"status":"missed"}' }) as IMediaItem],
+    ['фото, которое не открылось', photo({ mediaUnavailable: true })],
+    ['фото без файла', photo({ mediaUrl: null })],
+    ['стикер не из каталога', sticker({ mediaUrl: null, mediaUnavailable: true })],
+  ])('нет у: %s', (_name, message) => {
+    expect(actions(message)).not.toContain('forward');
+    expect(canForwardMessage(message)).toBe(false);
+  });
+
+  it.each<[string, IMediaItem]>([
+    ['текст', makeMessage({ content: 'привет' }) as IMediaItem],
+    ['фото', photo()],
+    ['голосовое', photo({ type: 'voice', mediaUrl: 'blob:voice' })],
+    ['стикер из каталога', sticker()],
+    ['GIF из каталога', sticker({ type: 'gif' })],
+  ])('есть у: %s', (_name, message) => {
+    expect(actions(message)).toContain('forward');
+    expect(canForwardMessage(message)).toBe(true);
+  });
+
+  it('неотправленное не пересылается', () => {
+    expect(canForwardMessage(makeMessage({ content: 'ещё в пути', status: 'pending' }))).toBe(
+      false
+    );
   });
 });

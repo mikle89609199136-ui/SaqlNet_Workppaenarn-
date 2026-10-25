@@ -7,7 +7,12 @@ import { useMessageActions, useMessageSelection } from '@/features/message-actio
 import { useProfilePanel } from '@/features/user-profile';
 import { useEscapeKey } from '@/shared/lib';
 import { chatQuery, useChatReadMark, useChatUiStore } from '@/entities/chat';
-import { cancelOutboxMessage, pinsQuery, retryOutboxMessage } from '@/entities/message';
+import {
+  cancelOutboxMessage,
+  pinsQuery,
+  retryMediaDownload,
+  retryOutboxMessage,
+} from '@/entities/message';
 import { useProfileStore, type IProfileState } from '@/entities/user';
 import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +27,11 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { useMarkAsRead } from './useMarkAsRead';
+import {
+  selectCurrentMatch,
+  useMessageSearchEngine,
+  useMessageSearchStore,
+} from '@/features/message-search';
 import { useThreadMessages } from './useThreadMessages';
 
 interface Params {
@@ -53,6 +63,8 @@ export function useChatThreadPage({
   const actionMenu = useChatUiStore((state) => state.actionMenu);
   const setActionMenu = useChatUiStore((state) => state.setActionMenu);
   const resetChatState = useChatUiStore((state) => state.resetChatState);
+  const profileRequest = useChatUiStore((state) => state.profileRequest);
+  const setProfileRequest = useChatUiStore((state) => state.setProfileRequest);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -76,6 +88,14 @@ export function useChatThreadPage({
   } = useThreadMessages({ chatId, containerRef: messagesRef });
 
   const markMessagesAsRead = useMarkAsRead(chatId, currentUser?.id);
+
+  useMessageSearchEngine({ chatId, loadedMessages: messages, hasOlder });
+  const searchQuery = useMessageSearchStore((state) =>
+    state.chatId === chatId ? state.query.trim() : ''
+  );
+  const searchCurrentId = useMessageSearchStore((state) =>
+    state.chatId === chatId ? (selectCurrentMatch(state)?.id ?? null) : null
+  );
 
   const modals = useChatModals();
   const { closePhotoEditor, savePhotoEditor } = usePhotoEditor({
@@ -131,6 +151,13 @@ export function useChatThreadPage({
     [queryClient, setError, t]
   );
 
+  // Стабильная ссылка: пузырь обёрнут в memo, новая функция на каждый
+  // рендер перерисовывала бы всю ленту (#1062).
+  const handleRetryMedia = useCallback(
+    (message: IMessageDto) => retryMediaDownload(queryClient, message),
+    [queryClient]
+  );
+
   const handleCancelMessage = useCallback(
     (message: IMessageDto) => {
       const id = message.tempId || message.id;
@@ -141,10 +168,23 @@ export function useChatThreadPage({
 
   // Черновик, выделение и открытые меню принадлежат конкретному чату:
   // при переходе в соседний они не должны переезжать вместе с окном.
+  // Переход к сообщению этого чата, поставленный до перехода в него, —
+  // например, к оригиналу из «Избранного», — не сбрасывается (#1076).
   useEffect(() => {
-    resetChatState();
+    resetChatState(chatId);
     setProfileModal({ isOpen: false, userId: null });
   }, [chatId, resetChatState, setProfileModal]);
+
+  // Профиль, который попросили открыть из истории звонков (#1074). Эффект
+  // обязательно после сброса выше: эффекты выполняются в порядке
+  // объявления. При переходе в чат сброс закроет профиль и снимет запрос,
+  // а этот эффект откроет профиль по значению, взятому при отрисовке.
+  // Объявленный раньше, он открыл бы профиль, а сброс тут же закрыл бы.
+  useEffect(() => {
+    if (!profileRequest || profileRequest.chatId !== chatId) return;
+    setProfileRequest(null);
+    setProfileModal({ isOpen: true, userId: profileRequest.userId });
+  }, [chatId, profileRequest, setProfileModal, setProfileRequest]);
 
   useEscapeKey({ active: selectionMode, onClose: handleCancelSelection });
   useEscapeKey({ active: Boolean(actionMenu), onClose: () => setActionMenu(null) });
@@ -172,6 +212,8 @@ export function useChatThreadPage({
     loadOlder,
     readMark,
     markMessagesAsRead,
+    searchQuery,
+    searchCurrentId,
     threadError,
     setError,
     setEditingMessage,
@@ -209,6 +251,7 @@ export function useChatThreadPage({
     handleForward,
     handleCloseForwardModal,
     handleRetryMessage,
+    handleRetryMedia,
     handleCancelMessage,
   };
 }

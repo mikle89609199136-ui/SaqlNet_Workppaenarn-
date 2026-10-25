@@ -37,6 +37,7 @@ export const API_ENDPOINTS = {
   CHAT_MEMBER_ROLE: (chatId: string, userId: string) => `/chats/${chatId}/members/${userId}/role`,
   CHAT_LEAVE: (chatId: string) => `/chats/${chatId}/leave`,
   CHAT_TRANSFER_OWNERSHIP: (chatId: string) => `/chats/${chatId}/transfer-ownership`,
+  CHAT_MUTE: (chatId: string) => `/chats/${chatId}/mute`,
   CHAT_PIN: (chatId: string) => `/chats/${chatId}/pin`,
   CHAT_NOTIFICATION_SETTINGS: (chatId: string) => `/chats/${chatId}/notification-settings`,
   CHAT_ARCHIVE: (chatId: string) => `/chats/${chatId}/archive`,
@@ -79,6 +80,7 @@ export const API_ENDPOINTS = {
   CHAT_SHARED: (chatId: string) => `/chats/${chatId}/shared`,
   MESSAGE_POSITION: (chatId: string, messageId: string) =>
     `/chats/${chatId}/messages/${messageId}/position`,
+  MESSAGE_LOCATION: (messageId: string) => `/messages/${messageId}/location`,
   CHAT_PIN_MESSAGE: (chatId: string, messageId: string) => `/chats/${chatId}/pins/${messageId}`,
 
   ENCRYPTION_KEYS: '/encryption/keys',

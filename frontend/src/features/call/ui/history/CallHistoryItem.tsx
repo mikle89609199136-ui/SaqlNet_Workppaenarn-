@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { chatRowStyles } from '@/entities/chat';
 import type { ICallHistoryItemDto } from '@/services/types/callApi.types';
-import { cn, formatCallDuration, formatChatListTime } from '@/shared/lib';
+import { cn, formatCallDuration, formatCallTime } from '@/shared/lib';
 import { Avatar, buttonStyles, Icon } from '@/shared/ui';
 import type { TIconTypes } from '@/types';
 import { useCallStore } from '../../model/callStore';
@@ -9,9 +9,14 @@ import { useCallStore } from '../../model/callStore';
 export interface ICallHistoryItemProps {
   item: ICallHistoryItemDto;
   onOpenChat: (chatId: string) => void;
+  /**
+   * Профиль собеседника (#1074). Фича звонков о профиле не знает — действие
+   * приходит от того, кто собирает экран (#863).
+   */
+  onOpenProfile: (chatId: string, peerId: string) => void;
 }
 
-export function CallHistoryItem({ item, onOpenChat }: ICallHistoryItemProps) {
+export function CallHistoryItem({ item, onOpenChat, onOpenProfile }: ICallHistoryItemProps) {
   const { t, i18n } = useTranslation();
   const initiateCall = useCallStore((s) => s.initiateCall);
   const isCallInProgress = useCallStore((s) =>
@@ -56,7 +61,8 @@ export function CallHistoryItem({ item, onOpenChat }: ICallHistoryItemProps) {
     typeof item.durationSeconds === 'number' &&
     item.durationSeconds > 0;
   const formattedDuration = hasDuration ? formatCallDuration(item.durationSeconds!, t) : null;
-  const timeFormatted = formatChatListTime(item.startedAt, i18n.language);
+  // У прошлых звонков — и день, и время (#1074).
+  const timeFormatted = formatCallTime(item.startedAt, i18n.language);
 
   const handleRowClick = () => {
     if (item.chatId) {
@@ -86,14 +92,27 @@ export function CallHistoryItem({ item, onOpenChat }: ICallHistoryItemProps) {
 
   return (
     <div className={cn(chatRowStyles, 'select-none')} data-testid="call-history-item">
+      {/* Аватар — отдельная кнопка, а не часть строки: вложенных кнопок нет,
+          и фокус идёт по порядку — профиль, чат, перезвон. */}
+      <button
+        aria-label={t('call.history.openProfile', {
+          name: peerName,
+          defaultValue: 'Профиль: {{name}}',
+        })}
+        className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand disabled:cursor-default"
+        disabled={!canOpenChat}
+        onClick={() => item.chatId && onOpenProfile(item.chatId, item.peerId)}
+        type="button"
+      >
+        <Avatar id={item.peerId} name={peerName} size="lg" src={item.peerAvatar} />
+      </button>
+
       <button
         className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none disabled:cursor-default"
         disabled={!canOpenChat}
         onClick={handleRowClick}
         type="button"
       >
-        <Avatar id={item.peerId} name={peerName} size="lg" src={item.peerAvatar} />
-
         <div className="flex min-w-0 flex-1 flex-col gap-0.75">
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-body font-semibold text-ink">{peerName}</span>

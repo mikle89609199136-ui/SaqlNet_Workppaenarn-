@@ -185,6 +185,18 @@ func TestClassifyRouteOperationSpecificMessage(t *testing.T) {
 			want:   routeGroupMessageRead,
 		},
 		{
+			name:   "message location for saved messages (#1076)",
+			method: http.MethodGet,
+			path:   "/api/v2/messages/message-id/location",
+			want:   routeGroupMessageRead,
+		},
+		{
+			name:   "message location does not support POST",
+			method: http.MethodPost,
+			path:   "/api/v2/messages/message-id/location",
+			want:   routeGroupOtherAPI,
+		},
+		{
 			name:   "favorite message",
 			method: http.MethodPost,
 			path:   "/api/v2/messages/message-id/favorite",

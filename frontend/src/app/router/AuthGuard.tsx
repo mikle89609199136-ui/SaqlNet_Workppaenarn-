@@ -1,6 +1,6 @@
 import { REACT_ROUTES } from '@/shared/config';
 import { useProfileStore } from '@/entities/user';
-import { clearAuthSession } from '@/features/auth';
+import { clearAuthSession, signOut } from '@/features/auth';
 import { KeyBackupGate } from '@/features/key-backup';
 import { QrLoginPanel } from '@/features/qr-login';
 import { useEffect } from 'react';
@@ -25,7 +25,7 @@ export function AuthGuard() {
 
   return (
     <KeyBackupGate
-      onSignOut={clearAuthSession}
+      onSignOut={signOut}
       renderQrLogin={(onKey) => <QrLoginPanel onConfirmed={({ masterKey }) => onKey(masterKey)} />}
     >
       <Outlet />

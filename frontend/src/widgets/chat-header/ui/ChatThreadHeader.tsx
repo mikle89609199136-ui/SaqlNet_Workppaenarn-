@@ -1,6 +1,14 @@
 import { useCall } from '@/features/call';
+import { MessageSearchBar, useMessageSearchStore } from '@/features/message-search';
 import type { IProfileModal } from '@/entities/user';
-import { chatQuery, getChatSubtitle, onlineMembersQuery, useTypingLabel } from '@/entities/chat';
+import {
+  chatQuery,
+  getChatSubtitle,
+  getChatTitle,
+  isSavedMessages,
+  onlineMembersQuery,
+  useTypingLabel,
+} from '@/entities/chat';
 import { cn, useNow } from '@/shared/lib';
 import { useQuery } from '@tanstack/react-query';
 import type { Dispatch, SetStateAction } from 'react';
@@ -35,6 +43,9 @@ export const ChatThreadHeader = ({
   const typingLabel = useTypingLabel(chat);
   // «Был(а) 5 минут назад» пересчитывается, пока шапка открыта.
   const now = useNow();
+  const isSearching = useMessageSearchStore((state) => state.chatId === chatId);
+  const openSearch = useMessageSearchStore((state) => state.open);
+  const closeSearch = useMessageSearchStore((state) => state.close);
 
   if (!chat) return;
 
@@ -45,12 +56,15 @@ export const ChatThreadHeader = ({
   // Блокировка в любую сторону — звонков нет (#760).
   const callsBlocked = Boolean(chat.isBlockedByPeer || chat.isPeerBlocked);
   const isGroup = chat.type === 'group';
+  const saved = isSavedMessages(chat);
+  const title = getChatTitle(chat, t);
   const profileOpen = Boolean(profileModal?.isOpen);
 
   // Клик по шапке только называет, чей профиль показать: запрос делает
   // панель, и повторное открытие обходится кешем (#232).
   function openChatProfile() {
     if (!setProfileModal) return;
+    closeSearch();
 
     if (profileModal?.isOpen) {
       setProfileModal({ isOpen: false, userId: null });
@@ -61,6 +75,11 @@ export const ChatThreadHeader = ({
       setProfileModal({ isOpen: true, userId: null, kind: 'group' });
       return;
     }
+    // У «Избранного» вместо профиля — его медиа, файлы и ссылки (#1075).
+    if (chat?.type === 'self') {
+      setProfileModal({ isOpen: true, userId: null, kind: 'saved' });
+      return;
+    }
     if (chat?.type !== 'private' || !chat.peerId) return;
 
     setProfileModal({ isOpen: true, userId: chat.peerId });
@@ -68,9 +87,10 @@ export const ChatThreadHeader = ({
 
   /* Шапка — по макету (#822): 64px, снизу линия. На телефоне слева
      «Назад к чатам», дальше одна кнопка «аватар и имя», открывающая
-     панель, справа кнопки 40×40 цвета ink-2. */
+     панель, справа кнопки 40×40 цвета ink-2.
+     Отступ px-1.5 (6px) симметричен вертикальным отступам (64 - 52) / 2 = 6px (#1082). */
   const headerClass =
-    'z-5 flex h-16 shrink-0 items-center gap-1.5 border-b border-divider bg-chat-bg px-1.5 md:px-3 ' +
+    'z-5 flex h-16 shrink-0 items-center gap-1.5 border-b border-divider bg-chat-bg px-1.5 ' +
     'max-md:sticky max-md:top-0 max-md:h-[calc(64px+env(safe-area-inset-top,0px))] max-md:pt-[env(safe-area-inset-top,0px)]';
 
   const backToChats = (
@@ -102,6 +122,14 @@ export const ChatThreadHeader = ({
     );
   }
 
+  if (isSearching) {
+    return (
+      <header className={headerClass}>
+        <MessageSearchBar />
+      </header>
+    );
+  }
+
   return (
     <header className={headerClass}>
       {backToChats}
@@ -109,12 +137,14 @@ export const ChatThreadHeader = ({
       <button
         aria-controls="profile-slot"
         aria-expanded={profileOpen}
-        aria-label={`${chat.title} — ${
+        aria-label={`${title} — ${
           profileOpen
             ? t('hideProfile', 'скрыть')
             : isGroup
               ? t('openGroupInfo', 'открыть сведения')
-              : t('openProfile', 'открыть профиль')
+              : saved
+                ? t('savedMessages.openInfo', 'открыть медиа и файлы')
+                : t('openProfile', 'открыть профиль')
         }`}
         className={cn(
           'flex h-13 min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-button pr-3 pl-1.5 text-left',
@@ -125,28 +155,43 @@ export const ChatThreadHeader = ({
         type="button"
       >
         <Avatar
+          icon={saved ? 'bookmark' : undefined}
           id={chat.type === 'private' ? chat.peerId : null}
-          name={chat.title}
+          name={title}
           online={isPeerOnline}
           size="md"
           src={chat.avatarUrl}
           surface="chat"
         />
         <span className="flex min-w-0 flex-1 flex-col gap-px">
-          <span className="truncate text-subtitle leading-[1.25] font-semibold">{chat.title}</span>
-          <span
-            className={cn(
-              'truncate text-caption leading-[1.3] text-ink-2',
-              (isPeerOnline || typingLabel) && 'text-brand'
-            )}
-          >
-            {subtitle}
-          </span>
+          <span className="truncate text-subtitle leading-[1.25] font-semibold">{title}</span>
+          {/* У «Избранного» подзаголовка нет: «был давно» про себя ни к чему. */}
+          {subtitle && (
+            <span
+              className={cn(
+                'truncate text-caption leading-[1.3] text-ink-2',
+                (isPeerOnline || typingLabel) && 'text-brand'
+              )}
+            >
+              {subtitle}
+            </span>
+          )}
         </span>
       </button>
 
       <div className="flex shrink-0 items-center gap-0.5">
-        {/* Поиск по переписке появится с #841. */}
+        <Button
+          aria-label={t('messageSearch.open', 'Поиск по чату')}
+          iconOnly
+          onClick={() => {
+            setProfileModal?.({ isOpen: false, userId: null });
+            openSearch(chatId);
+          }}
+          title={t('messageSearch.open', 'Поиск по чату')}
+          variant="ghost"
+        >
+          <Icon className="size-5" name="search" />
+        </Button>
         {/* Звонки — только один на один (#715): в группе кнопок нет. */}
         {CALLS_ENABLED && chat.type === 'private' && (
           <>
@@ -154,7 +199,7 @@ export const ChatThreadHeader = ({
               aria-label={t('audioCall', 'Позвонить')}
               disabled={callsBlocked}
               iconOnly
-              onClick={() => initiateCall(chatId, chat.type, chat.title, 'audio', chat?.peerId)}
+              onClick={() => initiateCall(chatId, 'private', chat.title, 'audio', chat?.peerId)}
               title={t('audioCall', 'Позвонить')}
               variant="ghost"
             >
@@ -164,7 +209,7 @@ export const ChatThreadHeader = ({
               aria-label={t('videoCall', 'Видеозвонок')}
               disabled={callsBlocked}
               iconOnly
-              onClick={() => initiateCall(chatId, chat?.type, chat.title, 'video', chat?.peerId)}
+              onClick={() => initiateCall(chatId, 'private', chat.title, 'video', chat?.peerId)}
               title={t('videoCall', 'Видеозвонок')}
               variant="ghost"
             >

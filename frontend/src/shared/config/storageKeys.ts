@@ -10,7 +10,7 @@ export const STORAGE_KEYS = {
   LANGUAGE: 'craneapp_language',
   PANE_WIDTHS: 'craneapp_pane_widths',
   RECENT_EMOJI: 'craneapp_recent_emoji',
-  /** Палитра фона и акцент — только в браузере, пока нет #728. */
+  /** Прежняя локальная палитра/акцент. Только явный перенос в серверные preferences (#728). */
   APPEARANCE: 'craneapp_appearance',
   VOICE_VOLUME: 'craneapp_voice_volume',
 };

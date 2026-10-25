@@ -18,6 +18,7 @@ var allRouteGroups = []routeGroup{
 	routeGroupUsernameCheck,
 	routeGroupMessageWrite,
 	routeGroupMessageRead,
+	routeGroupMediaDownload,
 	routeGroupMediaUpload,
 	routeGroupCalls,
 	routeGroupMLS,
@@ -34,6 +35,7 @@ const (
 	routeGroupUsernameCheck routeGroup = "username-check"
 	routeGroupMessageWrite  routeGroup = "message-write"
 	routeGroupMessageRead   routeGroup = "message-read"
+	routeGroupMediaDownload routeGroup = "media-download"
 	routeGroupMediaUpload   routeGroup = "media-upload"
 	routeGroupCalls         routeGroup = "calls"
 	routeGroupMLS           routeGroup = "mls"
@@ -67,6 +69,8 @@ func classifyRoute(method, path string) routeGroup {
 	// а не общий для остальных API.
 	case method == http.MethodGet && path == "/api/v2/users/check-username":
 		return routeGroupUsernameCheck
+	case (method == http.MethodGet || method == http.MethodHead) && mediaDownloadPath.MatchString(path):
+		return routeGroupMediaDownload
 	case method == http.MethodPost && path == "/api/v2/media":
 		return routeGroupMediaUpload
 	// Создание комнаты звонка пишет строку в calls.rooms и заводит запись в
@@ -147,6 +151,10 @@ func classifyMessageRoute(method, path string) routeGroup {
 				return routeGroupMessageRead
 			case http.MethodPost:
 				return routeGroupMessageWrite
+			}
+		case "location":
+			if method == http.MethodGet {
+				return routeGroupMessageRead
 			}
 		case "favorite":
 			if method == http.MethodPost || method == http.MethodDelete {

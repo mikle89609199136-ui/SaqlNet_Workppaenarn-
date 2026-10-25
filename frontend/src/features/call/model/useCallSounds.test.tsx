@@ -26,11 +26,11 @@ describe('useCallSounds & getCallSoundsEnabled (#1002)', () => {
     });
   });
 
-  it('по умолчанию звук звонка включён', () => {
-    expect(getCallSoundsEnabled()).toBe(true);
+  it('до подтверждённых settings рингтон выключен', () => {
+    expect(getCallSoundsEnabled()).toBe(false);
 
     const { result } = renderHook(() => useCallSounds(), { wrapper });
-    expect(result.current).toBe(true);
+    expect(result.current).toBe(false);
   });
 
   it('возвращает true, если sounds: false, но callSounds не задан (#1002)', () => {

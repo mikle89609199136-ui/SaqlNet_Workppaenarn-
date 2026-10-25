@@ -1,11 +1,15 @@
 import type { QueryClient } from '@tanstack/react-query';
+import type { IReactionUpdatedEvent } from '@/types';
 import type { IMessageDto, IPinnedDto } from './types';
+import { mergeReactionEvent } from './reactionEvent';
 import { chatKeys } from '@/entities/chat';
 import type { IReceiptEvent } from '@/shared/lib';
 import {
   appendMessage,
   applyReceipt,
   canAppendToThread,
+  dropMissingFromHead,
+  forgetReplyPreviews,
   patchMessage,
   removeMessage,
   replaceMessage,
@@ -114,9 +118,12 @@ export function putThreadMessages(
   {
     replaceExisting = false,
     replay,
+    dropMissing = false,
   }: {
     replaceExisting?: boolean;
     replay?: TThreadMutation;
+    /** Убрать подтверждённые, которых нет в этой свежей странице (#1068). */
+    dropMissing?: boolean;
   } = {}
 ): void {
   if (messages.length === 0) return;
@@ -146,14 +153,38 @@ export function putThreadMessages(
   if (replaceExisting) {
     // Snapshot уже включает старые операции. В журнал попадают только
     // изменения из realtime/действий пользователя, а не другой snapshot.
+    // Удаление — до слияния и до журнала: сообщение или удаление, пришедшие
+    // событием во время запроса, ложатся поверх, как и прежде.
     queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (thread) => {
       if (!thread) return thread;
-      const merged = merge(thread);
+      const merged = merge(dropMissing ? dropMissingFromHead(thread, messages) : thread);
       return replay ? replay(merged) : merged;
     });
   } else {
     mutateThread(queryClient, chatId, merge);
   }
+  markChatListStale(queryClient);
+}
+
+/**
+ * Реакции из события `reaction_updated` (#1063).
+ *
+ * Отметка «моя» считается внутри мутации — по сообщению, которое лежит в
+ * ленте в момент применения. Так операция верно переигрывается журналом
+ * поверх снимка истории, который ещё грузится.
+ */
+export function applyThreadReactionEvent(
+  queryClient: QueryClient,
+  event: Pick<IReactionUpdatedEvent, 'chatId' | 'messageId' | 'actorId' | 'change' | 'reactions'>,
+  currentUserId: string | undefined
+): void {
+  mutateThread(queryClient, event.chatId, (current) => {
+    const cached = current.pages.flat().find((item) => item.id === event.messageId);
+    if (!cached) return current;
+    return patchMessage(current, event.messageId, {
+      reactions: mergeReactionEvent(cached.reactions, event, currentUserId),
+    });
+  });
   markChatListStale(queryClient);
 }
 
@@ -236,7 +267,10 @@ export function dropThreadMessages(
 ): void {
   if (messageIds.length === 0) return;
   mutateThread(queryClient, chatId, (current) =>
-    messageIds.reduce((thread, id) => removeMessage(thread, id), current)
+    forgetReplyPreviews(
+      messageIds.reduce((thread, id) => removeMessage(thread, id), current),
+      messageIds
+    )
   );
   void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
   markChatListStale(queryClient);

@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { REACT_ROUTES } from '@/shared/config';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { services } from '@/services/serviceContainer';
 import {
@@ -14,16 +15,24 @@ import {
 import { testI18n } from '@/test/harness/i18n';
 import { KeyBackupGate } from './KeyBackupGate';
 
-function renderGate() {
+function renderGate(onSignOut: () => Promise<void> = async () => {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   return render(
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={testI18n}>
-        <MemoryRouter>
-          <KeyBackupGate onSignOut={() => {}} renderQrLogin={() => <p>вход по коду</p>}>
-            <p>приложение</p>
-          </KeyBackupGate>
+        <MemoryRouter initialEntries={['/chats']}>
+          <Routes>
+            <Route
+              element={
+                <KeyBackupGate onSignOut={onSignOut} renderQrLogin={() => <p>вход по коду</p>}>
+                  <p>приложение</p>
+                </KeyBackupGate>
+              }
+              path="/chats"
+            />
+            <Route element={<p>экран входа</p>} path={REACT_ROUTES.LOGIN} />
+          </Routes>
         </MemoryRouter>
       </I18nextProvider>
     </QueryClientProvider>
@@ -54,6 +63,21 @@ describe('заслонка резервной копии (#744)', () => {
     renderGate();
 
     expect(screen.getByText('приложение')).toBeInTheDocument();
+  });
+
+  // Весь выход — сервер и очистка вкладки — приходит от приложения (#1072):
+  // прежде заслонка выходила сама, и очистка к тому моменту не срабатывала.
+  it('«Выйти из аккаунта» под формой — выход приложения один раз и экран входа', async () => {
+    setBackupState({ status: 'needsSetup', hasPasskey: false, migrating: false });
+    const onSignOut = vi.fn(async () => {});
+    const logout = vi.spyOn(services.authService, 'logout');
+
+    renderGate(onSignOut);
+    await userEvent.click(screen.getByRole('button', { name: 'Выйти из аккаунта' }));
+
+    expect(await screen.findByText('экран входа')).toBeInTheDocument();
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+    expect(logout).not.toHaveBeenCalled();
   });
 
   it('просит задать облачный пароль, если копии нет', () => {

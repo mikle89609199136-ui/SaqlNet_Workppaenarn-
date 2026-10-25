@@ -95,5 +95,16 @@ func TestMediaAttachmentOnRealSchema(t *testing.T) {
 		require.NoError(t, json.Unmarshal(metadata, &parsed))
 		require.Equal(t, "AAAAAAAAAAAAAAAA", parsed.MediaEncryption["iv"])
 		require.NotContains(t, parsed.MediaEncryption, "durationMs", "поле клиента не должно попасть в сообщение")
+
+		var attached bool
+		require.NoError(t, db.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM media.upload_refs r
+				JOIN messages.messages m ON m.id = r.message_id
+				JOIN media.uploads u ON u.id = r.upload_id
+				WHERE r.upload_id = $1 AND r.kind = 'message' AND r.chat_id = $2
+				AND m.chat_id = r.chat_id AND u.first_attached_at IS NOT NULL
+			)`, own, chatID).Scan(&attached))
+		require.True(t, attached)
 	})
 }

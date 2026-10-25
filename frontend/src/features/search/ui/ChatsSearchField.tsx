@@ -44,7 +44,7 @@ export function ChatsSearchField({ value, onChange, onReset }: Props) {
         value ? (
           <button
             aria-label={t('clearSearch', 'Очистить поиск')}
-            className="flex size-8 items-center justify-center rounded-field text-ink-3 transition-colors hover:layer-hover hover:text-ink"
+            className="flex size-8 cursor-pointer items-center justify-center rounded-field text-ink-3 transition-colors hover:layer-hover hover:text-ink active:layer-press"
             onClick={onReset}
             type="button"
           >

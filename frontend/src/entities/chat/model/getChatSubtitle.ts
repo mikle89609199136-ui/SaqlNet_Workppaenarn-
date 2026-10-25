@@ -21,6 +21,8 @@ export const getChatSubtitle = (
   onlineCount = undefined
 ) => {
   if (typingLabel) return typingLabel;
+  // У «Избранного» собеседника нет — и «был давно» про себя ни к чему (#1075).
+  if (chat?.type === 'self') return '';
   if (chat?.type === 'group') {
     if (!chat.memberCount) return t('groupChat', 'Группа');
     const members = t('membersCount', {

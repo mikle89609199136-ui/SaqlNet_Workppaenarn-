@@ -51,3 +51,22 @@ export function formatChatListTime(
     year: '2-digit',
   }).format(date);
 }
+
+/**
+ * Время звонка в истории (#1074): сегодняшний — как в списке чатов, часы
+ * и минуты; прошлые — день и время: «вчера, 09:07», «пн, 14:05»,
+ * «12.10.26, 14:05». В списке чатов одного дня достаточно, а в журнале
+ * звонков важно, когда именно звонили.
+ */
+export function formatCallTime(
+  value: Date | string | null | undefined,
+  locale?: string,
+  now: Date = new Date()
+): string {
+  const day = formatChatListTime(value, locale, now);
+  if (!day || !value) return day;
+
+  const date = value instanceof Date ? value : new Date(value);
+  const time = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(date);
+  return day === time ? day : `${day}, ${time}`;
+}

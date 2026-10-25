@@ -3,7 +3,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { services } from '@/services/serviceContainer';
-import { disconnectRealtimeSocket } from '@/shared/api';
 import { REACT_ROUTES } from '@/shared/config';
 import { AuthLayout, Banner, Button, Spinner } from '@/shared/ui';
 import { useBackupState } from '../model/useBackupState';
@@ -13,10 +12,12 @@ import { CloudPasswordUnlock } from './CloudPasswordUnlock';
 interface Props {
   children: ReactNode;
   /**
-   * Очистить сессию на устройстве при выходе с заслонки. Это сценарий
-   * входа и выхода, а не резервной копии, — его передаёт приложение (#863).
+   * Выйти с заслонки: сервер и очистка вкладки целиком. Это сценарий входа
+   * и выхода, а не резервной копии, — его передаёт приложение (#863).
+   * Прежде заслонка выходила сама, а переданная очистка к тому моменту
+   * уже ничего не делала: профиль успевал стереть AuthService (#1072).
    */
-  onSignOut: () => void;
+  onSignOut: () => Promise<void>;
   /**
    * Вход по коду с уже вошедшего устройства. Панель QR — чужая фича, её
    * подставляет тот, кто собирает экран (#863); принятый ключ она отдаёт
@@ -56,10 +57,7 @@ export function KeyBackupGate({ children, onSignOut, renderQrLogin }: Props) {
   }
 
   async function logout() {
-    await services.authService.logout().catch(() => {});
-    disconnectRealtimeSocket();
-    queryClient.clear();
-    onSignOut();
+    await onSignOut();
     navigate(REACT_ROUTES.LOGIN, { replace: true });
   }
 

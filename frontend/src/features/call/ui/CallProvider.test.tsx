@@ -1,4 +1,7 @@
-import { render } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
+import { userKeys } from '@/entities/user';
+import { act, waitFor, render as renderReact } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CallProvider } from './CallProvider';
 import { useCallStore } from '../model/callStore';
@@ -13,20 +16,19 @@ const mockSocket = {
 } as unknown as WebSocketClient;
 
 import * as sharedApi from '@/shared/api';
+import * as callRingtone from '../model/callRingtone';
 
-vi.mock('@/services/ringtone', () => ({
-  startRingtone: vi.fn(),
-  stopRingtone: vi.fn(),
-}));
-
-vi.mock('@/services/ringtone', () => ({
-  startRingtone: vi.fn(),
-  stopRingtone: vi.fn(),
-}));
+function render(element: ReactElement) {
+  return renderReact(
+    <QueryClientProvider client={sharedApi.queryClient}>{element}</QueryClientProvider>
+  );
+}
 
 describe('CallProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(callRingtone, 'startRingtone').mockReturnValue(undefined);
+    vi.spyOn(callRingtone, 'stopRingtone').mockReturnValue(undefined);
     vi.spyOn(sharedApi, 'useRealtimeSocket').mockReturnValue({
       socket: mockSocket,
       eventBus,
@@ -408,5 +410,29 @@ describe('CallProvider', () => {
     );
 
     expect(restoreSpy).toHaveBeenCalledTimes(1);
+  });
+  it('изменение N/C в query останавливает текущий рингтон, S остаётся независимым', async () => {
+    sharedApi.queryClient.setQueryData(userKeys.settings(), {
+      settings: { notifications: true, sounds: false, callSounds: true },
+      privacy: {},
+    });
+    useCallStore.setState({
+      incomingAlertsReady: true,
+      incomingCall: { roomId: 'incoming-policy', from: 'peer', kind: 'audio' },
+    });
+    render(
+      <CallProvider>
+        <div>child</div>
+      </CallProvider>
+    );
+    expect(callRingtone.startRingtone).toHaveBeenCalled();
+    vi.mocked(callRingtone.stopRingtone).mockClear();
+    act(() =>
+      sharedApi.queryClient.setQueryData(userKeys.settings(), {
+        settings: { notifications: false, sounds: true, callSounds: true },
+        privacy: {},
+      })
+    );
+    await waitFor(() => expect(callRingtone.stopRingtone).toHaveBeenCalled());
   });
 });

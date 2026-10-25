@@ -36,6 +36,7 @@ export const WS_EVENTS = {
     BLOCKED: 'user_blocked',
     UNBLOCKED: 'user_unblocked',
     PROFILE_UPDATED: 'user_profile_updated',
+    SETTINGS_UPDATED: 'settings_updated',
   },
   CALL: {
     ERROR: 'call_error',

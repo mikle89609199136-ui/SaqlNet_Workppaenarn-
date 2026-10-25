@@ -175,6 +175,7 @@ export function useComposerSendMessage({
       const outboxItem: IOutboxItem = {
         tempId,
         chatId,
+        senderId: currentUser?.id ?? '',
         content: itemContent,
         entities: itemEntities,
         type,
@@ -238,6 +239,7 @@ export function useComposerSendMessage({
       const outboxItem: IOutboxItem = {
         tempId,
         chatId,
+        senderId: currentUser?.id ?? '',
         content: '',
         type,
         mediaUrl,
