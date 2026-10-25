@@ -217,6 +217,7 @@ export interface ICall {
 }
 
 export interface IIncomingCall extends ICall {
+  chatId?: string;
   fromName?: string;
   fromAvatar?: string | null;
   kind: TCallKind;

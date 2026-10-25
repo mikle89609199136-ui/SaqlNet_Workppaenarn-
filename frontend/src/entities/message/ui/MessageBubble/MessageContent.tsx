@@ -8,24 +8,40 @@ import {
   type IRichSegment,
 } from '@/shared/lib/richText';
 import { cn } from '@/shared/lib';
+import { highlightMatches } from '@/shared/ui';
 import { CodeBlock } from './CodeBlock';
+
+export interface IContentHighlight {
+  query: string;
+  current: boolean;
+}
 
 interface Props {
   content: string;
   /** Форматирование (#656). Нет — текст показывается как есть. */
   entities?: IMessageEntity[];
   trailing?: ReactNode;
+  highlight?: IContentHighlight;
 }
 
 const HASHTAG = /(#[\wа-яА-ЯёЁ]+)/g;
 
-function withHashtags(text: string, keyPrefix: string): ReactNode[] {
+const marked = (
+  text: string,
+  highlight: IContentHighlight | undefined,
+  key: string
+): ReactNode[] =>
+  highlight ? highlightMatches(text, highlight.query, highlight.current, `${key}:`) : [text];
+
+function withHashtags(text: string, keyPrefix: string, highlight?: IContentHighlight): ReactNode[] {
   const parts: ReactNode[] = [];
   let lastIndex = 0;
 
   for (const match of text.matchAll(HASHTAG)) {
     const index = match.index ?? 0;
-    if (index > lastIndex) parts.push(text.slice(lastIndex, index));
+    if (index > lastIndex) {
+      parts.push(...marked(text.slice(lastIndex, index), highlight, `${keyPrefix}-${lastIndex}`));
+    }
 
     const hashtag = match[0];
     parts.push(
@@ -42,13 +58,15 @@ function withHashtags(text: string, keyPrefix: string): ReactNode[] {
           }
         }}
       >
-        {hashtag}
+        {marked(hashtag, highlight, `${keyPrefix}-${index}`)}
       </span>
     );
     lastIndex = index + hashtag.length;
   }
 
-  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  if (lastIndex < text.length) {
+    parts.push(...marked(text.slice(lastIndex), highlight, `${keyPrefix}-${lastIndex}`));
+  }
   return parts;
 }
 
@@ -103,9 +121,15 @@ function QuoteMark() {
   );
 }
 
-function renderSegment(segment: IRichSegment, key: string): ReactNode {
+function renderSegment(
+  segment: IRichSegment,
+  key: string,
+  highlight?: IContentHighlight
+): ReactNode {
   const { formats, url } = segment;
-  let node: ReactNode = url ? segment.text : withHashtags(segment.text, key);
+  let node: ReactNode = url
+    ? marked(segment.text, highlight, key)
+    : withHashtags(segment.text, key, highlight);
 
   if (formats.includes('monospace')) {
     node = (
@@ -154,7 +178,7 @@ function renderSegment(segment: IRichSegment, key: string): ReactNode {
   return <span key={key}>{node}</span>;
 }
 
-export const MessageContentRenderer = memo(({ content, entities, trailing }: Props) => {
+export const MessageContentRenderer = memo(({ content, entities, trailing, highlight }: Props) => {
   if (!content && !trailing) return null;
 
   const clean = entities?.length ? normalizeEntities(content, entities) : [];
@@ -164,7 +188,7 @@ export const MessageContentRenderer = memo(({ content, entities, trailing }: Pro
     <div className="message-content text-body whitespace-pre-wrap leading-snug [overflow-wrap:anywhere] flow-root">
       {blocks.map((block, blockIndex) => {
         const segments = block.segments.map((segment, index) =>
-          renderSegment(segment, `${blockIndex}-${index}`)
+          renderSegment(segment, `${blockIndex}-${index}`, highlight)
         );
         if (block.kind === 'code') {
           return <CodeBlock code={block.code ?? ''} key={blockIndex} lang={block.lang ?? ''} />;

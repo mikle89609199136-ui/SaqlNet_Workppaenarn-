@@ -139,6 +139,7 @@ describe('NotificationsSection — независимые предпочтени
     expect(screen.getByRole('switch', { name: 'Звуки сообщений' })).not.toBeChecked();
     expect(screen.getByRole('switch', { name: 'Звуки звонков' })).toBeChecked();
 
+    await waitFor(() => expect(notifications).toBeEnabled());
     await userEvent.click(notifications);
     await waitFor(() => expect(notifications).toBeChecked());
     await waitFor(() =>

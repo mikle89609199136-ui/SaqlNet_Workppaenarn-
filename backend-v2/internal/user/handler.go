@@ -534,6 +534,10 @@ func (h *Handler) Unblock(w http.ResponseWriter, r *http.Request) {
 }
 
 func respondProfile(w http.ResponseWriter, r *http.Request, profile Profile, err error) {
+	if errors.Is(err, ErrInvalidInput) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid profile input")
+		return
+	}
 	if errors.Is(err, ErrNotFound) {
 		httpx.ErrorJSON(w, r, http.StatusNotFound, "user_not_found", "user not found")
 		return

@@ -14,15 +14,28 @@ export interface IUserDto {
   badges: string[]; // неизвестно какое dto у бэйджа
 }
 
-type TNotificationPreferences = components['schemas']['NotificationPreferences'];
+type TNotificationPreferences = components['schemas']['MvpSettings'];
 
-/** Флаги берутся из общего контракта #496; callSounds может отсутствовать до #1042. */
+type TAppearancePreferences = Pick<
+  components['schemas']['MvpSettings'],
+  | 'palette'
+  | 'accentPreset'
+  | 'textSize'
+  | 'chatDensity'
+  | 'showMessageTime'
+  | 'showMessageStatus'
+  | 'showMessageAvatars'
+  | 'groupConsecutiveMessages'
+>;
+
+/** Типы полей согласованы с каноническим User API. Старые ответы могут быть частичными. */
 export interface ISettingsDto
   extends
+    TAppearancePreferences,
     Required<Pick<TNotificationPreferences, 'notifications' | 'sounds'>>,
     Pick<TNotificationPreferences, 'callSounds'> {
   language: string;
-  theme: 'dark' | 'light';
+  theme: NonNullable<components['schemas']['MvpSettings']['theme']>;
   /* Чем заменять фотографию, когда её нет: буквой или сеткой от
      идентификатора. Выбор вкусовой, поэтому вынесен человеку (#375). */
   avatarShape: 'letter' | 'grid';

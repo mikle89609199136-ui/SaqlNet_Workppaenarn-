@@ -1,0 +1,57 @@
+/* Настройки #728: меняется семантическая типографика, а не rem всей геометрии.
+   Размеры иконок и минимальные touch targets сохраняются. */
+:root {
+  --ui-text-scale: 1;
+}
+[data-text-size='small'] {
+  --ui-text-scale: 0.9;
+}
+[data-text-size='medium'] {
+  --ui-text-scale: 1;
+}
+[data-text-size='large'] {
+  --ui-text-scale: 1.15;
+}
+:root,
+[data-text-size] {
+  --text-micro: calc(11px * var(--ui-text-scale));
+  --text-micro--line-height: calc(14px * var(--ui-text-scale));
+  --text-meta: calc(12px * var(--ui-text-scale));
+  --text-meta--line-height: calc(16px * var(--ui-text-scale));
+  --text-caption: calc(13px * var(--ui-text-scale));
+  --text-caption--line-height: calc(18px * var(--ui-text-scale));
+  --text-ui: calc(14px * var(--ui-text-scale));
+  --text-ui--line-height: calc(20px * var(--ui-text-scale));
+  --text-body: calc(15px * var(--ui-text-scale));
+  --text-body--line-height: calc(22px * var(--ui-text-scale));
+  --text-subtitle: calc(16px * var(--ui-text-scale));
+  --text-subtitle--line-height: calc(22px * var(--ui-text-scale));
+  --text-title: calc(17px * var(--ui-text-scale));
+  --text-title--line-height: calc(24px * var(--ui-text-scale));
+  --text-section: calc(20px * var(--ui-text-scale));
+  --text-section--line-height: calc(26px * var(--ui-text-scale));
+  --text-display: calc(24px * var(--ui-text-scale));
+  --text-display--line-height: calc(30px * var(--ui-text-scale));
+}
+:root,
+[data-chat-density='normal'] {
+  --chat-row-py: 9px;
+  --chat-row-avatar: 46px;
+  --chat-bubble-py: 8px;
+  --chat-group-gap: 8px;
+  --chat-composer-padding: 6px;
+}
+[data-chat-density='compact'] {
+  --chat-row-py: 5px;
+  --chat-row-avatar: 40px;
+  --chat-bubble-py: 5px;
+  --chat-group-gap: 4px;
+  --chat-composer-padding: 3px;
+}
+[data-chat-density='large'] {
+  --chat-row-py: 13px;
+  --chat-row-avatar: 52px;
+  --chat-bubble-py: 12px;
+  --chat-group-gap: 12px;
+  --chat-composer-padding: 10px;
+}

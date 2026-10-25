@@ -1,8 +1,18 @@
-import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
+import type { ISettingsDto, IMediaItem, IMessageDto, TMessagesList } from '@/types';
 import { formatDateDivider, isDifferentDay, usePageActive } from '@/shared/lib';
-import { estimateMessageItemSize } from '@/entities/message';
+import { estimateMessageItemSize, flattenThread, type IThreadPages } from '@/entities/message';
+import { chatKeys } from '@/entities/chat';
+import { matchQuery, notifyManager, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { elementScroll, useVirtualizer } from '@tanstack/react-virtual';
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type RefObject,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   countUnreadBelow,
@@ -37,6 +47,15 @@ export type TFeedItem =
     };
 
 interface IUseVirtualMessagesFeedOptions {
+  appearance?: Pick<
+    ISettingsDto,
+    | 'textSize'
+    | 'chatDensity'
+    | 'showMessageTime'
+    | 'showMessageStatus'
+    | 'showMessageAvatars'
+    | 'groupConsecutiveMessages'
+  >;
   messages: TMessagesList;
   messagesRef?: RefObject<HTMLElement | null>;
   /** Кто читает: свои сообщения непрочитанными не бывают. */
@@ -55,6 +74,17 @@ interface IUseVirtualMessagesFeedOptions {
   loadOlder?: (options?: { isJump?: boolean }) => Promise<void> | void;
   hasOlder?: boolean;
   onMessagesSeen?: (messages: IMessageDto[]) => void;
+  chatId?: string;
+  /** Сообщения истории чата для разрешения цитируемых сообщений (#1084). */
+  threadMessages?: TMessagesList;
+}
+
+function useOptionalQueryClient(): QueryClient | null {
+  try {
+    return useQueryClient();
+  } catch {
+    return null;
+  }
 }
 
 const SCROLL_THRESHOLD_PX = 200;
@@ -64,6 +94,7 @@ const STICKY_COLLISION_HEIGHT_PX = 44;
 
 export function useVirtualMessagesFeed({
   messages,
+  appearance,
   messagesRef,
   currentUserId,
   trackUnread = true,
@@ -71,10 +102,13 @@ export function useVirtualMessagesFeed({
   loadOlder,
   hasOlder = false,
   onMessagesSeen,
+  chatId: optionsChatId,
+  threadMessages,
 }: IUseVirtualMessagesFeedOptions) {
   const { t } = useTranslation();
+  const queryClient = useOptionalQueryClient();
 
-  const chatId = messages[0]?.chatId;
+  const chatId = optionsChatId || messages[0]?.chatId;
   const [unread, setUnread] = useState<IUnreadSnapshot | null>(null);
   // Снимок делается при отрисовке, а не эффектом: иначе первый кадр
   // ленты вышел бы без разделителя и дёрнулся бы следующим.
@@ -153,12 +187,41 @@ export function useVirtualMessagesFeed({
     return () => resizeObserver.disconnect();
   }, [setContainerRef]);
 
-  /* Указатель на сообщения по ID для O(1) поиска превью цитирования */
+  // При переданной истории подписка не нужна: её обновляет родитель.
+  const cachedChatId = threadMessages ? undefined : chatId;
+  const subscribeToThread = useCallback(
+    (onStoreChange: () => void) => {
+      if (!cachedChatId || !queryClient) return () => {};
+      const notify = notifyManager.batchCalls(onStoreChange);
+      return queryClient.getQueryCache().subscribe((event) => {
+        if (matchQuery({ queryKey: chatKeys.messages(cachedChatId), exact: true }, event.query)) {
+          notify();
+        }
+      });
+    },
+    [cachedChatId, queryClient]
+  );
+  const getCachedThread = useCallback(
+    () =>
+      cachedChatId
+        ? queryClient?.getQueryData<IThreadPages>(chatKeys.messages(cachedChatId))
+        : undefined,
+    [cachedChatId, queryClient]
+  );
+  const cachedThread = useSyncExternalStore(subscribeToThread, getCachedThread, getCachedThread);
+
+  /* Указатель на сообщения по ID для O(1) поиска превью цитирования (#1084) */
   const messagesById = useMemo(() => {
     const index = new Map<string, IMediaItem>();
+    if (threadMessages) {
+      for (const message of threadMessages) index.set(message.id, message);
+    } else {
+      const cached = flattenThread(cachedThread);
+      for (const message of cached) index.set(message.id, message);
+    }
     for (const message of messages) index.set(message.id, message);
     return index;
-  }, [messages]);
+  }, [messages, threadMessages, cachedThread]);
 
   /* Формирование элементов ленты с инлайн-разделителями между днями
      и расчётом непрерывных групп одного автора (Telegram-стиль). */
@@ -282,11 +345,32 @@ export function useVirtualMessagesFeed({
       (index: number) => feedItems[index]?.id ?? `item-${index}`,
       [feedItems]
     ),
-    gap: 4,
+    gap: appearance?.chatDensity === 'compact' ? 2 : appearance?.chatDensity === 'large' ? 6 : 4,
     overscan: 8,
     useFlushSync: false,
     scrollToFn,
   });
+
+  // Размеры меняются без смены сообщений: сбрасываем оценки невидимых строк.
+  const {
+    textSize,
+    chatDensity,
+    showMessageTime,
+    showMessageStatus,
+    showMessageAvatars,
+    groupConsecutiveMessages,
+  } = appearance ?? {};
+  useEffect(() => {
+    virtualizer.measure();
+  }, [
+    virtualizer,
+    textSize,
+    chatDensity,
+    showMessageTime,
+    showMessageStatus,
+    showMessageAvatars,
+    groupConsecutiveMessages,
+  ]);
 
   const triggerDateVisibility = useCallback(() => {
     setIsScrollingState(true);

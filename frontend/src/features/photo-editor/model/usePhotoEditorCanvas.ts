@@ -1,5 +1,6 @@
 import type { IEditorCrop, IEditorFilter, TEditorObject, TEditorTool } from './types';
 import { drawObject, drawSelection } from './editorCanvas';
+import { getImageExportConfig } from './imageExportConfig';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface Params {
@@ -174,16 +175,37 @@ export function usePhotoEditorCanvas({
       if (ctx) {
         ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
       }
-      const encode = (type: string, quality: number) =>
+      const encode = (type: string, quality?: number) =>
         new Promise<Blob | null>((resolve) => output.toBlob(resolve, type, quality));
-      // WebP, как и прочие фото в чате (encodeImage): при отправке снимок из
-      // редактора второй раз не пересжимается. Safari до 17 вместо WebP
-      // отдаёт PNG — тогда JPEG.
+
+      // Основной формат для всех исходников — WebP 0.92, как и в encodeImage (#565).
+      // WebP сохраняет прозрачность альфа-канала и обеспечивает эффективное сжатие.
       let blob = await encode('image/webp', 0.92);
-      if (!blob || blob.type !== 'image/webp') blob = await encode('image/jpeg', 0.94);
+
+      // Safari до 17 не поддерживает WebP в canvas.toBlob и возвращает PNG (либо null).
+      // Запасной путь (#565):
+      if (!blob || blob.type !== 'image/webp') {
+        const isPng = file.type?.toLowerCase() === 'image/png';
+        if (isPng) {
+          // Если браузер уже вернул PNG на запрос WebP (Safari < 17 по спецификации W3C),
+          // берем его, иначе кодируем в PNG для сохранения прозрачности.
+          blob = blob && blob.type === 'image/png' ? blob : await encode('image/png');
+        } else {
+          // Для не-PNG исходников: JPEG 0.94 с белой подложкой, как в encodeOnMainThread.
+          // Иначе полупрозрачные края ложатся на чёрный фон.
+          if (ctx) {
+            ctx.globalCompositeOperation = 'destination-over';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, sw, sh);
+          }
+          blob = await encode('image/jpeg', 0.94);
+        }
+      }
+
       if (!blob) throw new Error('Не удалось подготовить изображение');
+
       const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
-      const extension = blob.type === 'image/webp' ? 'webp' : 'jpg';
+      const extension = getImageExportConfig(blob).extension;
       onSave(
         new File([blob], `${baseName}-edited.${extension}`, {
           type: blob.type,

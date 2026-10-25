@@ -124,7 +124,7 @@ func expectMIMEUploadInsert(mock sqlmock.Sqlmock, contentType string, size int64
 		metadata = sqlmock.AnyArg()
 	}
 	mock.ExpectQuery("INSERT INTO media\\.uploads").
-		WithArgs("user-id", "uploads", sqlmock.AnyArg(), "file.bin", contentType, size, encrypted, metadata).
+		WithArgs("user-id", "uploads", sqlmock.AnyArg(), "file.bin", contentType, size, encrypted, metadata, map[bool]string{true: "message", false: "unknown"}[encrypted]).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "uploader_id", "filename", "content_type", "size_bytes", "created_at"}).
 			AddRow(testUploadID, "user-id", "file.bin", contentType, size, "2026-01-01"))
 }
@@ -240,7 +240,7 @@ func TestMultipartRejectsMIMEBeforeOpeningFile(t *testing.T) {
 	handler, assertNoPersistence := newRejectedMIMEHandler(t)
 	// This header has no backing file; opening it fails. MIME must win over that error.
 	fh := &multipart.FileHeader{Filename: "file.html", Header: textproto.MIMEHeader{"Content-Type": {"text/html"}}}
-	if _, err := handler.service.Upload(context.Background(), "user-id", fh); !errors.Is(err, ErrBadType) {
+	if _, err := handler.service.Upload(context.Background(), "user-id", fh, "unknown"); !errors.Is(err, ErrBadType) {
 		t.Fatalf("Service.Upload error=%v, want ErrBadType before fh.Open", err)
 	}
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/media", nil)
@@ -325,7 +325,7 @@ func TestUploadRawCompensatesDBFailure(t *testing.T) {
 			handler, mock, store := newMediaTestHandler(t, defaultTestMaxUploadBytes)
 			dbError := errors.New("insert failed")
 			mock.ExpectQuery("INSERT INTO media\\.uploads").WillReturnError(dbError)
-			_, err := handler.service.UploadRaw(context.Background(), "user-id", "file.bin", contentType, []byte("data"), encrypted, "")
+			_, err := handler.service.UploadRaw(context.Background(), "user-id", "file.bin", contentType, []byte("data"), encrypted, "", "unknown")
 			if !errors.Is(err, dbError) || store.putCalls != 1 || store.deleteCalls != 1 {
 				t.Fatalf("err=%v Store.Put=%d Store.Delete=%d, want DB error and compensation", err, store.putCalls, store.deleteCalls)
 			}

@@ -60,6 +60,8 @@ export function ChatThreadPage() {
     loadOlder,
     readMark,
     markMessagesAsRead,
+    searchQuery,
+    searchCurrentId,
     threadError,
     selectedMessages,
     setSelectedMessages,
@@ -122,6 +124,7 @@ export function ChatThreadPage() {
       {modals.isPinnedMessagesOpen && (
         <PinnedMessagesView
           pinnedMessages={pinnedMessages}
+          threadMessages={messages}
           onClose={() => modals.setPinnedMessagesOpen(false)}
           isLoading={isLoading}
           error={threadError}
@@ -157,9 +160,12 @@ export function ChatThreadPage() {
             isLoading={isLoading}
             loadOlder={loadOlder}
             messages={messages}
+            threadMessages={messages}
             messagesRef={messagesRef}
             onCancelMessage={handleCancelMessage}
             onMessagesSeen={markMessagesAsRead}
+            searchCurrentId={searchCurrentId}
+            searchQuery={searchQuery}
             onOpenProfile={openProfile}
             onReact={handleReact}
             onOpenOriginal={chat?.type === 'self' ? openOriginal : undefined}

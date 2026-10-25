@@ -404,6 +404,7 @@ describe('service worker (#880)', () => {
         chatType: 'private',
         actorName: 'Игорь',
         lang: 'ru',
+        silent: false,
       });
 
       const [title, options] = shown()[0];
@@ -428,6 +429,20 @@ describe('service worker (#880)', () => {
       expect(title).toBe('Команда');
       expect(options.body).toBe('Oleg: New message');
     });
+
+    it.each(['message', 'call', 'missed_call'])(
+      '%s применяет server silent и не включает звук для старого/битого payload',
+      async (kind) => {
+        for (const silent of [true, false, undefined, null, 'false']) {
+          await worker.push({ v: 1, kind, chatId: 'c1', lang: 'ru', silent });
+          const [, options] = shown().at(-1)!;
+          const quiet = kind === 'missed_call' || silent !== false;
+          expect(options.silent).toBe(quiet);
+          expect(options.renotify).toBe(!quiet);
+          expect(options.vibrate).toBeUndefined();
+        }
+      }
+    );
 
     it('входящий звонок держится на экране; пропущенный заменяет его тем же тегом', async () => {
       await worker.push({

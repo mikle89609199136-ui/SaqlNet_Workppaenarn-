@@ -160,3 +160,83 @@ describe('отметка чата прочитанным', () => {
     expect(unreadInList(queryClient)).toBe(3);
   });
 });
+
+describe('personal mute #725', () => {
+  it.each([false, true])(
+    'сохраняет toggle mute=%s и обновляет list/archive/detail',
+    async (muted) => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      });
+      const chat = makeChat({ isMuted: muted, unreadCount: 3 });
+      client.setQueryData(chatKeys.list(), [chat]);
+      client.setQueryData(chatKeys.archived(), [chat]);
+      client.setQueryData(chatKeys.detail(chat.id), chat);
+      let finish!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      let sent: unknown;
+      server.use(
+        http.post(api('/chats/:chatId/mute'), async ({ request }) => {
+          sent = await request.json();
+          await gate;
+          return HttpResponse.json({ success: true });
+        }),
+        http.delete(api('/chats/:chatId/mute'), async () => {
+          sent = 'DELETE';
+          await gate;
+          return HttpResponse.json({ success: true });
+        })
+      );
+      const { result } = renderHook(() => useChatActions(), { wrapper: wrapperWith(client) });
+      act(() => result.current.toggleMute(chat));
+      await waitFor(() =>
+        expect(client.getQueryData<IChatDto>(chatKeys.detail(chat.id))?.isMuted).toBe(!muted)
+      );
+      expect(client.getQueryData<IChatDto[]>(chatKeys.list())?.[0]).toMatchObject({
+        isMuted: !muted,
+        unreadCount: 3,
+      });
+      expect(client.getQueryData<IChatDto[]>(chatKeys.archived())?.[0].isMuted).toBe(!muted);
+      await waitFor(() => expect(sent).toEqual(muted ? 'DELETE' : {}));
+      await act(async () => finish());
+      await waitFor(() => expect(result.current.isMutePending).toBe(false));
+    }
+  );
+
+  it('при ошибке возвращает mute, сохраняя новые unread и соседние поля', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const chat = makeChat({ isMuted: false, unreadCount: 3 });
+    client.setQueryData(chatKeys.list(), [chat]);
+    client.setQueryData(chatKeys.detail(chat.id), chat);
+    let finish!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    server.use(
+      http.post(api('/chats/:chatId/mute'), async () => {
+        await gate;
+        return HttpResponse.json({}, { status: 500 });
+      })
+    );
+    const { result } = renderHook(() => useChatActions(), { wrapper: wrapperWith(client) });
+    act(() => result.current.toggleMute(chat));
+    await waitFor(() =>
+      expect(client.getQueryData<IChatDto>(chatKeys.detail(chat.id))?.isMuted).toBe(true)
+    );
+    client.setQueryData(chatKeys.list(), [
+      { ...chat, isMuted: true, unreadCount: 9, hideNotificationPreview: true },
+    ]);
+    await act(async () => finish());
+    await waitFor(() => expect(result.current.isMutePending).toBe(false));
+    expect(client.getQueryData<IChatDto[]>(chatKeys.list())?.[0]).toMatchObject({
+      isMuted: false,
+      unreadCount: 9,
+      hideNotificationPreview: true,
+    });
+    expect(client.getQueryData<IChatDto>(chatKeys.detail(chat.id))?.isMuted).toBe(false);
+  });
+});

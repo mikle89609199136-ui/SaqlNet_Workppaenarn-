@@ -1077,11 +1077,13 @@ func TestUpdateProfile_WritesToProfilesNotAuthUsers(t *testing.T) {
 	// fails with "call to Exec/Query ... was not expected", which is exactly
 	// the regression we want to catch. Args are asserted in call order:
 	// (user_id, first_name, last_name, bio, avatar_url).
+	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE users\.profiles SET`).
 		WithArgs("user-id", newFirstName, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	// profileByID after the update.
+	mock.ExpectCommit()
 	mock.ExpectQuery(`SELECT au\.id::text, au\.username`).
 		WithArgs("user-id").
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -1127,10 +1129,12 @@ func TestUpdateProfile_AllNilArgs_DoesNotFallOver(t *testing.T) {
 		WithArgs("user-id").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
+	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE users\.profiles SET`).
 		WithArgs("user-id", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
+	mock.ExpectCommit()
 	mock.ExpectQuery(`SELECT au\.id::text, au\.username`).
 		WithArgs("user-id").
 		WillReturnRows(sqlmock.NewRows([]string{

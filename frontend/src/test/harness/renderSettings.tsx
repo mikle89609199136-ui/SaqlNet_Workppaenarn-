@@ -11,7 +11,7 @@ import { AppearanceSection } from '@/pages/settings/ui/sections/AppearanceSectio
 import { LanguageSection } from '@/pages/settings/ui/sections/LanguageSection';
 import { NotificationsSection } from '@/pages/settings/ui/sections/NotificationsSection';
 import { PrivacySection } from '@/pages/settings/ui/sections/PrivacySection';
-import { useProfileStore, userKeys } from '@/entities/user';
+import { useApplyPreferences, useProfileStore, userKeys } from '@/entities/user';
 import type { ISettingsDto, IUserDto } from '@/types';
 import { makeUser } from '@/test/fixtures';
 import { testI18n } from './i18n';
@@ -44,6 +44,11 @@ const SECTION_ELEMENTS: Record<TSettingsSection, ReactElement> = {
   language: <LanguageSection />,
   about: <AboutSection />,
 };
+
+function Preferences() {
+  useApplyPreferences();
+  return null;
+}
 
 export { createTestQueryClient };
 
@@ -129,6 +134,7 @@ export function renderSettings({
         {/* В приложении стек тостов стоит в корневом макете. Без него
             сообщение об ошибке сохранения некому показать, и тест не смог бы
             проверить то, что видит человек. */}
+        <Preferences />
         <ToastStack />
         <RouterProvider router={router} />
       </I18nextProvider>

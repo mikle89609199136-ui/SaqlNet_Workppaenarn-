@@ -13,6 +13,7 @@ import { testI18n } from '@/test/harness/i18n';
 import { eventBus } from '@/shared/lib/event-bus';
 import { queryClient, resetRealtimeSocketForTests } from '@/shared/api';
 import { useCallStore } from '@/features/call';
+import { useMessageSearchStore } from '@/features/message-search';
 import { registerChatResolver, useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
 import { clearOutbox } from '@/entities/message';
@@ -256,6 +257,7 @@ afterEach(() => {
   useProfileStore.setState(useProfileStore.getInitialState(), true);
   clearToasts();
   clearOutbox();
+  useMessageSearchStore.getState().close();
   setVoiceVolume(1);
 
   localStorage.clear();
