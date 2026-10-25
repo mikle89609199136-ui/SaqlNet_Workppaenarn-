@@ -1,4 +1,5 @@
 import { useCall } from '@/features/call';
+import { MessageSearchBar, useMessageSearchStore } from '@/features/message-search';
 import type { IProfileModal } from '@/entities/user';
 import {
   chatQuery,
@@ -42,6 +43,9 @@ export const ChatThreadHeader = ({
   const typingLabel = useTypingLabel(chat);
   // «Был(а) 5 минут назад» пересчитывается, пока шапка открыта.
   const now = useNow();
+  const isSearching = useMessageSearchStore((state) => state.chatId === chatId);
+  const openSearch = useMessageSearchStore((state) => state.open);
+  const closeSearch = useMessageSearchStore((state) => state.close);
 
   if (!chat) return;
 
@@ -60,6 +64,7 @@ export const ChatThreadHeader = ({
   // панель, и повторное открытие обходится кешем (#232).
   function openChatProfile() {
     if (!setProfileModal) return;
+    closeSearch();
 
     if (profileModal?.isOpen) {
       setProfileModal({ isOpen: false, userId: null });
@@ -116,6 +121,14 @@ export const ChatThreadHeader = ({
     );
   }
 
+  if (isSearching) {
+    return (
+      <header className={headerClass}>
+        <MessageSearchBar />
+      </header>
+    );
+  }
+
   return (
     <header className={headerClass}>
       {backToChats}
@@ -166,7 +179,18 @@ export const ChatThreadHeader = ({
       </button>
 
       <div className="flex shrink-0 items-center gap-0.5">
-        {/* Поиск по переписке появится с #841. */}
+        <Button
+          aria-label={t('messageSearch.open', 'Поиск по чату')}
+          iconOnly
+          onClick={() => {
+            setProfileModal?.({ isOpen: false, userId: null });
+            openSearch(chatId);
+          }}
+          title={t('messageSearch.open', 'Поиск по чату')}
+          variant="ghost"
+        >
+          <Icon className="size-5" name="search" />
+        </Button>
         {/* Звонки — только один на один (#715): в группе кнопок нет. */}
         {CALLS_ENABLED && chat.type === 'private' && (
           <>

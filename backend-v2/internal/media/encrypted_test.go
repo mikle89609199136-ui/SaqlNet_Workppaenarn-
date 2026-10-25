@@ -169,7 +169,7 @@ func testEnvelopeRoundTrip(t *testing.T, file map[string]any, fallback, wantName
 	handler, mock, store := newMediaTestHandler(t, defaultTestMaxUploadBytes)
 	saved := &savedEnvelopeArgument{}
 	mock.ExpectQuery("INSERT INTO media\\.uploads").
-		WithArgs("user-id", "uploads", sqlmock.AnyArg(), wantName, wantMIME, len(ciphertext), true, saved).
+		WithArgs("user-id", "uploads", sqlmock.AnyArg(), wantName, wantMIME, len(ciphertext), true, saved, "message").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "uploader_id", "filename", "content_type", "size_bytes", "created_at"}).
 			AddRow(testUploadID, "user-id", wantName, wantMIME, len(ciphertext), "2026-01-01"))
 	upload := performUpload(t, handler, envelopeRequest(t, file, fallback))

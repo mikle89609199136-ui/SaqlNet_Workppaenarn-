@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { Outlet, useParams } from 'react-router-dom';
 import type { IProfileState } from '@/entities/user';
 import { BlockUserButton } from '@/features/block-user';
+import { MessageSearchResults, useMessageSearchStore } from '@/features/message-search';
 import type { IProfileActionsTarget, IProfileCall } from '@/features/user-profile';
 
 /* Действия с чужим профилем — блокировка (#727). На уровне модуля:
@@ -82,6 +83,13 @@ export function ChatsPage() {
   }, [profileOpen]);
 
   const shownProfile = profileOpen ? profileState : leavingProfile;
+  const searchOpen = useMessageSearchStore((state) => Boolean(chatId) && state.chatId === chatId);
+  const closeSearch = useMessageSearchStore((state) => state.close);
+
+  // Поиск живёт, пока открыт тот же чат: смена ширины окна пересоздаёт
+  // страницу переписки, но не должна сбрасывать запрос.
+  useEffect(() => closeSearch, [chatId, closeSearch]);
+  const slotOpen = profileOpen || searchOpen;
 
   const closeProfile = () => {
     setProfileState(CLOSED_PROFILE);
@@ -218,44 +226,51 @@ export function ChatsPage() {
         className={cn(
           'group shrink-0 overflow-hidden rounded-window',
           `transition-[width,margin] duration-[320ms] ${PANEL_EASE} motion-reduce:transition-none`,
-          'w-0 data-[state=open]:w-85',
+          'w-0 data-[state=open]:w-85 max-lg:data-[kind=search]:hidden',
           'max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-20 max-lg:data-[state=open]:shadow-[var(--shadow-menu)]',
           'lg:data-[state=open]:ml-2.5 lg:data-[state=open]:w-75 xl:data-[state=open]:ml-3 xl:data-[state=open]:w-80'
         )}
-        data-state={profileOpen ? 'open' : 'closed'}
+        data-kind={searchOpen ? 'search' : 'profile'}
+        data-state={slotOpen ? 'open' : 'closed'}
         id="profile-slot"
-        inert={!profileOpen}
+        inert={!slotOpen}
       >
-        {shownProfile && (
-          <div
-            className={cn(
-              /* Ширина своя, не панели: пока панель раздвигается, текст
-                 внутри не должен переливаться по строкам. */
-              'h-full w-85 overflow-hidden rounded-window bg-sheet lg:w-75 xl:w-80',
-              `[transition:transform_320ms_cubic-bezier(0.2,0.8,0.2,1),opacity_240ms_ease] motion-reduce:transition-none`,
-              'starting:translate-x-12 starting:opacity-0',
-              'group-data-[state=closed]:translate-x-12 group-data-[state=closed]:opacity-0'
-            )}
-          >
-            {shownProfile.kind === 'group' && chatId ? (
-              <GroupInfoPanel
-                chatId={chatId}
-                key={chatId}
-                onClose={closeProfile}
-                startCall={startProfileCall}
-              />
-            ) : shownProfile.kind === 'saved' && chatId ? (
-              // «Избранное»: вместо профиля — общее в нём (#1075).
-              <SavedMessagesPanel chatId={chatId} key={chatId} onClose={closeProfile} />
-            ) : (
-              <UserProfilePanel
-                onClose={closeProfile}
-                profileState={shownProfile}
-                renderActions={renderProfileActions}
-                startCall={startProfileCall}
-              />
-            )}
+        {searchOpen ? (
+          <div className="h-full w-85 overflow-hidden rounded-window bg-sheet lg:w-75 xl:w-80">
+            <MessageSearchResults />
           </div>
+        ) : (
+          shownProfile && (
+            <div
+              className={cn(
+                /* Ширина своя, не панели: пока панель раздвигается, текст
+                 внутри не должен переливаться по строкам. */
+                'h-full w-85 overflow-hidden rounded-window bg-sheet lg:w-75 xl:w-80',
+                `[transition:transform_320ms_cubic-bezier(0.2,0.8,0.2,1),opacity_240ms_ease] motion-reduce:transition-none`,
+                'starting:translate-x-12 starting:opacity-0',
+                'group-data-[state=closed]:translate-x-12 group-data-[state=closed]:opacity-0'
+              )}
+            >
+              {shownProfile.kind === 'group' && chatId ? (
+                <GroupInfoPanel
+                  chatId={chatId}
+                  key={chatId}
+                  onClose={closeProfile}
+                  startCall={startProfileCall}
+                />
+              ) : shownProfile.kind === 'saved' && chatId ? (
+                // «Избранное»: вместо профиля — общее в нём (#1075).
+                <SavedMessagesPanel chatId={chatId} key={chatId} onClose={closeProfile} />
+              ) : (
+                <UserProfilePanel
+                  onClose={closeProfile}
+                  profileState={shownProfile}
+                  renderActions={renderProfileActions}
+                  startCall={startProfileCall}
+                />
+              )}
+            </div>
+          )
         )}
       </div>
     </div>

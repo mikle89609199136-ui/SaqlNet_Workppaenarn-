@@ -1673,10 +1673,13 @@ func TestHandler_UpdateGroup(t *testing.T) {
 					WithArgs(chatID, actorID).
 					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
 
+				mock.ExpectBegin()
 				mock.ExpectExec(`UPDATE chats\.chats SET title = COALESCE`).
 					WithArgs("Updated Group", "New description", "https://example.com/new-avatar.png", chatID).
 					WillReturnResult(sqlmock.NewResult(0, 1))
 
+				mock.ExpectExec("DELETE FROM media.upload_refs").WithArgs(chatID).WillReturnResult(sqlmock.NewResult(0, 0))
+				mock.ExpectCommit()
 				mock.ExpectQuery(`SELECT c\.id::text, c\.type, .+ FROM chats\.chats c`).
 					WithArgs(actorID, chatID).
 					WillReturnRows(newChatRow("Updated Group", "New description", "https://example.com/new-avatar.png"))
@@ -1720,10 +1723,13 @@ func TestHandler_UpdateGroup(t *testing.T) {
 					WithArgs(chatID, actorID).
 					WillReturnRows(sqlmock.NewRows([]string{"type", "role"}).AddRow("group", "owner"))
 
+				mock.ExpectBegin()
 				mock.ExpectExec(`UPDATE chats\.chats SET title = COALESCE`).
 					WithArgs("Trimmed", "desc", "https://example.com/a.png", chatID).
 					WillReturnResult(sqlmock.NewResult(0, 1))
 
+				mock.ExpectExec("DELETE FROM media.upload_refs").WithArgs(chatID).WillReturnResult(sqlmock.NewResult(0, 0))
+				mock.ExpectCommit()
 				mock.ExpectQuery(`SELECT c\.id::text, c\.type, .+ FROM chats\.chats c`).
 					WithArgs(actorID, chatID).
 					WillReturnRows(newChatRow("Trimmed", "desc", "https://example.com/a.png"))

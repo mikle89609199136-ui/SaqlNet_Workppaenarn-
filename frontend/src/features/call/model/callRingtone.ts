@@ -61,10 +61,10 @@ function playBurst(ctx: AudioContext): void {
  * Воспроизводит первый звуковой импульс немедленно при старте и повторяет каждые 2 секунды.
  * При блокировке Autoplay Policy регистрирует разблокировку при первом клике или нажатии клавиши.
  */
-export function startRingtone(): void {
+export function startRingtone(allowed: () => boolean = () => true): void {
   stopRingtone();
 
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !allowed()) return;
 
   let ctx: AudioContext | null = null;
   let ringtoneTimer: ReturnType<typeof setInterval> | null = null;
@@ -98,7 +98,7 @@ export function startRingtone(): void {
           void ctx
             .resume()
             .then(() => {
-              if (ctx && ctx.state === 'running') {
+              if (ctx && ctx.state === 'running' && allowed()) {
                 playBurst(ctx);
               }
             })
@@ -115,6 +115,10 @@ export function startRingtone(): void {
     }
 
     ringtoneTimer = setInterval(() => {
+      if (!allowed()) {
+        stopRingtone();
+        return;
+      }
       if (ctx) {
         playBurst(ctx);
       }
@@ -124,6 +128,10 @@ export function startRingtone(): void {
       try {
         navigator.vibrate([400, 200, 400, 1000]);
         vibrateTimer = setInterval(() => {
+          if (!allowed()) {
+            stopRingtone();
+            return;
+          }
           try {
             navigator.vibrate([400, 200, 400, 1000]);
           } catch {

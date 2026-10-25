@@ -108,6 +108,7 @@
   --color-press: var(--press-light);
   --color-hl: var(--hl-light); /* найденное в тексте */
   --color-hl-current: var(--hl-current-light); /* текущее совпадение — «hl-cur» */
+  --color-on-hl-current: var(--hl-ink);
   --color-muted-badge: var(--muted-badge-light);
   --color-spoiler: var(--spoiler-light);
 

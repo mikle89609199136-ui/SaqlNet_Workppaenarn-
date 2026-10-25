@@ -19,40 +19,25 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Geologica:wght@300..800&family=JetBrains+Mono:wght@400;500&family=Noto+Color+Emoji&display=swap" rel="stylesheet">
     <script>
-      /*
-        Тема ставится до первой отрисовки, иначе экран мигнёт тёмной темой,
-        пока грузится приложение: атрибут в <html> задан по умолчанию, а
-        настоящее значение придёт только с ответом сервера.
-
-        Здесь читается проекция настроек — копия того, что уже подтвердил
-        сервер. Источник правды не она, а кеш запросов: приложение перезапишет
-        атрибут, как только настройки загрузятся.
-      */
+      /* Проекция подтверждённых preferences владельца, до первого paint.
+         Не является источником настроек и не отправляется обратно серверу. */
       (function () {
         try {
-          var raw = localStorage.getItem('craneapp_settings');
-          var theme = raw && JSON.parse(raw).theme;
-          if (theme === 'light' || theme === 'dark') {
-            document.documentElement.setAttribute('data-theme', theme);
+          var user = JSON.parse(localStorage.getItem('craneapp_user_data') || 'null');
+          var look = JSON.parse(localStorage.getItem('craneapp_settings') || 'null');
+          if (!user || !look || !user.id || look.ownerId !== user.id) return;
+          var root = document.documentElement;
+          if (/^(light|dark|system)$/.test(look.theme)) {
+            root.setAttribute('data-theme-preference', look.theme);
+            root.setAttribute('data-theme', look.theme === 'system'
+              ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : look.theme);
           }
+          if (/^(graphite|midnight|warm)$/.test(look.palette)) root.setAttribute('data-palette', look.palette);
+          if (/^(violet|plum|orchid|indigo|amber|teal)$/.test(look.accentPreset)) root.setAttribute('data-accent', look.accentPreset);
+          if (/^(small|medium|large)$/.test(look.textSize)) root.setAttribute('data-text-size', look.textSize);
+          if (/^(compact|normal|large)$/.test(look.chatDensity)) root.setAttribute('data-chat-density', look.chatDensity);
         } catch (e) {
-          /* приватный режим — останется значение по умолчанию */
-        }
-
-        /* Палитра и акцент (#828): пока их хранит только браузер, это не
-           проекция, а сам выбор — см. entities/user/model/appearanceStore.
-           Незнакомое значение пропускается: без атрибута действует
-           палитра и акцент по умолчанию. */
-        try {
-          var look = JSON.parse(localStorage.getItem('craneapp_appearance') || '{}');
-          if (look.palette === 'midnight' || look.palette === 'warm') {
-            document.documentElement.setAttribute('data-palette', look.palette);
-          }
-          if (/^(plum|orchid|indigo|amber|teal)$/.test(look.accent)) {
-            document.documentElement.setAttribute('data-accent', look.accent);
-          }
-        } catch (e) {
-          /* приватный режим — палитра и акцент по умолчанию */
+          /* Повреждённое/недоступное хранилище: умолчания, затем ответ API. */
         }
       })();
     </script>

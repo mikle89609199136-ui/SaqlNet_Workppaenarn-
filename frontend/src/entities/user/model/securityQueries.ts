@@ -1,6 +1,7 @@
-import { queryOptions } from '@tanstack/react-query';
+import { CancelledError, queryOptions } from '@tanstack/react-query';
 import { services } from '@/services/serviceContainer';
 import { userKeys } from './userKeys';
+import { settingsSession, isSettingsSession } from './settingsSession';
 
 /**
  * Список активных сеансов.
@@ -13,9 +14,16 @@ import { userKeys } from './userKeys';
  * действиям в этой вкладке, и показывать его из кеша нельзя.
  */
 export function sessionsQuery() {
+  const session = settingsSession();
   return queryOptions({
-    queryKey: userKeys.sessions(),
-    queryFn: () => services.authService.getSessions(),
+    queryKey: userKeys.sessions(session),
+    queryFn: async ({ signal }) => {
+      const sessions = await services.authService.getSessions();
+      if (signal.aborted || !isSettingsSession(session)) throw new CancelledError();
+      return sessions;
+    },
     staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }

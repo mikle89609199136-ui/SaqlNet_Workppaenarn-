@@ -193,7 +193,9 @@ function notificationFor(data) {
   const text = PUSH_TEXT[data.lang] || PUSH_TEXT.ru;
   const name = data.actorName || text.fallback;
   const url = data.chatId ? '/chats/' + encodeURIComponent(data.chatId) : '/';
-  const base = { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url } };
+  // Старые payload без policy тоже показываем, но без непроверенного звука.
+  const silent = data.kind === 'missed_call' || data.silent !== false;
+  const base = { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url }, silent };
 
   if (data.kind === 'call' || data.kind === 'missed_call') {
     const missed = data.kind === 'missed_call';
@@ -203,7 +205,7 @@ function notificationFor(data) {
         body: missed ? text.missedCall : data.callKind === 'video' ? text.videoCall : text.call,
         // Пропущенный заменяет входящий: тот же тег.
         tag: 'call:' + (data.roomId || data.chatId),
-        renotify: !missed,
+        renotify: !missed && !silent,
         requireInteraction: !missed,
       }),
     };
@@ -217,7 +219,7 @@ function notificationFor(data) {
       body: group ? name + ': ' + text.message : text.message,
       // Одно уведомление на чат, и каждое новое звучит (см. showPush).
       tag: 'chat:' + data.chatId,
-      renotify: true,
+      renotify: !silent,
     }),
     closePrevious: true,
   };

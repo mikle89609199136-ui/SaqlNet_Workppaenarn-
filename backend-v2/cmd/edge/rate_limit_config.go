@@ -19,6 +19,7 @@ type rateLimitConfig struct {
 	usernameCheck bucketConfig
 	messageWrite  bucketConfig
 	messageRead   bucketConfig
+	mediaDownload bucketConfig
 	mediaUpload   bucketConfig
 	calls         bucketConfig
 	mls           bucketConfig
@@ -55,6 +56,7 @@ func loadRateLimitConfig() rateLimitConfig {
 		usernameCheck: loadBucketConfig("USERNAME_CHECK", perSecond(2), 5),
 		messageWrite:  loadBucketConfig("MESSAGE_WRITE", perSecond(5), 20),
 		messageRead:   loadBucketConfig("MESSAGE_READ", perSecond(20), 40),
+		mediaDownload: loadBucketConfig("MEDIA_DOWNLOAD", perSecond(20), 60),
 		mediaUpload:   loadBucketConfig("MEDIA_UPLOAD", perMinute(60), 30),
 		calls:         loadBucketConfig("CALLS", perMinute(30), 15),
 		mls:           loadBucketConfig("MLS", perSecond(5), 10),
@@ -183,6 +185,8 @@ func (cfg rateLimitConfig) bucketFor(group routeGroup) bucketConfig {
 		return cfg.messageWrite
 	case routeGroupMessageRead:
 		return cfg.messageRead
+	case routeGroupMediaDownload:
+		return cfg.mediaDownload
 	case routeGroupMediaUpload:
 		return cfg.mediaUpload
 	case routeGroupCalls:

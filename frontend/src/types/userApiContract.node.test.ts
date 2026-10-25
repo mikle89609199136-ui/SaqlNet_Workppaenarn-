@@ -239,6 +239,24 @@ describe('Исполнимый контракт User API (#453)', () => {
     expect(api.paths['/chats/{chatId}/mute'].$ref).toContain('chats.yaml');
   });
 
+  it('описывает push v1 со строгим silent и без plaintext или приватных settings', () => {
+    const payload = {
+      v: 1,
+      kind: 'message',
+      chatId: '10420000-0000-4000-8000-000000000001',
+      chatType: 'private',
+      actorName: 'Имя',
+      lang: 'ru',
+      silent: true,
+    } satisfies components['schemas']['PushNotificationPayload'];
+    expect(accepts('PushNotificationPayload', payload)).toBe(true);
+    expect(accepts('PushNotificationPayload', { ...payload, silent: false })).toBe(true);
+    expect(accepts('PushNotificationPayload', { ...payload, silent: 'false' })).toBe(false);
+    expect(accepts('PushNotificationPayload', { ...payload, silent: undefined })).toBe(false);
+    expect(accepts('PushNotificationPayload', { ...payload, content: 'секрет' })).toBe(false);
+    expect(accepts('PushNotificationPayload', { ...payload, settings: {} })).toBe(false);
+  });
+
   it('ограничивает типы, диапазоны и ключи compatibility-разделов', () => {
     expect(accepts('LegacySoundSettings', { notificationsVolume: 0, mediaVolume: 100 })).toBe(true);
     expect(accepts('LegacySoundSettings', { notificationsVolume: -1 })).toBe(false);

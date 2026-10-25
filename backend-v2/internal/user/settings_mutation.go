@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 
+	"craneapp/backend-v2/internal/platform/notificationpolicy"
 	"craneapp/backend-v2/internal/platform/privacy"
 )
 
@@ -51,12 +52,16 @@ func scanSettingsSections(row interface{ Scan(...any) error }, includeDefaults b
 	out.SoundSettings = normalize("sound_settings", rawSounds)
 	out.StorageSettings = normalize("storage_settings", rawStorage)
 	out.AdvancedSettings = normalize("advanced_settings", rawAdvanced)
+	if includeDefaults {
+		notificationpolicy.FromMap(out.Settings).ProjectSound(out.SoundSettings)
+	}
 	return out, nil
 }
 
 // mutateSettings принимает уже проверенный patch. Все read-modify-write writers
 // используют один порядок: ensure в tx → актуальная строка FOR UPDATE → merge.
-// Будущий resolver #1042 должен вычислять aliases здесь, под той же блокировкой.
+// Canonical/alias patch уже разрешён до BEGIN; merge использует только
+// заблокированное актуальное состояние (#1042).
 func (s *Service) mutateSettings(ctx context.Context, userID string, input AllSettings) (AllSettings, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

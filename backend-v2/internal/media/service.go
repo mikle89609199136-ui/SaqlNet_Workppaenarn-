@@ -120,7 +120,7 @@ func sanitizeFilename(filename string) string {
 	return filename
 }
 
-func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType string, data []byte, isEncrypted bool, encryptionJSON string) (Upload, error) {
+func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType string, data []byte, isEncrypted bool, encryptionJSON, purpose string) (Upload, error) {
 	limit := s.maxUploadBytes
 	if isEncrypted {
 		limit = s.encryptedUploadLimit()
@@ -152,10 +152,10 @@ func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType s
 
 	var up Upload
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO media.uploads (uploader_id, bucket, object_key, filename, content_type, size_bytes, is_encrypted, encryption_key_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO media.uploads (uploader_id, bucket, object_key, filename, content_type, size_bytes, is_encrypted, encryption_key_id, purpose)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id::text, uploader_id::text, filename, content_type, size_bytes, created_at::text
-	`, userID, s.bucket, objectKey, filename, base, len(data), isEncrypted, encryptionJSON).
+	`, userID, s.bucket, objectKey, filename, base, len(data), isEncrypted, encryptionJSON, normalizeUploadPurpose(purpose)).
 		Scan(&up.ID, &up.UploaderID, &up.Filename, &up.ContentType, &up.SizeBytes, &up.CreatedAt)
 	if err != nil {
 		_ = s.store.Delete(ctx, s.bucket, objectKey)
@@ -174,10 +174,10 @@ func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64C
 		}
 		return Upload{}, fmt.Errorf("%w: %w", ErrInvalidCiphertext, err)
 	}
-	return s.UploadRaw(ctx, userID, filename, contentType, data, true, encryptionJSON)
+	return s.UploadRaw(ctx, userID, filename, contentType, data, true, encryptionJSON, "message")
 }
 
-func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileHeader) (Upload, error) {
+func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileHeader, purpose string) (Upload, error) {
 	base, ok := allowedMediaType(fh.Header.Get("Content-Type"))
 	if !ok {
 		return Upload{}, ErrBadType
@@ -194,7 +194,16 @@ func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileH
 		return Upload{}, err
 	}
 
-	return s.UploadRaw(ctx, userID, fh.Filename, base, data, false, "")
+	return s.UploadRaw(ctx, userID, fh.Filename, base, data, false, "", purpose)
+}
+
+func normalizeUploadPurpose(purpose string) string {
+	switch purpose {
+	case "message", "avatar", "gif", "sticker":
+		return purpose
+	default:
+		return "unknown"
+	}
 }
 
 func decodeBase64Payload(encoded string, maxBytes int64) ([]byte, error) {
@@ -252,7 +261,7 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		// URL из базы не скачиваем: только управляемые bucket/object_key.
 		err = s.db.QueryRowContext(ctx, `
 			SELECT bucket, object_key FROM media.stickers
-			WHERE id = $1 AND bucket <> '' AND object_key <> ''
+			WHERE EXISTS (SELECT 1 FROM media.sticker_packs p WHERE p.id = pack_id) AND id = $1 AND bucket <> '' AND object_key <> ''
 			UNION ALL
 			SELECT icon_bucket, icon_object_key FROM media.sticker_packs
 			WHERE id = $1 AND icon_bucket <> '' AND icon_object_key <> ''
@@ -305,7 +314,8 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		encodedSize := int64(base64.StdEncoding.EncodedLen(int(ciphertextSize)))
 		responseSize := int64(len(prefix)) + encodedSize + int64(len(suffix))
 
-		w.Header().Set("Cache-Control", "private, max-age=86400")
+		w.Header().Set("Cache-Control", "private, no-cache")
+		w.Header().Add("Vary", "Authorization, Cookie")
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Length", strconv.FormatInt(responseSize, 10))
 		w.WriteHeader(http.StatusOK)
@@ -338,6 +348,8 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 	}
 	defer object.Body.Close()
 
+	w.Header().Set("Cache-Control", "private, no-cache")
+	w.Header().Add("Vary", "Authorization, Cookie")
 	switch object.StatusCode {
 	case http.StatusOK, http.StatusPartialContent:
 	case http.StatusNotFound:
@@ -362,10 +374,6 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		w.Header().Set("Content-Disposition", "attachment")
 	}
 	w.Header().Set("Content-Type", mediaType)
-	// Файл по /media/{id} не меняется никогда: новое фото — новая загрузка и
-	// новый адрес. Без заголовка браузер не кешировал ничего, и аватарки на
-	// каждом запуске PWA качались заново. private — не для общих кешей.
-	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	copyObjectHeader(w.Header(), "Content-Range", object.ContentRange)
 	copyObjectHeader(w.Header(), "Accept-Ranges", object.AcceptRanges)
 	if w.Header().Get("Accept-Ranges") == "" {

@@ -19,6 +19,8 @@ import (
 	"craneapp/backend-v2/internal/auth"
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/blockevent"
+	"craneapp/backend-v2/internal/platform/mediarefs"
+	"craneapp/backend-v2/internal/platform/notificationpolicy"
 	"craneapp/backend-v2/internal/platform/privacy"
 	"craneapp/backend-v2/internal/platform/profileevent"
 	usernamepolicy "craneapp/backend-v2/internal/platform/username"
@@ -137,7 +139,27 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, l
 	if err := s.ensureProfile(ctx, userID); err != nil {
 		return Profile{}, err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Profile{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	uploadID := ""
+	if avatarURL != nil && strings.HasPrefix(*avatarURL, mediarefs.URLPrefix) {
+		var ok bool
+		uploadID, ok = mediarefs.UploadIDFromURL(*avatarURL)
+		if !ok {
+			return Profile{}, ErrInvalidInput
+		}
+		var owned bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM media.uploads WHERE id = $1 AND uploader_id = $2)`, uploadID, userID).Scan(&owned); err != nil {
+			return Profile{}, err
+		}
+		if !owned {
+			return Profile{}, ErrInvalidInput
+		}
+	}
+	_, err = tx.ExecContext(ctx, `
 		UPDATE users.profiles SET
 			first_name = COALESCE(NULLIF($2, ''), first_name),
 			last_name = COALESCE($3, last_name),
@@ -147,6 +169,14 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, l
 		WHERE user_id = $1
 	`, userID, stringOrNil(firstName), stringOrNil(lastName), stringOrNil(bio), stringOrNil(avatarURL))
 	if err != nil {
+		return Profile{}, err
+	}
+	if avatarURL != nil {
+		if err := mediarefs.ReplaceOwner(ctx, tx, mediarefs.Avatar, userID, uploadID); err != nil {
+			return Profile{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return Profile{}, err
 	}
 	return s.profileByID(ctx, userID)
@@ -618,7 +648,11 @@ func (s *Service) UpdateAllSettings(ctx context.Context, userID string, input Al
 	}
 	// Проверены оба поля, включая alias, проигравший canonical textSize.
 	input.Settings = appearancePatch(input.Settings)
-	_, err := s.mutateSettings(ctx, userID, input)
+	input, err := notificationPatch(input)
+	if err != nil {
+		return err
+	}
+	_, err = s.mutateSettings(ctx, userID, input)
 	return err
 }
 
@@ -700,11 +734,19 @@ func (s *Service) UpdatePreference(ctx context.Context, userID, column string, p
 		input.AdvancedSettings = patch
 		result = func(state AllSettings) map[string]any { return state.AdvancedSettings }
 	}
+	input, err := notificationPatch(input)
+	if err != nil {
+		return nil, err
+	}
 	current, err := s.mutateSettings(ctx, userID, input)
 	if err != nil {
 		return nil, err
 	}
-	return withSettingsDefaults(column, result(current)), nil
+	out := withSettingsDefaults(column, result(current))
+	if column == "sound_settings" {
+		notificationpolicy.FromMap(current.Settings).ProjectSound(out)
+	}
+	return out, nil
 }
 
 func (s *Service) Folders(ctx context.Context, userID string) ([]any, error) {
@@ -963,7 +1005,13 @@ func (s *Service) jsonColumn(ctx context.Context, userID, column string) (map[st
 	case "notification_settings":
 		q = `SELECT notification_settings FROM users.settings WHERE user_id = $1`
 	case "sound_settings":
-		q = `SELECT sound_settings FROM users.settings WHERE user_id = $1`
+		var settings []byte
+		if err := s.db.QueryRowContext(ctx, `SELECT sound_settings, settings FROM users.settings WHERE user_id=$1`, userID).Scan(&raw, &settings); err != nil {
+			return nil, err
+		}
+		out := normalizeStoredSettings(column, raw)
+		notificationpolicy.Read(settings).ProjectSound(out)
+		return out, nil
 	case "advanced_settings":
 		q = `SELECT advanced_settings FROM users.settings WHERE user_id = $1`
 	case "storage_settings":

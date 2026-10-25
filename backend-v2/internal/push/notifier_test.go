@@ -181,7 +181,7 @@ func TestPayloadHasOnlyKnownFields(t *testing.T) {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	if strings.Join(keys, ",") != "actorName,chatId,chatType,kind,lang,v" {
+	if strings.Join(keys, ",") != "actorName,chatId,chatType,kind,lang,silent,v" {
 		t.Fatalf("payload fields = %v", keys)
 	}
 }
