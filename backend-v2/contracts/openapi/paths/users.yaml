@@ -307,7 +307,7 @@
     description: >-
       Deprecated compatibility snapshot (#498/#454). Use GET /users/settings for MVP settings/privacy.
       Passcode fields are read-only; exceptions, blocklist, subscriptions and sessions are separate resources.
-      After #1042, sound aliases are resolved from canonical flags (#496).
+      Sound aliases are resolved from canonical flags by #1042 (#496); compatibility-only details remain stored.
     tags:
       - Users
     summary: Get legacy settings snapshot
@@ -341,7 +341,7 @@
       Bulk and legacy section read-modify-write share a row-locked transaction (#1047), preserving disjoint
       concurrent patches. Row creation and all section changes roll back on update or commit failure.
       Strict root/section/leaf validation runs before SQL
-      (#495). After #1042, canonical sound flags win over aliases as specified in #496; conflicting aliases
+      (#495). Canonical sound flags win over aliases as specified in #496/#1042; conflicting submitted message aliases without canonical sounds
       fail without writes.
     tags:
       - Users
@@ -384,7 +384,7 @@
       Canonical MVP settings read (#498). Returns the authenticated owner's settings and privacy in separate
       objects; never another user's settings. Detailed legacy notification/sound/storage sections are not
       included. Typed field contract is #453; shared read defaults are implemented in #451. Appearance compatibility (#1040) resolves a valid stored
-      textSize before legacy fontSize and the default, without backfill. Notification migration remains #1042.
+      textSize before legacy fontSize and the default, without backfill. One-time notification migration and alias projections are implemented by #1042.
     responses:
       '200': {description: Own account settings and privacy, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/SettingsResponse}}}}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
@@ -413,9 +413,9 @@
       Patch. Returns the resulting settings object in a settings envelope. Privacy is changed only via PUT
       /users/privacy. Typed keys are fixed in #453 and validated before SQL (#495). Stored legacy data is
       normalized on reads; shared read defaults are implemented in #451. Appearance compatibility is
-      implemented in #1040; notification migration remains #1042.
+      implemented in #1040; notification migration/resolver are implemented by #1042.
       Notification preferences are stored in settings.notifications/sounds/callSounds (#496). Legacy sound
-      aliases and read normalization require #1042; consumers apply effective policy in #725.
+      aliases and read normalization are implemented by #1042; browser fallback/ringtone consumers remain #725.
     requestBody:
       required: true
       description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
@@ -586,8 +586,7 @@
     description: >-
       Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of
       /users/settings. New MVP consumers use /users/settings. Global preferences are
-      settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042;
-      until then this route retains its legacy behavior.
+      settings.notifications/sounds/callSounds (#496). One-time migration and alias projections are implemented by #1042.
     tags:
       - Users
     summary: Get notification settings
@@ -614,8 +613,7 @@
     description: >-
       Legacy detailed notification settings, deprecated by #498. Kept for compatibility, not an alias of
       /users/settings. New MVP consumers use /users/settings. Global preferences are
-      settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042;
-      until then this route retains its legacy behavior. Closed keys, types, ranges and null leaves are
+      settings.notifications/sounds/callSounds (#496). One-time migration and alias projections are implemented by #1042. Closed keys, types, ranges and null leaves are
       validated before SQL (#495).
     tags:
       - Users
@@ -650,10 +648,9 @@
   get:
     deprecated: true
     description: >-
-      Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of
-      /users/settings. New MVP consumers use /users/settings. Global preferences are
-      settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042;
-      until then this route retains its legacy behavior.
+      Legacy detailed sound settings, deprecated by #498. Compatibility fields remain stored; messagesSound/notificationsSound alias settings.sounds and callsSound
+      aliases settings.callSounds (#1042). New MVP consumers use /users/settings. Global preferences are
+      settings.notifications/sounds/callSounds (#496). One-time migration and alias projections are implemented by #1042.
     tags:
       - Users
     summary: Get sound settings
@@ -678,10 +675,9 @@
   put:
     deprecated: true
     description: >-
-      Legacy detailed sound settings, deprecated by #498. Kept for compatibility, not an alias of
-      /users/settings. New MVP consumers use /users/settings. Global preferences are
-      settings.notifications/sounds/callSounds (#496). Data migration and alias projections require #1042;
-      until then this route retains its legacy behavior. Closed keys, types, ranges and null leaves are
+      Legacy detailed sound settings, deprecated by #498. Compatibility fields remain stored; messagesSound/notificationsSound alias settings.sounds and callsSound
+      aliases settings.callSounds (#1042). New MVP consumers use /users/settings. Global preferences are
+      settings.notifications/sounds/callSounds (#496). One-time migration and alias projections are implemented by #1042. Closed keys, types, ranges and null leaves are
       validated before SQL (#495).
     tags:
       - Users

@@ -14,15 +14,28 @@ export interface IUserDto {
   badges: string[]; // неизвестно какое dto у бэйджа
 }
 
-type TNotificationPreferences = components['schemas']['NotificationPreferences'];
+type TNotificationPreferences = components['schemas']['MvpSettings'];
 
-/** Флаги берутся из общего контракта #496; callSounds может отсутствовать до #1042. */
+type TAppearancePreferences = Pick<
+  components['schemas']['MvpSettings'],
+  | 'palette'
+  | 'accentPreset'
+  | 'textSize'
+  | 'chatDensity'
+  | 'showMessageTime'
+  | 'showMessageStatus'
+  | 'showMessageAvatars'
+  | 'groupConsecutiveMessages'
+>;
+
+/** Типы полей согласованы с каноническим User API. Старые ответы могут быть частичными. */
 export interface ISettingsDto
   extends
+    TAppearancePreferences,
     Required<Pick<TNotificationPreferences, 'notifications' | 'sounds'>>,
     Pick<TNotificationPreferences, 'callSounds'> {
   language: string;
-  theme: 'dark' | 'light';
+  theme: NonNullable<components['schemas']['MvpSettings']['theme']>;
   /* Чем заменять фотографию, когда её нет: буквой или сеткой от
      идентификатора. Выбор вкусовой, поэтому вынесен человеку (#375). */
   avatarShape: 'letter' | 'grid';
@@ -40,14 +53,16 @@ export interface IPrivacyDto {
   photoVisibility: TPrivacyVisibility;
   /** Кто может ссылаться на мой аккаунт, пересылая мои сообщения (#785). */
   forwards: TPrivacyVisibility;
+  /** Кто может звонить (#714, #1043). */
+  calls: TPrivacyVisibility;
   messagesFromStrangers: boolean;
 }
 
 /**
  * Правила, у которых на экране есть исключения (#786) — те, что сервер
- * применяет. «Звонки» добавятся вместе с #714.
+ * применяет (#714, #1043).
  */
-export type TPrivacyRule = 'lastSeen' | 'photoVisibility' | 'forwards';
+export type TPrivacyRule = 'lastSeen' | 'photoVisibility' | 'forwards' | 'calls';
 
 /** allow — «Всегда разрешать», deny — «Никогда не разрешать». */
 export type TPrivacyExceptionMode = 'allow' | 'deny';

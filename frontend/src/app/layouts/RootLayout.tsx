@@ -1,9 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { Outlet } from 'react-router-dom';
 import { AvatarShapeProvider, ToastStack } from '@/shared/ui';
-import { DEFAULT_PROFILE_SETTINGS, settingsQuery, useApplyPreferences } from '@/entities/user';
+import {
+  DEFAULT_PROFILE_SETTINGS,
+  settingsQuery,
+  useApplyPreferences,
+  useSettingsSync,
+} from '@/entities/user';
 
 export const RootLayout = () => {
+  useSettingsSync();
   // Тема и язык — свойства всего приложения, а не страницы настроек:
   // выбранное там должно действовать и на входе, и в чатах.
   useApplyPreferences();

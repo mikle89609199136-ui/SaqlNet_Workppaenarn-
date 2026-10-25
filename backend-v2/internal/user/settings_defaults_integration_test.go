@@ -81,7 +81,7 @@ func TestSparseSettingsDefaultsAgreeAcrossHTTPViews(t *testing.T) {
 	require.Equal(t, before, api.snapshot(t))
 }
 
-func TestDefaultProjectionDoesNotPersistMissingFlagsDuringPatches(t *testing.T) {
+func TestReadProjectionDoesNotReplayLegacySoundFallback(t *testing.T) {
 	api := newSettingsAPI(t)
 	_, err := api.db.Exec(`INSERT INTO users.settings
 		(user_id, settings, privacy_settings, sound_settings, storage_settings, advanced_settings)
@@ -104,11 +104,13 @@ func TestDefaultProjectionDoesNotPersistMissingFlagsDuringPatches(t *testing.T) 
 	require.NoError(t, api.db.QueryRow(`SELECT settings ? 'sounds', settings ? 'callSounds',
 		sound_settings ? 'notificationsSound' FROM users.settings WHERE user_id=$1`, settingsOwner).
 		Scan(&hasSounds, &hasCallSounds, &hasNotificationAlias))
-	require.False(t, hasSounds, "default не должен стать canonical winner для миграции #1042")
+	require.False(t, hasSounds, "read projection не материализует отсутствующие canonical flags")
 	require.False(t, hasCallSounds)
 	require.False(t, hasNotificationAlias)
 	result := api.request(t, http.MethodGet, "sounds", "", http.StatusOK)["settings"].(map[string]any)
-	require.Equal(t, false, result["messagesSound"])
+	// Строка создана с notification_model_version=1: legacy fallback больше
+	// не применяется; оба aliases проецируют canonical/default true.
+	require.Equal(t, true, result["messagesSound"])
 	require.Equal(t, true, result["notificationsSound"])
 	require.Equal(t, "custom", result["ringtone"])
 	require.Equal(t, float64(0), result["mediaVolume"])
@@ -121,6 +123,7 @@ func (api settingsAPI) assertPhysicalDefaults(t *testing.T, userID string) {
 	require.NoError(t, api.db.QueryRow(`SELECT to_jsonb(s) FROM users.settings s WHERE user_id=$1`, userID).Scan(&raw))
 	var stored map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(raw, &stored))
+	require.JSONEq(t, "1", string(stored["notification_model_version"]))
 	for key, expected := range settingsdefaults.Values() {
 		require.JSONEq(t, string(expected), string(stored[key]), key)
 	}

@@ -2,6 +2,14 @@
 
 Дата: 16 октября 2026. Проверена локальная ветка `dev`, commit `d658b383`.
 
+> **Обновление #720 — 23 октября 2026:** интерфейс завершает одну выбранную сессию либо все остальные через готовый API #706 с подтверждением, корректным isCurrent, refetch и обработкой ошибок; текущая сессия, её E2E-ключи и черновики сохраняются. Проверены три устройства владельца и другой аккаунт на настоящем HTTP/WebSocket. [Поведение и приёмка](../auth/canonical-sessions.md#управление-в-клиенте-720). Поле lastActive показывается из API; серверный heartbeat activity tracking остаётся отдельной работой. Ниже — исторический аудит.
+
+> **Обновление #1041 — 23 октября 2026:** добавлены owner-only settings_updated после commit, transport вкладок, focus/reconnect/30-second recovery, session-scoped cache и сериализация optimistic writes с частичным rollback. Стратегия, контракт, сроки и сквозная проверка — [синхронизация настроек](../settings-sync.md). Ниже сохранены исторические результаты.
+
+> **Обновление #728 — 22 октября 2026:** клиентский Appearance использует серверные palette/accentPreset, system theme, размеры текста/чата, visibility и группировку. Ранняя проекция привязана к владельцу, перенос прежнего browser choice выполняется явно; добавлены unit/integration/browser/visual проверки. Подробности и метрики — [Appearance](../appearance-settings.md). Синхронизация открытых вкладок/устройств и её сквозная приёмка остаются #1041: родительская #728 до этого не считается полностью закрытой. Ниже сохранён исторический снимок аудита.
+
+> **Обновление #725 — 23 октября 2026:** frontend применяет общий notifications gate, независимые sounds/callSounds, personal message mute/expiry и preview к browser fallback, message sound и ringtone. Добавлены mute menu/rollback, permission UI без зависимости от push, owner-scoped suppression дублей и валидированный call alert. Матрица и проверяемые границы — [клиентская policy](../notification-client-policy.md). Синхронизация открытых клиентов остаётся #1041; ниже исторический снимок.
+
 > **Продолжение в #498:** выбор маршрутов и совместимости зафиксирован в
 > [каноническом Settings API](../settings-api.md): `GET/PUT /users/settings`,
 > `PUT /users/privacy`, отдельные ресурсы исключений и чёрного списка.
@@ -59,6 +67,14 @@
 #855 зависит от TURN credentials #851 и решения о модели contacts.
 После мержа реализации #559 остаются 5 задач основной очереди, 2 приёмки и #855.
 Состояния в исходных таблицах ниже — исторический snapshot от 16 октября.
+
+> **Продолжение 22 октября в #1042:** [notification model v1](../notification-settings-migration.md)
+> добавляет однократную migration с внутренним marker/rollback snapshot, canonical sound
+> aliases и conflict validation до SQL. Push использует общий strict canonical reader и
+> silent по независимым S/C; worker применяет quiet policy и безопасный legacy fallback.
+> Проверены replay/rollback, HTTP/PG writers, lock barriers и полная N/S/C/M матрица.
+> Новая серверная часть готова; browser fallback/message sound/ringtone остаются #725.
+> Исходные состояния и очередь ниже относятся к датам предыдущих сверок.
 
 ## Основание и границы проверки
 

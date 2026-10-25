@@ -1,4 +1,4 @@
-import type { IMediaItem, IMessageDto, TMessagesList } from '@/types';
+import type { ISettingsDto, IMediaItem, IMessageDto, TMessagesList } from '@/types';
 import { formatDateDivider, isDifferentDay, usePageActive } from '@/shared/lib';
 import { estimateMessageItemSize } from '@/entities/message';
 import { elementScroll, useVirtualizer } from '@tanstack/react-virtual';
@@ -37,6 +37,15 @@ export type TFeedItem =
     };
 
 interface IUseVirtualMessagesFeedOptions {
+  appearance?: Pick<
+    ISettingsDto,
+    | 'textSize'
+    | 'chatDensity'
+    | 'showMessageTime'
+    | 'showMessageStatus'
+    | 'showMessageAvatars'
+    | 'groupConsecutiveMessages'
+  >;
   messages: TMessagesList;
   messagesRef?: RefObject<HTMLElement | null>;
   /** Кто читает: свои сообщения непрочитанными не бывают. */
@@ -64,6 +73,7 @@ const STICKY_COLLISION_HEIGHT_PX = 44;
 
 export function useVirtualMessagesFeed({
   messages,
+  appearance,
   messagesRef,
   currentUserId,
   trackUnread = true,
@@ -282,11 +292,32 @@ export function useVirtualMessagesFeed({
       (index: number) => feedItems[index]?.id ?? `item-${index}`,
       [feedItems]
     ),
-    gap: 4,
+    gap: appearance?.chatDensity === 'compact' ? 2 : appearance?.chatDensity === 'large' ? 6 : 4,
     overscan: 8,
     useFlushSync: false,
     scrollToFn,
   });
+
+  // Размеры меняются без смены сообщений: сбрасываем оценки невидимых строк.
+  const {
+    textSize,
+    chatDensity,
+    showMessageTime,
+    showMessageStatus,
+    showMessageAvatars,
+    groupConsecutiveMessages,
+  } = appearance ?? {};
+  useEffect(() => {
+    virtualizer.measure();
+  }, [
+    virtualizer,
+    textSize,
+    chatDensity,
+    showMessageTime,
+    showMessageStatus,
+    showMessageAvatars,
+    groupConsecutiveMessages,
+  ]);
 
   const triggerDateVisibility = useCallback(() => {
     setIsScrollingState(true);

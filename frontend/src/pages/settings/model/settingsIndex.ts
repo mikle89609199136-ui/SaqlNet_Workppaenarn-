@@ -134,6 +134,15 @@ export const SETTINGS_INDEX: ISettingsEntry[] = [
     },
   },
   {
+    title: ['settings.privacy.calls', 'Кто может звонить'],
+    section: 'privacy',
+    path: ROUTES.SETTINGS_SUBSECTION('privacy', 'calls'),
+    synonyms: {
+      ru: ['звонки', 'вызовы', 'кто может звонить', 'приватность звонков', 'исключения'],
+      en: ['calls', 'who can call', 'incoming calls', 'call privacy', 'exceptions'],
+    },
+  },
+  {
     title: ['settings.privacy.blocked', 'Чёрный список'],
     section: 'privacy',
     path: ROUTES.SETTINGS_SUBSECTION('privacy', 'blocked'),

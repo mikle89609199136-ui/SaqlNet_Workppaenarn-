@@ -1,12 +1,13 @@
 import { act, render, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useProfileStore } from '@/entities/user';
-import { makeChat, makeMessage } from '@/test/fixtures';
+import { userKeys, useProfileStore } from '@/entities/user';
+import { makeChat, makeMessage, makeUser } from '@/test/fixtures';
 import { fakeSocket } from '@/test/harness/fakeSocket';
 import { api } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
 import { usePushStore } from '@/features/push-notifications';
+import { queryClient } from '@/shared/api';
 import { services } from '@/services/serviceContainer';
 import { NotificationManager } from './NotificationManager';
 
@@ -30,7 +31,11 @@ describe('системные уведомления', () => {
     // Notification — общая заглушка из тестового setup: вызовы прошлых
     // тестов остались бы в ней и сбили счёт.
     (Notification as unknown as ReturnType<typeof vi.fn>).mockClear();
-    useProfileStore.setState({ isAuth: true });
+    useProfileStore.setState({ isAuth: true, user: makeUser({ id: 'viewer' }) });
+    queryClient.setQueryData(userKeys.settings(), {
+      settings: { notifications: true, sounds: true, callSounds: true },
+      privacy: {},
+    });
     // Уведомление показывается только при скрытой вкладке.
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     server.use(http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })));
@@ -136,21 +141,27 @@ describe('системные уведомления', () => {
       changed = true;
       await act(async () => finishDecryption());
 
-      await waitFor(() => expect(notificationCalls()).toHaveLength(1));
-      expect(notificationCalls()[0][1].body).toBe('Новое сообщение');
-      expect(reads).toBe(2);
+      await waitFor(() => expect(reads).toBe(2));
+      if (outcome === 'hidden') {
+        await waitFor(() => expect(notificationCalls()).toHaveLength(1));
+        expect(notificationCalls()[0][1].body).toBe('Новое сообщение');
+      } else {
+        await act(async () => undefined);
+        expect(notificationCalls()).toHaveLength(0);
+      }
     }
   );
 
-  it('не раскрывает текст, если настройку не удалось получить', async () => {
-    server.use(http.get(api('/chats/:chatId'), () => new HttpResponse(null, { status: 500 })));
+  it('не оповещает, если mute/preview не удалось получить', async () => {
+    const read = vi.spyOn(services.chatService, 'getChat').mockRejectedValue(new Error('offline'));
     render(<NotificationManager />);
     fakeSocket.emit('new_message', {
       message: makeMessage({ chatId: chat.id, content: 'секрет' }),
       chatId: chat.id,
     });
-    await waitFor(() => expect(notificationCalls()).toHaveLength(1));
-    expect(notificationCalls()[0][1].body).toBe('Новое сообщение');
+    await waitFor(() => expect(read).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(notificationCalls()).toHaveLength(0);
   });
 
   it('should stay silent while the tab is visible', async () => {
