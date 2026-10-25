@@ -158,6 +158,9 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
             /* Только для чтения — не ошибка и не запрет: поле живое, из
                него можно копировать, поэтому гасим лишь фон. */
             'read-only:bg-sheet-2',
+            /* Скрыть нативный крестик очистки в браузерах WebKit/Blink (#1082) */
+            '[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-cancel-button]:hidden',
+            '[&::-webkit-search-decoration]:appearance-none',
             s.field,
             (icon || prefix) && s.withIcon,
             trailing && s.withAddon,

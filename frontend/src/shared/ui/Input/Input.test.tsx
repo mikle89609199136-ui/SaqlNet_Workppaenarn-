@@ -185,4 +185,15 @@ describe('поле', () => {
 
     expect(screen.queryByRole('button', { name: 'Показать пароль' })).not.toBeInTheDocument();
   });
+
+  it('должно содержать классы скрытия нативного крестика очистки для type="search" (#1082)', () => {
+    render(<Input label="Поиск" type="search" />);
+
+    const field = screen.getByRole('searchbox', { name: 'Поиск' });
+    expect(field).toHaveClass(
+      '[&::-webkit-search-cancel-button]:appearance-none',
+      '[&::-webkit-search-cancel-button]:hidden',
+      '[&::-webkit-search-decoration]:appearance-none'
+    );
+  });
 });

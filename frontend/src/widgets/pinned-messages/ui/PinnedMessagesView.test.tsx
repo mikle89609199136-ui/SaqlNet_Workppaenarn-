@@ -67,6 +67,8 @@ describe('PinnedMessagesView', () => {
 
     const backButtons = screen.getAllByRole('button', { name: 'Назад' });
     expect(backButtons).toHaveLength(1);
+    expect(screen.getByRole('banner')).toHaveClass('px-1.5');
+    expect(screen.getByRole('banner')).not.toHaveClass('md:px-3');
 
     fireEvent.click(backButtons[0]);
     expect(onClose).toHaveBeenCalledTimes(1);
