@@ -68,6 +68,8 @@ interface Props {
   searchQuery?: string;
   searchCurrentId?: string | null;
   chatId?: string;
+  /** Сообщения истории чата для разрешения цитируемых сообщений (#1084). */
+  threadMessages?: TMessagesList;
 }
 
 export const MessagesList = memo(
@@ -96,12 +98,16 @@ export const MessagesList = memo(
     searchQuery,
     searchCurrentId,
     chatId,
+    threadMessages,
   }: Props) => {
     const { t } = useTranslation();
     const { data: preferences } = useQuery({ ...settingsQuery(), enabled: false });
     const appearance = normalizePreferences(preferences?.settings);
     const user = useProfileStore((state) => state.user);
     const translations = useChatUiStore((state) => state.translations);
+
+    // Чат ленты — по переданному пропу или сообщениям
+    const activeChatId = chatId || messages.find((message) => message.chatId)?.chatId;
 
     const {
       activeDate,
@@ -126,6 +132,8 @@ export const MessagesList = memo(
       loadOlder,
       hasOlder,
       onMessagesSeen,
+      chatId: activeChatId,
+      threadMessages,
       appearance,
     });
 
@@ -145,8 +153,6 @@ export const MessagesList = memo(
         ? activeMessageId
         : renderedMessageIds.at(-1);
 
-    // Чат ленты — по переданному пропу или сообщениям
-    const activeChatId = chatId || messages.find((message) => message.chatId)?.chatId;
     const { jumpToMessage: handleJumpToMessage } = useJumpToMessage({
       onScrollToMessage: jumpToMessage,
       loadOlder,

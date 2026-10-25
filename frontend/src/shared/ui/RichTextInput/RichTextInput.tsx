@@ -121,7 +121,14 @@ function HandlePlugin({ handleRef }: { handleRef: React.Ref<IRichTextInputHandle
           () => {
             const root = $getRoot();
             root.clear();
-            root.append($createParagraphNode());
+            const paragraph = $createParagraphNode();
+            root.append(paragraph);
+            paragraph.select();
+            const selection = $getSelection();
+            if ($isRangeSelection(selection)) {
+              selection.format = 0;
+              selection.style = '';
+            }
           },
           { discrete: true, tag: EXTERNAL }
         ),

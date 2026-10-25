@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -140,4 +140,126 @@ describe('PinnedMessagesView', () => {
     fireEvent.click(viewer);
     expect(setOpenedImage).toHaveBeenCalledWith(null);
   });
+
+  it('отображает текст и автора цитируемого сообщения из треда (#1084)', () => {
+    const origin = makeMessage({
+      id: 'origin-1',
+      chatId: CHAT_ID,
+      senderName: 'Алексей',
+      content: 'Текст исходного сообщения',
+    });
+    const pinnedMsg = makeMessage({
+      id: 'pin-msg-1',
+      chatId: CHAT_ID,
+      replyTo: 'origin-1',
+      content: 'Ответ на сообщение',
+    });
+    const pin = makePin({
+      id: 'pin-1',
+      chatId: CHAT_ID,
+      messageId: 'pin-msg-1',
+      message: pinnedMsg,
+    });
+
+    renderView({
+      pinnedMessages: [pin],
+      threadMessages: [origin],
+    });
+
+    expect(screen.getByText('Ответ на сообщение')).toBeInTheDocument();
+    expect(screen.getByText('Текст исходного сообщения')).toBeInTheDocument();
+    expect(screen.getByText('Алексей')).toBeInTheDocument();
+  });
+
+  it('отображает текст цитаты из кеша треда QueryClient, если threadMessages не передан (#1084)', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const origin = makeMessage({
+      id: 'origin-2',
+      chatId: CHAT_ID,
+      senderName: 'Мария',
+      content: 'Сообщение из кеша истории',
+    });
+    queryClient.setQueryData(chatKeys.messages(CHAT_ID), {
+      pages: [[origin]],
+      pageParams: [0],
+    });
+
+    const pinnedMsg = makeMessage({
+      id: 'pin-msg-2',
+      chatId: CHAT_ID,
+      replyTo: 'origin-2',
+      content: 'Закреплённый ответ',
+    });
+    const pin = makePin({
+      id: 'pin-2',
+      chatId: CHAT_ID,
+      messageId: 'pin-msg-2',
+      message: pinnedMsg,
+    });
+
+    renderView(
+      {
+        pinnedMessages: [pin],
+      },
+      queryClient
+    );
+
+    expect(screen.getByText('Закреплённый ответ')).toBeInTheDocument();
+    expect(screen.getByText('Сообщение из кеша истории')).toBeInTheDocument();
+    expect(screen.getByText('Мария')).toBeInTheDocument();
+  });
+
+  it.each([false, true])(
+    'обновляет цитату без перемонтирования (кеш изначально заполнен: %s)',
+    async (prefilled) => {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const origin = makeMessage({
+        id: 'origin-live',
+        chatId: CHAT_ID,
+        senderName: 'Мария',
+        content: 'Исходный текст цитаты',
+      });
+      const updateOrigin = (message = origin) =>
+        queryClient.setQueryData(chatKeys.messages(CHAT_ID), {
+          pages: [[message]],
+          pageParams: [0],
+        });
+      if (prefilled) updateOrigin();
+
+      renderView(
+        {
+          pinnedMessages: [
+            makePin({
+              chatId: CHAT_ID,
+              message: makeMessage({ chatId: CHAT_ID, replyTo: origin.id, content: 'Ответ' }),
+            }),
+          ],
+        },
+        queryClient
+      );
+
+      if (!prefilled) {
+        expect(screen.queryByText(origin.content)).not.toBeInTheDocument();
+        await act(async () => {
+          updateOrigin();
+        });
+      }
+      await waitFor(() => expect(screen.getByText(origin.content)).toBeInTheDocument());
+      expect(screen.getByText('Мария')).toBeInTheDocument();
+
+      await act(async () => {
+        updateOrigin({ ...origin, content: 'Изменённый текст цитаты' });
+      });
+      await waitFor(() => expect(screen.getByText('Изменённый текст цитаты')).toBeInTheDocument());
+      expect(screen.queryByText(origin.content)).not.toBeInTheDocument();
+
+      await act(async () => {
+        queryClient.removeQueries({ queryKey: chatKeys.messages(CHAT_ID), exact: true });
+      });
+      await waitFor(() =>
+        expect(screen.queryByText('Изменённый текст цитаты')).not.toBeInTheDocument()
+      );
+      expect(screen.getByText('Сообщение')).toBeInTheDocument();
+    }
+  );
 });
