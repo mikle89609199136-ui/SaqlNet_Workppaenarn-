@@ -51,6 +51,20 @@ export class ChatService {
       .then((response) => response.data);
   }
 
+  /**
+   * Открыть «Избранное» (#1075): тот же запрос, что личный чат, но со своим
+   * id — сервер лениво заводит чат с самим собой и возвращает его, если он
+   * уже был (#719). Один на человека даже при запросах с двух устройств.
+   */
+  async openSavedMessages(ownUserId: string): Promise<string> {
+    const response = await this.apiClient.post<{ chatId?: string }>(API_ENDPOINTS.CHAT_PRIVATE, {
+      userId: ownUserId,
+    });
+    const chatId = response.data?.chatId;
+    if (!chatId) throw new Error('Сервер не вернул чат «Избранное»');
+    return chatId;
+  }
+
   async createGroup({
     title,
     description = '',
@@ -161,6 +175,14 @@ export class ChatService {
     return this.apiClient.put(API_ENDPOINTS.CHAT_NOTIFICATION_SETTINGS(chatId), {
       hideNotificationPreview,
     });
+  }
+
+  async muteChat(chatId: string, mutedUntil?: string) {
+    return this.apiClient.post(API_ENDPOINTS.CHAT_MUTE(chatId), mutedUntil ? { mutedUntil } : {});
+  }
+
+  async unmuteChat(chatId: string) {
+    return this.apiClient.delete(API_ENDPOINTS.CHAT_MUTE(chatId));
   }
 
   async pinChat(chatId: string) {

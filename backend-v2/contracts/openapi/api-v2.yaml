@@ -109,6 +109,7 @@ paths:
   /chats/{chatId}/members/{userId}/unmute: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1members~1{userId}~1unmute' }
   /chats/{chatId}/mls-state: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1mls-state' }
   /chats/{chatId}/pin: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1pin' }
+  /chats/{chatId}/mute: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1mute' }
   /chats/{chatId}/notification-settings: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1notification-settings' }
   /chats/{chatId}/archive: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1archive' }
   /chats/{chatId}/read: { $ref: './paths/chats.yaml#/~1chats~1{chatId}~1read' }
@@ -125,6 +126,7 @@ paths:
   /messages/favorites: { $ref: './paths/messages.yaml#/~1messages~1favorites' }
   /messages/{id}: { $ref: './paths/messages.yaml#/~1messages~1{id}' }
   /messages/{messageId}/reactions: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1reactions' }
+  /messages/{messageId}/location: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1location' }
   /messages/{messageId}/favorite: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1favorite' }
 
   /mls/keypackages: { $ref: './paths/mls.yaml#/~1mls~1keypackages' }
@@ -173,3 +175,4 @@ components:
     MessageEntities: { $ref: './components/schemas.yaml#/MessageEntities' }
     LastMessagePreview: { $ref: './components/schemas.yaml#/LastMessagePreview' }
     ReceiptEvent: { $ref: './components/schemas.yaml#/ReceiptEvent' }
+    PushNotificationPayload: { $ref: './components/schemas.yaml#/PushNotificationPayload' }

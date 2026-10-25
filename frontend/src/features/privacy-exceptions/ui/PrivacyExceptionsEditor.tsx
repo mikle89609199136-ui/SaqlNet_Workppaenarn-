@@ -73,9 +73,22 @@ export function PrivacyExceptionsEditor({ rule, mode }: Props) {
       ? t('privacyExceptions.never', 'Никогда не разрешать')
       : t('privacyExceptions.always', 'Всегда разрешать');
   const description =
-    mode === 'deny'
-      ? t('privacyExceptions.neverHint', 'Этим людям — как при «Никто», хотя остальным открыто.')
-      : t('privacyExceptions.alwaysHint', 'Этим людям — как при «Все», хотя от остальных скрыто.');
+    rule === 'calls'
+      ? mode === 'deny'
+        ? t(
+            'privacyExceptions.callsNeverHint',
+            'Этим людям запрещено звонить вам, даже если выбрано «Все».'
+          )
+        : t(
+            'privacyExceptions.callsAlwaysHint',
+            'Этим людям разрешено звонить вам, даже если выбрано «Никто».'
+          )
+      : mode === 'deny'
+        ? t('privacyExceptions.neverHint', 'Этим людям — как при «Никто», хотя остальным открыто.')
+        : t(
+            'privacyExceptions.alwaysHint',
+            'Этим людям — как при «Все», хотя от остальных скрыто.'
+          );
 
   const avatar = (person: Person) => (
     <Avatar id={person.id} name={personName(person)} size="md" src={person.avatarUrl || null} />
@@ -95,10 +108,15 @@ export function PrivacyExceptionsEditor({ rule, mode }: Props) {
         note={
           <>
             {description}{' '}
-            {t(
-              'privacyExceptions.blockedWins',
-              'Чёрный список сильнее исключений: заблокированный не увидит ничего, даже если он в «Всегда разрешать».'
-            )}
+            {rule === 'calls'
+              ? t(
+                  'privacyExceptions.callsBlockedWins',
+                  'Чёрный список сильнее исключений: заблокированный пользователь не сможет позвонить вам, даже если он в «Всегда разрешать».'
+                )
+              : t(
+                  'privacyExceptions.blockedWins',
+                  'Чёрный список сильнее исключений: заблокированный не увидит ничего, даже если он в «Всегда разрешать».'
+                )}
           </>
         }
         title={t('privacyExceptions.title', 'Исключения')}

@@ -13,6 +13,10 @@ import (
 
 func (h *Handler) MLSRoutes(w http.ResponseWriter, r *http.Request) {
 	current := authctx.MustUser(r)
+	if ok, wait := h.service.mls.allowUser(current.ID); !ok {
+		writeRateLimited(w, r, wait)
+		return
+	}
 	path := r.URL.Path
 	cryptoURL := config.Value("CRYPTO_URL", "http://127.0.0.1:5005")
 
@@ -70,7 +74,10 @@ func (h *Handler) mlsUploadKeyPackages(w http.ResponseWriter, r *http.Request, u
 		return
 	}
 	if err := h.service.MLSUploadKeyPackages(r.Context(), userID, input.KeyPackages, cryptoURL); err != nil {
-		if errors.Is(err, errors.New("crypto service unavailable")) {
+		if writeIfLimited(w, r, err) {
+			return
+		}
+		if errors.Is(err, errCryptoUnavailable) {
 			httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", err.Error())
 			return
 		}
@@ -83,6 +90,9 @@ func (h *Handler) mlsUploadKeyPackages(w http.ResponseWriter, r *http.Request, u
 func (h *Handler) mlsFetchKeyPackage(w http.ResponseWriter, r *http.Request, requesterID, targetID string) {
 	kp, err := h.service.MLSFetchKeyPackage(r.Context(), requesterID, targetID)
 	if err != nil {
+		if writeIfLimited(w, r, err) {
+			return
+		}
 		code := http.StatusInternalServerError
 		errCode := "internal_error"
 		msg := err.Error()
@@ -118,6 +128,9 @@ func (h *Handler) mlsCommit(w http.ResponseWriter, r *http.Request, userID, chat
 	}
 	nextEpoch, err := h.service.MLSCommit(r.Context(), userID, chatID, input.CommitBytes, input.CurrentEpoch, input.TreeStructure, cryptoURL)
 	if err != nil {
+		if writeIfLimited(w, r, err) {
+			return
+		}
 		code := http.StatusBadRequest
 		errCode := "commit_failed"
 		if strings.Contains(err.Error(), "epoch conflict") {
@@ -142,6 +155,9 @@ func (h *Handler) mlsStoreWelcome(w http.ResponseWriter, r *http.Request, sender
 		return
 	}
 	if err := h.service.MLSStoreWelcome(r.Context(), senderID, chatID, input.RecipientID, input.WelcomeBytes, input.Epoch, cryptoURL); err != nil {
+		if writeIfLimited(w, r, err) {
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_welcome", err.Error())
 		return
 	}
@@ -170,6 +186,9 @@ func (h *Handler) mlsAddProposal(w http.ResponseWriter, r *http.Request, senderI
 
 	err := h.service.MLSAddProposal(r.Context(), senderID, chatID, input.ProposalType, input.ProposalBytes, input.Epoch, cryptoURL)
 	if err != nil {
+		if writeIfLimited(w, r, err) {
+			return
+		}
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_proposal", err.Error())
 		return
 	}

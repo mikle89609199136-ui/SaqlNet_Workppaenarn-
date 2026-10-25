@@ -52,7 +52,10 @@ func TestMediaDownloadAccess(t *testing.T) {
 		{name: "unattached owner", viewer: owner, purpose: "message", status: 200},
 		{name: "unattached stranger", viewer: stranger, purpose: "avatar", status: 403},
 		{name: "profile avatar", viewer: stranger, kind: mediarefs.Avatar, status: 200},
-		{name: "chat avatar", viewer: stranger, kind: mediarefs.ChatAvatar, status: 200},
+		{name: "chat avatar stranger", viewer: stranger, kind: mediarefs.ChatAvatar, status: 403},
+		{name: "chat avatar member", viewer: member, kind: mediarefs.ChatAvatar, status: 200},
+		{name: "chat avatar former member", viewer: member, kind: mediarefs.ChatAvatar, left: true, status: 403},
+		{name: "chat avatar owner left", viewer: owner, kind: mediarefs.ChatAvatar, left: true, status: 403},
 		{name: "published GIF", viewer: stranger, kind: mediarefs.Gif, status: 200},
 		{name: "unknown owner", viewer: owner, status: 200},
 		{name: "unknown stranger", viewer: stranger, status: 403},
@@ -103,6 +106,10 @@ func TestMediaDownloadAccess(t *testing.T) {
 					require.NoError(t, mediarefs.ReplaceOwner(ctx, db, tt.kind, owner, uploadID))
 				case mediarefs.ChatAvatar:
 					require.NoError(t, mediarefs.ReplaceOwner(ctx, db, tt.kind, chatID, uploadID))
+					if tt.left {
+						_, err = db.Exec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`, chatID, tt.viewer)
+						require.NoError(t, err)
+					}
 				case mediarefs.Gif:
 					var gifID string
 					require.NoError(t, db.QueryRow(`INSERT INTO media.gifs (user_id, url) VALUES ($1, $2) RETURNING id::text`, owner, mediarefs.URLPrefix+uploadID).Scan(&gifID))
@@ -129,7 +136,7 @@ func TestMediaDownloadAccess(t *testing.T) {
 				require.Equal(t, tt.status, w.Code, w.Body.String())
 				if tt.status == 200 {
 					require.Equal(t, 1, store.getCalls)
-					require.Equal(t, "private", w.Header().Get("Cache-Control"))
+					require.Equal(t, "private, no-cache", w.Header().Get("Cache-Control"))
 					require.Equal(t, "Authorization, Cookie", w.Header().Get("Vary"))
 					if method == http.MethodHead {
 						require.Empty(t, w.Body.String())
@@ -149,4 +156,71 @@ func TestMediaDownloadAccess(t *testing.T) {
 		}
 	}
 	require.ErrorIs(t, NewService(db, nil, "", 1024).CanDownload(ctx, owner, "bad-uuid"), ErrNotFound)
+}
+
+func TestManagedCatalogDownloadAccess(t *testing.T) {
+	t.Setenv("CRANE_ENV", "development")
+	db := dbtest.Postgres(t)
+	const owner = "aaaaaaaa-1111-4111-8111-111111111111"
+	const other = "bbbbbbbb-2222-4222-8222-222222222222"
+	dbtest.User(t, db, owner, "catalog_owner")
+	dbtest.User(t, db, other, "catalog_other")
+	var packID, stickerID, legacyID string
+	require.NoError(t, db.QueryRow(`INSERT INTO media.sticker_packs (user_id, name, icon_bucket, icon_object_key) VALUES ($1, 'pack', 'uploads', 'icon') RETURNING id::text`, owner).Scan(&packID))
+	require.NoError(t, db.QueryRow(`INSERT INTO media.stickers (pack_id, image_url, bucket, object_key) VALUES ($1, '', 'uploads', 'sticker') RETURNING id::text`, packID).Scan(&stickerID))
+	require.NoError(t, db.QueryRow(`INSERT INTO media.stickers (pack_id, image_url) VALUES ($1, 'https://legacy.invalid/image') RETURNING id::text`, packID).Scan(&legacyID))
+	store := &downloadStore{get: func(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
+		object := objectResponse(http.StatusOK, "data")
+		object.ContentType = "image/png"
+		return object, nil
+	}}
+	h := NewHandler(NewService(db, store, "uploads", 1024))
+	handler := authctx.Middleware(accessTestAuth{}, accessTestAuth{})(http.HandlerFunc(h.Serve))
+	check := func(id, viewer string, want int) {
+		t.Helper()
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			for _, headerAuth := range []bool{false, true} {
+				r := httptest.NewRequest(method, mediarefs.URLPrefix+id, nil)
+				if viewer != "" {
+					if headerAuth {
+						r.Header.Set("Authorization", "Bearer "+viewer)
+					} else {
+						r.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: viewer})
+					}
+				}
+				before := store.getCalls
+				w := httptest.NewRecorder()
+				handler.ServeHTTP(w, r)
+				expected := want
+				if headerAuth && viewer != "" {
+					expected = 401
+				} // #705 accepts only session cookies.
+				require.Equal(t, expected, w.Code, "%s %s: %s", method, id, w.Body.String())
+				if expected == 200 {
+					require.Equal(t, "private, no-cache", w.Header().Get("Cache-Control"))
+					require.Equal(t, before+1, store.getCalls)
+					if method == http.MethodHead {
+						require.Empty(t, w.Body.String())
+					}
+				} else {
+					require.Equal(t, before, store.getCalls)
+				}
+			}
+		}
+	}
+	for _, id := range []string{packID, stickerID, legacyID} {
+		check(id, "", 401)
+	}
+	for _, viewer := range []string{owner, other} {
+		check(packID, viewer, 200)
+		check(stickerID, viewer, 200)
+		check(legacyID, viewer, 404)
+	}
+	_, err := db.Exec(`DELETE FROM media.stickers WHERE id = $1`, stickerID)
+	require.NoError(t, err)
+	check(stickerID, owner, 404)
+	_, err = db.Exec(`DELETE FROM media.sticker_packs WHERE id = $1`, packID)
+	require.NoError(t, err)
+	check(packID, owner, 404)
+	check(legacyID, other, 404)
 }

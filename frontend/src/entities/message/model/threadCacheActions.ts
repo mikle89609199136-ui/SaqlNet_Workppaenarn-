@@ -1,16 +1,72 @@
 import type { QueryClient } from '@tanstack/react-query';
+import type { IReactionUpdatedEvent } from '@/types';
 import type { IMessageDto, IPinnedDto } from './types';
+import { mergeReactionEvent } from './reactionEvent';
 import { chatKeys } from '@/entities/chat';
 import type { IReceiptEvent } from '@/shared/lib';
 import {
   appendMessage,
   applyReceipt,
   canAppendToThread,
+  dropMissingFromHead,
+  forgetReplyPreviews,
   patchMessage,
   removeMessage,
   replaceMessage,
   type IThreadPages,
 } from './threadCache';
+
+type TThreadMutation = (thread: IThreadPages) => IThreadPages;
+
+// Журнал живёт только во время загрузки snapshot. Записываем операции,
+// а не разницу значений: снятая реакция может совпасть с исходным состоянием.
+const threadChanges = new WeakMap<QueryClient, Map<string, Set<TThreadMutation[]>>>();
+
+export function captureThreadChanges(queryClient: QueryClient, chatId: string) {
+  let chats = threadChanges.get(queryClient);
+  if (!chats) {
+    chats = new Map();
+    threadChanges.set(queryClient, chats);
+  }
+  let listeners = chats.get(chatId);
+  if (!listeners) {
+    listeners = new Set();
+    chats.set(chatId, listeners);
+  }
+  const changes: TThreadMutation[] = [];
+  listeners.add(changes);
+  let stopped = false;
+
+  return {
+    replay: (thread: IThreadPages): IThreadPages =>
+      changes.reduce((current, apply) => apply(current), thread),
+    stop: () => {
+      if (stopped) return;
+      stopped = true;
+      listeners.delete(changes);
+      if (listeners.size === 0) chats.delete(chatId);
+      if (chats.size === 0) threadChanges.delete(queryClient);
+    },
+  };
+}
+
+function hasNewerEdit(
+  cached: IMessageDto | undefined,
+  incoming: Pick<Partial<IMessageDto>, 'updatedAt'>
+): boolean {
+  return Boolean(
+    cached?.updatedAt &&
+    incoming.updatedAt &&
+    new Date(cached.updatedAt).getTime() > new Date(incoming.updatedAt).getTime()
+  );
+}
+
+function mutateThread(queryClient: QueryClient, chatId: string, apply: TThreadMutation): void {
+  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
+    current ? apply(current) : current
+  );
+  for (const changes of threadChanges.get(queryClient)?.get(chatId) ?? []) changes.push(apply);
+}
 
 /**
  * Запись в кеш треда.
@@ -52,11 +108,23 @@ export function putThreadMessage(
 /**
  * Несколько сообщений разом — ответ на отправку пачкой (#808): одна запись
  * в кеш и одна пометка списка чатов на всю пачку.
+ * При синхронизации истории replaceExisting обновляет и известные ID:
+ * за время обрыва их могли отредактировать или восстановить ключи.
  */
 export function putThreadMessages(
   queryClient: QueryClient,
   chatId: string,
-  messages: IMessageDto[]
+  messages: IMessageDto[],
+  {
+    replaceExisting = false,
+    replay,
+    dropMissing = false,
+  }: {
+    replaceExisting?: boolean;
+    replay?: TThreadMutation;
+    /** Убрать подтверждённые, которых нет в этой свежей странице (#1068). */
+    dropMissing?: boolean;
+  } = {}
 ): void {
   if (messages.length === 0) return;
 
@@ -70,10 +138,53 @@ export function putThreadMessages(
     return;
   }
 
-  queryClient.setQueryData(
-    chatKeys.messages(chatId),
-    messages.reduce((pages, message) => appendMessage(pages, message), current)
-  );
+  const merge: TThreadMutation = (thread) =>
+    messages.reduce((pages, message) => {
+      if (!replaceExisting) return appendMessage(pages, message);
+
+      // Пока HTTP-страница загружалась, realtime мог принести более
+      // свежую правку. Равные версии заменяем: ключ мог стать доступен.
+      const cached = pages.pages.flat().find((item) => item.id === message.id);
+      if (hasNewerEdit(cached, message)) {
+        return pages;
+      }
+      return replaceMessage(pages, message.id, message);
+    }, thread);
+  if (replaceExisting) {
+    // Snapshot уже включает старые операции. В журнал попадают только
+    // изменения из realtime/действий пользователя, а не другой snapshot.
+    // Удаление — до слияния и до журнала: сообщение или удаление, пришедшие
+    // событием во время запроса, ложатся поверх, как и прежде.
+    queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (thread) => {
+      if (!thread) return thread;
+      const merged = merge(dropMissing ? dropMissingFromHead(thread, messages) : thread);
+      return replay ? replay(merged) : merged;
+    });
+  } else {
+    mutateThread(queryClient, chatId, merge);
+  }
+  markChatListStale(queryClient);
+}
+
+/**
+ * Реакции из события `reaction_updated` (#1063).
+ *
+ * Отметка «моя» считается внутри мутации — по сообщению, которое лежит в
+ * ленте в момент применения. Так операция верно переигрывается журналом
+ * поверх снимка истории, который ещё грузится.
+ */
+export function applyThreadReactionEvent(
+  queryClient: QueryClient,
+  event: Pick<IReactionUpdatedEvent, 'chatId' | 'messageId' | 'actorId' | 'change' | 'reactions'>,
+  currentUserId: string | undefined
+): void {
+  mutateThread(queryClient, event.chatId, (current) => {
+    const cached = current.pages.flat().find((item) => item.id === event.messageId);
+    if (!cached) return current;
+    return patchMessage(current, event.messageId, {
+      reactions: mergeReactionEvent(cached.reactions, event, currentUserId),
+    });
+  });
   markChatListStale(queryClient);
 }
 
@@ -83,9 +194,11 @@ export function patchThreadMessage(
   messageId: string,
   patch: Partial<Omit<IMessageDto, 'id'>>
 ): void {
-  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
-    current ? patchMessage(current, messageId, patch) : current
-  );
+  mutateThread(queryClient, chatId, (current) => {
+    const cached = current.pages.flat().find((item) => item.id === messageId);
+    if (hasNewerEdit(cached, patch)) return current;
+    return patchMessage(current, messageId, patch);
+  });
   // Отредактированным могло оказаться последнее сообщение чата.
   markChatListStale(queryClient);
 }
@@ -95,9 +208,7 @@ export function patchThreadMessage(
  * Список чатов обновляется отдельно и тоже без перезапроса.
  */
 export function putThreadReceipt(queryClient: QueryClient, event: IReceiptEvent): void {
-  queryClient.setQueryData<IThreadPages>(chatKeys.messages(event.chatId), (current) =>
-    current ? applyReceipt(current, event) : current
-  );
+  mutateThread(queryClient, event.chatId, (current) => applyReceipt(current, event));
 }
 
 export function replaceThreadMessage(
@@ -106,9 +217,7 @@ export function replaceThreadMessage(
   targetId: string,
   replacement: IMessageDto
 ): void {
-  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
-    current ? replaceMessage(current, targetId, replacement) : current
-  );
+  mutateThread(queryClient, chatId, (current) => replaceMessage(current, targetId, replacement));
   markChatListStale(queryClient);
 }
 
@@ -128,13 +237,11 @@ export function markThreadRead(
   chatId: string,
   messageIds: string[]
 ): void {
-  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
-    current
-      ? messageIds.reduce(
-          (thread, messageId) => patchMessage(thread, messageId, { isRead: true, status: 'read' }),
-          current
-        )
-      : current
+  mutateThread(queryClient, chatId, (current) =>
+    messageIds.reduce(
+      (thread, messageId) => patchMessage(thread, messageId, { isRead: true, status: 'read' }),
+      current
+    )
   );
 
   markChatListStale(queryClient);
@@ -145,9 +252,7 @@ export function dropThreadMessage(
   chatId: string,
   messageId: string
 ): void {
-  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
-    current ? removeMessage(current, messageId) : current
-  );
+  mutateThread(queryClient, chatId, (current) => removeMessage(current, messageId));
   // Удалённое сообщение могло быть закреплено — панель обязана это заметить.
   void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
   // ...и быть последним в чате: тогда в списке показывается предыдущее.
@@ -161,8 +266,11 @@ export function dropThreadMessages(
   messageIds: string[]
 ): void {
   if (messageIds.length === 0) return;
-  queryClient.setQueryData<IThreadPages>(chatKeys.messages(chatId), (current) =>
-    current ? messageIds.reduce((thread, id) => removeMessage(thread, id), current) : current
+  mutateThread(queryClient, chatId, (current) =>
+    forgetReplyPreviews(
+      messageIds.reduce((thread, id) => removeMessage(thread, id), current),
+      messageIds
+    )
   );
   void queryClient.invalidateQueries({ queryKey: chatKeys.pins(chatId) });
   markChatListStale(queryClient);

@@ -137,3 +137,68 @@ describe('редактирование своего сообщения', () => {
     expect(draft.textContent).toBe('');
   });
 });
+
+/* Время правки в меню действий (#1066): у своих и у чужих — на телефоне
+   подсказки по наведению нет. */
+describe('«Изменено…» в меню сообщения', () => {
+  beforeEach(() => {
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify({ id: 'user-1', username: 'tester' }));
+    stubCrypto();
+  });
+
+  function openChatWith(message: ReturnType<typeof makeMessage>) {
+    const chat = makeChat({ id: message.chatId, ownerId: 'user-1', peerId: 'user-2' });
+    server.use(
+      http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
+      http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
+      http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] }))
+    );
+    renderChatThread({ chat, messages: [message], currentUser: makeUser({ id: 'user-1' }) });
+  }
+
+  it('у чужого изменённого сообщения — строка со временем правки', async () => {
+    const user = userEvent.setup();
+    openChatWith(
+      makeMessage({
+        chatId: 'chat-edited-peer',
+        senderId: 'user-2',
+        content: 'адрес поменялся',
+        isEdited: true,
+        updatedAt: new Date(),
+      })
+    );
+
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: await screen.findByText('адрес поменялся'),
+    });
+
+    expect(
+      await screen.findByRole('group', { name: /^Изменено сегодня в \d\d:\d\d$/ })
+    ).toBeInTheDocument();
+  });
+
+  it('после своей правки — строка в меню этого сообщения', async () => {
+    const user = userEvent.setup();
+    const { editRequests } = setupChat();
+
+    const text = secretText('исправлено');
+    await replaceDraftAndSubmit(user, text);
+    await waitFor(() => expect(editRequests).toHaveLength(1));
+    await user.pointer({ keys: '[MouseRight]', target: await screen.findByText(text) });
+
+    expect(await screen.findByRole('group', { name: /^Изменено / })).toBeInTheDocument();
+  });
+
+  it('у неизменённого строки нет', async () => {
+    const user = userEvent.setup();
+    openChatWith(
+      makeMessage({ chatId: 'chat-not-edited', senderId: 'user-2', content: 'как было' })
+    );
+
+    await user.pointer({ keys: '[MouseRight]', target: await screen.findByText('как было') });
+    await screen.findByRole('menuitem', { name: 'Ответить' });
+
+    expect(screen.queryByRole('group', { name: /^Изменено/ })).toBeNull();
+  });
+});

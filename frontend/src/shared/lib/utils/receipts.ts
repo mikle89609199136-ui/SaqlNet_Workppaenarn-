@@ -1,5 +1,6 @@
 import i18n from 'i18next';
 import type { TFunction } from 'i18next';
+import { describeDayTime, type IDayTimeOptions } from './dayTime';
 
 /**
  * Доставка и прочтение своих сообщений (#657).
@@ -69,20 +70,7 @@ export function receiptPatch(
   return Object.keys(patch).length ? patch : null;
 }
 
-function isSameDay(a: Date, b: Date): boolean {
-  return (
-    a.getDate() === b.getDate() &&
-    a.getMonth() === b.getMonth() &&
-    a.getFullYear() === b.getFullYear()
-  );
-}
-
-export interface IFormatReceiptOptions {
-  /** Текущее время: подставляется в тестах. */
-  now?: Date;
-  /** Язык дат; по умолчанию — язык приложения. */
-  locale?: string;
-}
+export type IFormatReceiptOptions = IDayTimeOptions;
 
 /**
  * «Прочитано сегодня в 21:05», «Доставлено вчера в 18:40», «Прочитано
@@ -99,27 +87,20 @@ export function formatReceipt(
   const date = new Date((state === 'read' ? times.readAt : times.deliveredAt) ?? '');
   if (Number.isNaN(date.getTime())) return null;
 
-  const time = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(date);
+  const { day: when, time, date: day } = describeDayTime(date, { now, locale });
   const read = state === 'read';
-  if (isSameDay(date, now)) {
+  if (when === 'today') {
     return read
       ? t('receipt.readToday', { time, defaultValue: 'Прочитано сегодня в {{time}}' })
       : t('receipt.deliveredToday', { time, defaultValue: 'Доставлено сегодня в {{time}}' });
   }
 
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (isSameDay(date, yesterday)) {
+  if (when === 'yesterday') {
     return read
       ? t('receipt.readYesterday', { time, defaultValue: 'Прочитано вчера в {{time}}' })
       : t('receipt.deliveredYesterday', { time, defaultValue: 'Доставлено вчера в {{time}}' });
   }
 
-  const day = new Intl.DateTimeFormat(locale, {
-    day: 'numeric',
-    month: 'long',
-    year: date.getFullYear() === now.getFullYear() ? undefined : 'numeric',
-  }).format(date);
   return read
     ? t('receipt.readOnDate', { date: day, time, defaultValue: 'Прочитано {{date}} в {{time}}' })
     : t('receipt.deliveredOnDate', {

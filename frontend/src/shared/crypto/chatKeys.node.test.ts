@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { ApiClient } from '@/shared/api';
 import { ChatKeyManager } from './chatKeys';
 import { bytesToBase64 } from './encoding';
+import { encryptMessage, decryptMessage, parseEnvelope } from './envelope';
 import { forgetPeerIdentities, loadOrCreateIdentity } from './identity';
 import { listKeys, removeKeysWithPrefix, useMemoryKeyStore } from './keyStore';
 
@@ -599,5 +600,43 @@ describe('стирание с устройства', () => {
 
     expect(await listKeys('chatkey:alice:')).toHaveLength(0);
     expect(await listKeys('chatkey-latest:alice:')).toHaveLength(0);
+  });
+});
+
+describe('encrypted history across missed membership events (#707)', () => {
+  it('keeps old history readable while excluding newcomers from old epochs and leavers from new ones', async () => {
+    const server = createKeyServer();
+    const alice = await createParticipant(server, 'alice');
+    const boris = await createParticipant(server, 'boris');
+    const first = (await alice.manager.ensure(CHAT)).chatKey!;
+    await boris.manager.ensure(CHAT);
+    const oldMessage = parseEnvelope(
+      await encryptMessage(first.key, CHAT, first.epoch, 'alice', 'before membership change')
+    )!;
+
+    server.members.delete('boris');
+    const carol = await createParticipant(server, 'carol');
+    server.state.rotationNeeded = true;
+    // Carol missed all realtime events and opens the chat first.
+    const next = (await carol.manager.ensure(CHAT)).chatKey!;
+    const newMessage = parseEnvelope(
+      await encryptMessage(next.key, CHAT, next.epoch, 'carol', 'after membership change')
+    )!;
+    alice.manager.forget();
+    const recovered = await alice.manager.forEpoch(CHAT, next.epoch);
+    expect(await decryptMessage(recovered!.key, CHAT, 'carol', newMessage)).toMatchObject({
+      text: 'after membership change',
+    });
+    expect(
+      await decryptMessage(
+        (await boris.manager.forEpoch(CHAT, first.epoch))!.key,
+        CHAT,
+        'alice',
+        oldMessage
+      )
+    ).toMatchObject({ text: 'before membership change' });
+    expect(await carol.manager.forEpoch(CHAT, first.epoch)).toBeNull();
+    expect(await boris.manager.forEpoch(CHAT, next.epoch)).toBeNull();
+    await expect(decryptMessage(first.key, CHAT, 'carol', newMessage)).rejects.toThrow();
   });
 });

@@ -20,7 +20,13 @@ CREATE TABLE IF NOT EXISTS media.upload_refs (
     gif_id UUID REFERENCES media.gifs(id) ON DELETE CASCADE,
     sticker_id UUID REFERENCES media.stickers(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (kind <> 'message' OR (message_id IS NOT NULL AND chat_id IS NOT NULL)),
+    CHECK (
+        (kind = 'message' AND message_id IS NOT NULL AND chat_id IS NOT NULL AND num_nonnulls(user_id, gif_id, sticker_id) = 0) OR
+        (kind = 'avatar' AND user_id IS NOT NULL AND num_nonnulls(message_id, chat_id, gif_id, sticker_id) = 0) OR
+        (kind = 'chat_avatar' AND chat_id IS NOT NULL AND num_nonnulls(message_id, user_id, gif_id, sticker_id) = 0) OR
+        (kind = 'gif' AND gif_id IS NOT NULL AND num_nonnulls(message_id, chat_id, user_id, sticker_id) = 0) OR
+        (kind = 'sticker' AND sticker_id IS NOT NULL AND num_nonnulls(message_id, chat_id, user_id, gif_id) = 0)
+    ),
     CHECK (kind <> 'avatar' OR user_id IS NOT NULL),
     CHECK (kind <> 'chat_avatar' OR chat_id IS NOT NULL),
     CHECK (kind <> 'gif' OR gif_id IS NOT NULL),

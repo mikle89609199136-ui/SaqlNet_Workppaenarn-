@@ -1,0 +1,74 @@
+{
+  "settings": {
+    "theme": "dark",
+    "palette": "graphite",
+    "accentPreset": "violet",
+    "textSize": "medium",
+    "chatDensity": "normal",
+    "showMessageTime": true,
+    "showMessageStatus": true,
+    "showMessageAvatars": true,
+    "groupConsecutiveMessages": true,
+    "avatarShape": "letter",
+    "language": "ru",
+    "notifications": true,
+    "sounds": true,
+    "callSounds": true
+  },
+  "privacy_settings": {
+    "lastSeen": "all",
+    "phoneVisibility": "nobody",
+    "photoVisibility": "all",
+    "forwards": "all",
+    "calls": "all",
+    "groupsAdd": "all",
+    "messagesFromStrangers": true,
+    "twoFactorAuth": false,
+    "autoDeleteAccount": true
+  },
+  "notification_settings": {
+    "privateChats": true,
+    "groups": true,
+    "channels": true,
+    "calls": true,
+    "videoCalls": true,
+    "inAppNotifications": true,
+    "messagePreview": true,
+    "readReceipts": false,
+    "reactions": true,
+    "newContacts": true
+  },
+  "sound_settings": {
+    "notificationsVolume": 80,
+    "mediaVolume": 100,
+    "notificationsSound": true,
+    "messagesSound": true,
+    "sendSound": true,
+    "callsSound": true,
+    "vibrateOnCall": true,
+    "notificationSound": "default",
+    "messageSound": "default",
+    "ringtone": "default"
+  },
+  "storage_settings": {
+    "autoDownloadMobile": true,
+    "autoDownloadWifi": true,
+    "autoDownloadRoaming": false,
+    "deleteMediaAfter": "never"
+  },
+  "advanced_settings": {
+    "autoReconnect": true,
+    "fastConnection": true,
+    "connectionType": "auto",
+    "dataCompression": true,
+    "saveDrafts": true,
+    "analytics": false,
+    "developerMode": false,
+    "debugLog": false,
+    "hardwareAcceleration": true,
+    "autoplayGifs": true
+  },
+  "folders": [],
+  "passcode_enabled": false,
+  "passcode_timeout": 60
+}

@@ -78,7 +78,8 @@ func TestMediaReferenceWriters(t *testing.T) {
 	chatID, err := chats.CreateGroup(ctx, owner, "group", "", ownURL, nil)
 	require.NoError(t, err)
 	assertRefs("chat_avatar", 1)
-	require.NoError(t, media.CanDownload(ctx, other, own))
+	require.ErrorIs(t, media.CanDownload(ctx, other, own), ErrForbidden)
+	require.NoError(t, media.CanDownload(ctx, owner, own))
 	foreignURL := mediarefs.URLPrefix + foreign
 	_, err = chats.UpdateGroup(ctx, owner, chatID, nil, nil, &foreignURL)
 	require.ErrorIs(t, err, chat.ErrInvalidInput)
@@ -127,7 +128,7 @@ func TestMediaAccessBackfillIsIdempotent(t *testing.T) {
 	}
 	_, err = db.Exec(`INSERT INTO messages.messages (chat_id, sender_id, content, metadata) VALUES ($1, $2, '', '{"mediaUrl":"/api/v2/media/not-a-uuid"}')`, chatID, owner)
 	require.NoError(t, err)
-	migration, err := migrationsql.FS.ReadFile("0039_media_access.sql")
+	migration, err := migrationsql.FS.ReadFile("0044_media_access.sql")
 	require.NoError(t, err)
 	for range 2 {
 		_, err = db.Exec(string(migration))

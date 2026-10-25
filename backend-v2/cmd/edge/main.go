@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"log"
+	"math"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -22,33 +24,26 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
-type rateLimitConfig struct {
-	authRate           float64
-	authBurst          int
-	usernameCheckRate  float64
-	usernameCheckBurst int
-	mediaDownloadRate  float64
-	mediaDownloadBurst int
-	globalRate         float64
-	globalBurst        int
-}
-
 const clientIPHeader = "X-Crane-Client-IP"
 
 var mediaDownloadPath = regexp.MustCompile(`^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-func loadRateLimitConfig() rateLimitConfig {
-	return rateLimitConfig{
-		authRate:           config.PositiveFloat64("EDGE_RATE_LIMIT_AUTH_RPS", 5),
-		authBurst:          config.PositiveInt("EDGE_RATE_LIMIT_AUTH_BURST", 10),
-		usernameCheckRate:  config.PositiveFloat64("EDGE_RATE_LIMIT_USERNAME_CHECK_RPS", 2),
-		usernameCheckBurst: config.PositiveInt("EDGE_RATE_LIMIT_USERNAME_CHECK_BURST", 5),
-		mediaDownloadRate:  config.PositiveFloat64("EDGE_RATE_LIMIT_MEDIA_DOWNLOAD_RPS", 20),
-		mediaDownloadBurst: config.PositiveInt("EDGE_RATE_LIMIT_MEDIA_DOWNLOAD_BURST", 60),
-		globalRate:         config.PositiveFloat64("EDGE_RATE_LIMIT_GLOBAL_RPS", 50),
-		globalBurst:        config.PositiveInt("EDGE_RATE_LIMIT_GLOBAL_BURST", 100),
-	}
-}
+const (
+	// bucketCleanupInterval — как часто проверять карту корзин на устаревшие записи.
+	bucketCleanupInterval = 5 * time.Minute
+	// bucketIdleTTL — сколько корзина живёт без запросов, прежде чем её удалят.
+	// Выражен через bucketCleanupInterval, а не задан отдельным числом: TTL
+	// обязан быть заметно больше интервала уборки, иначе корзину потеряет
+	// активный клиент и получит полный burst заново. Такая запись не даёт
+	// нарушить это соотношение, поправив одно из двух чисел.
+	bucketIdleTTL = 2 * bucketCleanupInterval
+)
+
+// Проверка соотношения на этапе компиляции. Если bucketIdleTTL когда-нибудь
+// перестанет быть больше bucketCleanupInterval — например, кто-то заменит
+// формулу выше на литерал — разность станет отрицательной, преобразование в
+// uint не скомпилируется, и сборка упадёт с сообщением об этой строке.
+const _ = uint(bucketIdleTTL - bucketCleanupInterval - 1)
 
 // tokenBucket is a simple per-IP rate limiter.
 type tokenBucket struct {
@@ -63,6 +58,11 @@ type bucket struct {
 	lastRefil time.Time
 }
 
+type limiterSet struct {
+	groups map[routeGroup]*tokenBucket
+	global *tokenBucket
+}
+
 func newTokenBucket(rate, capacity float64) *tokenBucket {
 	tb := &tokenBucket{
 		buckets:  make(map[string]*bucket),
@@ -73,18 +73,35 @@ func newTokenBucket(rate, capacity float64) *tokenBucket {
 	return tb
 }
 
+func newLimiterSet(cfg rateLimitConfig) *limiterSet {
+	return &limiterSet{
+		groups: map[routeGroup]*tokenBucket{
+			routeGroupLoginRegister: newTokenBucket(cfg.loginRegister.rate, float64(cfg.loginRegister.burst)),
+			routeGroupPassword2FA:   newTokenBucket(cfg.password2FA.rate, float64(cfg.password2FA.burst)),
+			routeGroupOtherAuth:     newTokenBucket(cfg.otherAuth.rate, float64(cfg.otherAuth.burst)),
+			routeGroupQRPoll:        newTokenBucket(cfg.qrPoll.rate, float64(cfg.qrPoll.burst)),
+			routeGroupUsernameCheck: newTokenBucket(cfg.usernameCheck.rate, float64(cfg.usernameCheck.burst)),
+			routeGroupMessageWrite:  newTokenBucket(cfg.messageWrite.rate, float64(cfg.messageWrite.burst)),
+			routeGroupMessageRead:   newTokenBucket(cfg.messageRead.rate, float64(cfg.messageRead.burst)),
+			routeGroupMediaDownload: newTokenBucket(cfg.mediaDownload.rate, float64(cfg.mediaDownload.burst)),
+			routeGroupMediaUpload:   newTokenBucket(cfg.mediaUpload.rate, float64(cfg.mediaUpload.burst)),
+			routeGroupCalls:         newTokenBucket(cfg.calls.rate, float64(cfg.calls.burst)),
+			routeGroupMLS:           newTokenBucket(cfg.mls.rate, float64(cfg.mls.burst)),
+			routeGroupOtherAPI:      newTokenBucket(cfg.otherAPI.rate, float64(cfg.otherAPI.burst)),
+			routeGroupWebSocket:     newTokenBucket(cfg.websocket.rate, float64(cfg.websocket.burst)),
+		},
+		global: newTokenBucket(cfg.global.rate, float64(cfg.global.burst)),
+	}
+}
+
 func (tb *tokenBucket) Allow(ip string) bool {
+	return tb.allowAt(ip, time.Now())
+}
+
+func (tb *tokenBucket) allowAt(ip string, now time.Time) bool {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
-	now := time.Now()
-	b, ok := tb.buckets[ip]
-	if !ok {
-		b = &bucket{tokens: tb.capacity, lastRefil: now}
-		tb.buckets[ip] = b
-	}
-	elapsed := now.Sub(b.lastRefil).Seconds()
-	b.tokens = min(tb.capacity, b.tokens+elapsed*tb.rate)
-	b.lastRefil = now
+	b := tb.refillBucketLocked(ip, now)
 	if b.tokens < 1 {
 		return false
 	}
@@ -92,53 +109,147 @@ func (tb *tokenBucket) Allow(ip string) bool {
 	return true
 }
 
-func (tb *tokenBucket) cleanup() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-	for range ticker.C {
-		tb.mu.Lock()
-		cutoff := time.Now().Add(-10 * time.Minute)
-		for ip, b := range tb.buckets {
-			if b.lastRefil.Before(cutoff) {
-				delete(tb.buckets, ip)
-			}
-		}
-		tb.mu.Unlock()
-	}
+func (ls *limiterSet) AllowRequest(ip string, group routeGroup) (bool, time.Duration) {
+	return ls.allowRequestAt(ip, group, time.Time{})
 }
 
-func min(a, b float64) float64 {
-	if a < b {
-		return a
+// Нулевой now означает текущее время после захвата блокировок; фиксированное
+// время позволяет проверять длительные сценарии без ожидания в тестах.
+func (ls *limiterSet) allowRequestAt(ip string, group routeGroup, now time.Time) (bool, time.Duration) {
+	if group == routeGroupNone {
+		ls.global.mu.Lock()
+		defer ls.global.mu.Unlock()
+
+		if now.IsZero() {
+			now = time.Now()
+		}
+		globalBucket := ls.global.refillBucketLocked(ip, now)
+		if globalBucket.tokens < 1 {
+			// остаток после пополнения может быть дробным, поэтому ждать нужно
+			// не целый токен, а только недостающую часть
+			return false, retryAfter(globalBucket.tokens, ls.global.rate)
+		}
+
+		globalBucket.tokens--
+
+		return true, 0
 	}
+
+	groupLimiter, exists := ls.groups[group]
+	// недостижимо: newLimiterSet заводит корзину для каждой группы, гарантируется в тесте TestNewLimiterSetHasBucketForEveryRouteGroup
+	if !exists {
+		return false, time.Second
+	}
+
+	groupLimiter.mu.Lock()
+	defer groupLimiter.mu.Unlock()
+
+	ls.global.mu.Lock()
+	defer ls.global.mu.Unlock()
+
+	if now.IsZero() {
+		now = time.Now()
+	}
+	groupBucket := groupLimiter.refillBucketLocked(ip, now)
+	globalBucket := ls.global.refillBucketLocked(ip, now)
+
+	if groupBucket.tokens < 1 || globalBucket.tokens < 1 {
+		groupWait := retryAfter(groupBucket.tokens, groupLimiter.rate)
+		globalWait := retryAfter(globalBucket.tokens, ls.global.rate)
+
+		if globalWait > groupWait {
+			return false, globalWait
+		}
+
+		return false, groupWait
+	}
+
+	groupBucket.tokens--
+	globalBucket.tokens--
+
+	return true, 0
+}
+
+func (tb *tokenBucket) refillBucketLocked(ip string, now time.Time) *bucket {
+	b, exists := tb.buckets[ip]
+	if !exists {
+		b = &bucket{
+			tokens:    tb.capacity,
+			lastRefil: now,
+		}
+		tb.buckets[ip] = b
+	}
+	elapsed := now.Sub(b.lastRefil).Seconds()
+	b.tokens = min(tb.capacity, b.tokens+elapsed*tb.rate)
+	b.lastRefil = now
+
 	return b
 }
 
-func rateLimitMiddleware(trustedProxies trustedProxySet, authLimiter, usernameCheckLimiter, mediaDownloadLimiter, globalLimiter *tokenBucket, next http.Handler) http.Handler {
+func retryAfter(tokens, rate float64) time.Duration {
+	if tokens >= 1 {
+		return 0
+	}
+	// бывает только у тестовых корзин с замороженным пополнением; защищаемся от деления на ноль
+	if rate <= 0 {
+		return time.Second
+	}
+
+	missingTokens := 1 - tokens
+	waitSeconds := missingTokens / rate
+	return time.Duration(waitSeconds * float64(time.Second))
+}
+
+// cleanup периодически удаляет корзины IP, которые давно не делали запросов,
+// чтобы карта не росла бесконечно. Сам отбор устаревших корзин вынесен в
+// removeStaleBuckets: расписание здесь, логика там, и логика тестируема.
+func (tb *tokenBucket) cleanup() {
+	ticker := time.NewTicker(bucketCleanupInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		tb.removeStaleBuckets(time.Now(), bucketIdleTTL)
+	}
+}
+
+// removeStaleBuckets удаляет корзины, которые не обновлялись дольше ttl.
+// now передаётся аргументом, а не берётся из time.Now(), чтобы тест мог
+// проверить отбор на фиксированном времени.
+func (tb *tokenBucket) removeStaleBuckets(now time.Time, ttl time.Duration) {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+
+	cutoff := now.Add(-ttl)
+	for ip, b := range tb.buckets {
+		if b.lastRefil.Before(cutoff) {
+			delete(tb.buckets, ip)
+		}
+	}
+}
+
+func rateLimitMiddleware(trustedProxies trustedProxySet, limiters *limiterSet, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := trustedProxies.clientIP(r)
-		// Replace any client-supplied value with the address resolved from the
-		// trusted-proxy policy before forwarding the request to internal services.
+		// Заменяем любое значение от клиента адресом, определённым по политике
+		// доверенных прокси, до передачи запроса внутренним сервисам. Делаем это
+		// и для маршрутов вне лимита: иначе заголовок можно подделать на них.
 		r.Header.Set(clientIPHeader, ip)
-		// Stricter limit for auth endpoints (login/register brute-force).
-		if strings.HasPrefix(r.URL.Path, "/api/v2/auth/") {
-			if !authLimiter.Allow(ip) {
-				httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many requests — slow down")
-				return
+		if isRateLimitExempt(r.Method, r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		group := classifyRoute(r.Method, r.URL.Path)
+		allowed, wait := limiters.AllowRequest(ip, group)
+		if !allowed {
+			retryAfterSeconds := int(math.Ceil(wait.Seconds()))
+			if retryAfterSeconds < 1 {
+				retryAfterSeconds = 1
 			}
-		}
-		if r.URL.Path == "/api/v2/users/check-username" && !usernameCheckLimiter.Allow(ip) {
-			httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many username checks — slow down")
-			return
-		}
-		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && mediaDownloadPath.MatchString(r.URL.Path) && !mediaDownloadLimiter.Allow(ip) {
-			httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many media downloads — slow down")
-			return
-		}
-		if !globalLimiter.Allow(ip) {
+
+			w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
 			httpx.ErrorJSON(w, r, http.StatusTooManyRequests, "rate_limited", "too many requests")
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -271,13 +382,11 @@ func main() {
 	// Serve static files for frontend, fallback to index.html for React Router
 	mux.Handle("/", frontendHandler(frontendDir))
 
-	// Rate limits use safe defaults and can be overridden through environment variables.
 	limits := loadRateLimitConfig()
-	authLimiter := newTokenBucket(limits.authRate, float64(limits.authBurst))
-	usernameCheckLimiter := newTokenBucket(limits.usernameCheckRate, float64(limits.usernameCheckBurst))
-	mediaDownloadLimiter := newTokenBucket(limits.mediaDownloadRate, float64(limits.mediaDownloadBurst))
-	globalLimiter := newTokenBucket(limits.globalRate, float64(limits.globalBurst))
-	limitedMux := rateLimitMiddleware(trustedProxies, authLimiter, usernameCheckLimiter, mediaDownloadLimiter, globalLimiter, mux)
+	logRateLimits(limits)
+	limiters := newLimiterSet(limits)
+
+	limitedMux := rateLimitMiddleware(trustedProxies, limiters, mux)
 
 	handler := httpx.Middleware(originGuard(limitedMux))
 

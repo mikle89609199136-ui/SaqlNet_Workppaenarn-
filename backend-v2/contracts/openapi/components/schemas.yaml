@@ -1,3 +1,166 @@
+# USER-D002 (#454): legacy bulk envelopes; field validation is completed in #453/#495.
+LegacySettingsBulkPatch:
+  type: object
+  additionalProperties: false
+  description: >-
+    Deprecated shallow partial bulk update (#454). Omitted/null/empty object sections do not reset data.
+    Folders omitted/null preserve; [] clears. Validate every submitted section/alias before any write (#495);
+    bulk and legacy section writers share a row-locked transaction (#1047). Correctly typed passcode fields
+    are ignored. Canonical flags beat
+    valid legacy sound aliases (#496/#1042); conflicting submitted message aliases without canonical sounds
+    reject the complete patch with 400 validation_failed. Unknown root fields and null root are rejected before SQL (#495).
+  properties:
+    settings:
+      $ref: '#/LegacyGeneralSettingsBulkSection'
+    privacySettings:
+      $ref: '#/PrivacySettingsPatchBulkSection'
+    notificationSettings:
+      $ref: '#/LegacyNotificationSettingsBulkSection'
+    soundSettings:
+      $ref: '#/LegacySoundSettingsBulkSection'
+    storageSettings:
+      $ref: '#/LegacyStorageSettingsBulkSection'
+    advancedSettings:
+      $ref: '#/LegacyAdvancedSettingsBulkSection'
+    folders:
+      $ref: '#/LegacyFolders'
+    passcodeEnabled:
+      type: boolean
+      readOnly: true
+      description: Accepted with the correct type for legacy snapshot round-trip and ignored by this PUT; use the separate passcode API.
+    passcodeTimeout:
+      type: integer
+      readOnly: true
+      description: Accepted with the correct type for legacy snapshot round-trip and ignored by this PUT; cannot change passcode timeout here.
+LegacySettingsSnapshot:
+  type: object
+  required:
+    - settings
+    - privacySettings
+    - notificationSettings
+    - soundSettings
+    - storageSettings
+    - advancedSettings
+    - folders
+    - passcodeEnabled
+    - passcodeTimeout
+  description: >-
+    Deprecated compatibility snapshot (#454). Reads fill missing preference keys from shared defaults (#451), without backfill. This is
+    not a compare-and-swap token; build a patch of changed keys rather than sending a stale writable snapshot
+    back.
+  properties:
+    settings:
+      $ref: '#/LegacyGeneralSettings'
+    privacySettings:
+      $ref: '#/PrivacySettings'
+    notificationSettings:
+      $ref: '#/LegacyNotificationSettings'
+    soundSettings:
+      $ref: '#/LegacySoundSettings'
+    storageSettings:
+      $ref: '#/LegacyStorageSettings'
+    advancedSettings:
+      $ref: '#/LegacyAdvancedSettings'
+    folders:
+      $ref: '#/LegacyFolders'
+    passcodeEnabled:
+      type: boolean
+      readOnly: true
+    passcodeTimeout:
+      type: integer
+      readOnly: true
+LegacySettingsBulkUpdateResult:
+  type: object
+  required: [success]
+  properties:
+    success: { type: boolean, enum: [true] }
+  description: Compatibility acknowledgement after a successful update; read the resulting snapshot with a separate GET.
+# USER-D003 (#496): partial preferences; defaults are descriptive so generated PUT fields stay optional.
+NotificationPreferences:
+  type: object
+  description: >-
+    Canonical MVP notification preferences stored in users.settings.settings.
+    Fields are optional in a patch; omission preserves the current value.
+    Defaults describe normalized reads/new accounts, not resetting a patch.
+    These are stored preferences, not effective delivery decisions. Detailed
+    legacy objects are compatibility data, with sound aliases mapped in #1042.
+    Runtime validation is enforced by #495; shared defaults are applied by #451; one-time alias migration and projections are implemented by #1042.
+  properties:
+    notifications:
+      type: boolean
+      description: >-
+        Default true when absent during normalization. Master preference for automatic message/call alerts, including their
+        sounds. False masks sounds/callSounds without changing those stored
+        values, subscriptions, chat preferences, receipts or conversation audio.
+        Browser fallback and ringtone enforcement remain in #725.
+    sounds:
+      type: boolean
+      description: >-
+        Default true when absent during normalization. Incoming message sound preference, independent of callSounds.
+        Effective message sound also requires notifications, an unmuted chat
+        and an eligible delivery context. Legacy messagesSound and
+        notificationsSound are compatibility aliases of sounds (#1042).
+    callSounds:
+      type: boolean
+      description: >-
+        Default true when absent during normalization. Incoming call ringtone preference, independent of sounds and unrelated
+        to conversation audio. Effective ringtone also requires notifications
+        and an allowed call. Legacy callsSound is an alias of callSounds (#1042).
+        Existing rows are normalized once in migration 0042; canonical values then remain authoritative.
+MvpSettings:
+  type: object
+  additionalProperties: false
+  properties:
+    theme:
+      type: string
+      enum: [light, dark, system]
+      description: 'Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme (#728). Backend storage/compatibility is implemented by #1040.'
+    palette:
+      type: string
+      enum: [graphite, midnight, warm]
+      description: Default graphite. Background palette; independent of theme and accentPreset.
+    accentPreset:
+      type: string
+      enum: [violet, plum, orchid, indigo, amber, teal]
+      description: Default violet. Maps the existing local appearance.accent preference.
+    textSize:
+      type: string
+      enum: [small, medium, large]
+      description: 'Default medium; valid stored textSize wins, otherwise a valid legacy fontSize is used (#1040). Relative UI scale; CSS metrics belong to #728.'
+    chatDensity:
+      type: string
+      enum: [compact, normal, large]
+      description: Default normal. Size/spacing of chat list, message bubbles and composer, independent of textSize.
+    showMessageTime:
+      type: boolean
+      description: Default true. Show message timestamps in the conversation; does not remove metadata.
+    showMessageStatus:
+      type: boolean
+      description: Default true. Show outgoing delivery/read marks. Hiding marks never disables delivery/read receipts or hides send failures/retry controls.
+    showMessageAvatars:
+      type: boolean
+      description: Default true. Show sender avatars in the message timeline where currently supported (incoming group messages). Does not hide avatars in chat lists, profiles or calls.
+    groupConsecutiveMessages:
+      type: boolean
+      description: Default true. Visually group consecutive messages of one sender using existing boundary rules. False renders each bubble independently; ordering/data are unchanged.
+    avatarShape:
+      type: string
+      enum: [letter, grid]
+      description: 'Default letter. Fallback avatar rendering when no photo is available; #497.'
+    language:
+      type: string
+      enum: [ru, en]
+      description: Default ru for a missing server preference. Initial locale detection belongs to the client; an explicit saved choice wins.
+    notifications:
+      $ref: '#/NotificationPreferences/properties/notifications'
+    sounds:
+      $ref: '#/NotificationPreferences/properties/sounds'
+    callSounds:
+      $ref: '#/NotificationPreferences/properties/callSounds'
+  description: >-
+    Chosen MVP field contract (#453). Every property is optional in a shallow patch and may be missing in an
+    old response; defaults are normalization rules, not patch values. Root and leaves must not be null,
+    unknown keys are rejected, and validation is atomic (400 validation_failed). Validation is enforced before SQL by #495. Shared read defaults are applied by #451. Appearance compatibility is implemented by #1040 without global backfill; notification migration/resolver are implemented by #1042. Animation/GIF controls are outside MVP.
 Error:
   type: object
   required: [code, message]
@@ -62,12 +225,14 @@ AuthResponse:
     user: { $ref: '#/User' }
 AuthSession:
   type: object
-  required: [id, deviceName, deviceType, ipAddress, lastActive, createdAt, isCurrent]
+  required: [id, deviceName, deviceType, ipAddress, location, userAgent, lastActive, createdAt, isCurrent]
   properties:
-    id: { type: string, format: uuid }
+    id: { type: string, format: uuid, description: Stable auth.sessions ID shared with the devices API. }
     deviceName: { type: string }
     deviceType: { type: string }
     ipAddress: { type: string }
+    location: { type: string }
+    userAgent: { type: string }
     lastActive: { type: string, format: date-time }
     createdAt: { type: string, format: date-time }
     isCurrent:
@@ -80,6 +245,32 @@ AuthSessionsResponse:
     sessions:
       type: array
       items: { $ref: '#/AuthSession' }
+DeviceSession:
+  type: object
+  required: [id, deviceName, deviceType, ipAddress, location, userAgent, lastActive, firstLogin, isCurrent]
+  properties:
+    id: { type: string, format: uuid, description: Same stable ID as AuthSession.id. }
+    deviceName: { type: string }
+    deviceType: { type: string }
+    ipAddress: { type: string }
+    location: { type: string }
+    userAgent: { type: string }
+    lastActive: { type: string, format: date-time }
+    firstLogin: { type: string, format: date-time, description: Alias of AuthSession.createdAt. }
+    isCurrent: { type: boolean, description: True only for the session cookie used by this request. }
+DevicesResponse:
+  type: object
+  required: [devices]
+  properties:
+    devices:
+      type: array
+      items: { $ref: '#/DeviceSession' }
+DeviceRegistrationResponse:
+  type: object
+  required: [success, sessionId]
+  properties:
+    success: { type: boolean, enum: [true] }
+    sessionId: { type: string, format: uuid, description: Existing canonical session ID; registration never creates a credential. }
 Success:
   type: object
   required: [success]
@@ -88,10 +279,22 @@ Success:
 UpdateProfileRequest:
   type: object
   properties:
-    firstName: { type: string }
-    lastName: { type: string }
-    bio: { type: string }
-    avatarUrl: { type: string }
+    firstName:
+      type: string
+      nullable: true
+    lastName:
+      type: string
+      nullable: true
+    bio:
+      type: string
+      nullable: true
+    avatarUrl:
+      type: string
+      nullable: true
+  description: >-
+    Partial update. Omitted/null string leaves preserve the value. Empty firstName is ignored; empty
+    lastName/bio/avatarUrl clears it. No enforced field length limits or avatar URL validator exist in this
+    handler. Unknown keys are currently ignored; this is not the strict settings patch contract.
 RenameUsernameRequest:
   type: object
   required: [username]
@@ -99,9 +302,11 @@ RenameUsernameRequest:
     username: { $ref: '#/Username' }
 ProfileResponse:
   type: object
-  required: [user]
+  required:
+    - user
   properties:
-    user: { $ref: '#/User' }
+    user:
+      $ref: '#/UserProfile'
 PrivacyVisibility:
   type: string
   enum: [all, nobody]
@@ -119,11 +324,24 @@ PrivacySettings:
     photoVisibility: { $ref: '#/PrivacyVisibility' }
     phoneVisibility: { $ref: '#/PrivacyVisibility' }
     forwards: { $ref: '#/PrivacyVisibility' }
-    calls: { $ref: '#/PrivacyVisibility' }
+    calls:
+      allOf:
+        - { $ref: '#/PrivacyVisibility' }
+      description: >-
+        Who may call this user (the callsFrom requirement). The canonical key
+        is calls; callsFrom is not accepted. all allows any private-chat peer,
+        nobody denies incoming calls except always-allow exceptions. There is
+        no contact list: an existing chat or shared group does not grant access.
+        The callee's block list overrides exceptions; otherwise the per-user
+        calls exception overrides the base rule. Outgoing calls use the
+        recipient's rule. Legacy everyone/everybody normalize to all,
+        contacts/none to nobody. Invalid values and explicit JSON null deny;
+        only an absent rule uses the default. Checked before room creation,
+        invite delivery (also on reconnect), accepting and joining a call.
     groupsAdd: { $ref: '#/PrivacyVisibility' }
     messagesFromStrangers: { type: boolean }
-    twoFactorAuth: { type: boolean }
-    autoDeleteAccount: { type: boolean }
+    twoFactorAuth: { type: boolean, description: "Compatibility preference; normalized default false. Does not enable auth MFA." }
+    autoDeleteAccount: { type: boolean, description: "Compatibility preference; chosen normalized default true, matching registration. Missing flags read true after #451; stored false remains false. Does not implement account erasure." }
 LastSeenApprox:
   type: string
   enum: [recently, within_week, within_month, long_ago]
@@ -188,6 +406,13 @@ Chat:
     role: { type: string }
     isPinned: { type: boolean }
     isArchived: { type: boolean }
+    isMuted:
+      type: boolean
+      description: Personal message notifications are muted for the authenticated member (#559). False by default and after expiry; independent of moderator member mute, unread counts and call alerts.
+    mutedUntil:
+      type: string
+      format: date-time
+      description: Future UTC expiry of the authenticated member's personal mute. Omitted when unmuted, expired or muted indefinitely; isMuted distinguishes those states.
     hideNotificationPreview: { type: boolean, default: false, description: "Hide message text in notifications for the authenticated user in this chat." }
     memberCount: { type: integer }
     createdAt: { type: string }
@@ -220,6 +445,16 @@ Chat:
       description: >-
         Private chats only. Present instead of peerLastSeen and peerIsOnline
         when the exact time is hidden from the viewer.
+PersonalChatMuteRequest:
+  type: object
+  additionalProperties: false
+  description: Personal message alerts only. An empty object or null/omitted mutedUntil mutes indefinitely; a timestamp must be RFC3339 in the future. No other member's state can be changed.
+  properties:
+    mutedUntil:
+      type: string
+      format: date-time
+      nullable: true
+      description: Future expiry, or null for indefinite mute. Past/equal-to-now values are rejected by runtime validation.
 ChatMember:
   allOf:
     - { $ref: '#/User' }
@@ -497,7 +732,7 @@ EncryptedMediaUploadRequest:
         ciphertext:
           type: string
           format: byte
-          description: Standard base64 ciphertext; decoded size is limited by MAX_FILE_SIZE (413 file_too_large).
+          description: Standard base64 ciphertext; decoded size is limited to MAX_FILE_SIZE plus the 16-byte AES-GCM tag (413 file_too_large). The limit is enforced from actual bytes, independently of sizeBytes. Voice uploads retain their separate 8 MiB ciphertext limit.
         mimeType:
           type: string
           maxLength: 255
@@ -1014,3 +1249,970 @@ QrStatusResponse:
     status: { type: string, enum: [pending, scanned, confirmed, expired] }
     expiresAt: { type: integer, format: int64 }
     payload: { $ref: '#/QrKeyPayload' }
+
+LegacyGeneralSettings:
+  type: object
+  additionalProperties: false
+  properties:
+    theme:
+      type: string
+      enum: [light, dark, system]
+      description: 'Default dark. Store system as the preference; resolve light/dark locally from prefers-color-scheme (#728). Backend storage/compatibility is implemented by #1040.'
+    palette:
+      type: string
+      enum: [graphite, midnight, warm]
+      description: Default graphite. Background palette; independent of theme and accentPreset.
+    accentPreset:
+      type: string
+      enum: [violet, plum, orchid, indigo, amber, teal]
+      description: Default violet. Maps the existing local appearance.accent preference.
+    textSize:
+      type: string
+      enum: [small, medium, large]
+      description: 'Default medium; valid stored textSize wins, otherwise a valid legacy fontSize is used (#1040). Relative UI scale; CSS metrics belong to #728.'
+    chatDensity:
+      type: string
+      enum: [compact, normal, large]
+      description: Default normal. Size/spacing of chat list, message bubbles and composer, independent of textSize.
+    showMessageTime:
+      type: boolean
+      description: Default true. Show message timestamps in the conversation; does not remove metadata.
+    showMessageStatus:
+      type: boolean
+      description: Default true. Show outgoing delivery/read marks. Hiding marks never disables delivery/read receipts or hides send failures/retry controls.
+    showMessageAvatars:
+      type: boolean
+      description: Default true. Show sender avatars in the message timeline where currently supported (incoming group messages). Does not hide avatars in chat lists, profiles or calls.
+    groupConsecutiveMessages:
+      type: boolean
+      description: Default true. Visually group consecutive messages of one sender using existing boundary rules. False renders each bubble independently; ordering/data are unchanged.
+    avatarShape:
+      type: string
+      enum: [letter, grid]
+      description: 'Default letter. Fallback avatar rendering when no photo is available; #497.'
+    language:
+      type: string
+      enum: [ru, en]
+      description: Default ru for a missing server preference. Initial locale detection belongs to the client; an explicit saved choice wins.
+    notifications:
+      $ref: '#/NotificationPreferences/properties/notifications'
+    sounds:
+      $ref: '#/NotificationPreferences/properties/sounds'
+    callSounds:
+      $ref: '#/NotificationPreferences/properties/callSounds'
+    accentColor:
+      type: string
+      pattern: ^#[0-9a-fA-F]{6}$
+      description: Deprecated arbitrary hex preference, preserved in bulk/export without conversion to a preset (#1040). It does not override accentPreset; missing accentPreset uses violet.
+    fontSize:
+      type: string
+      enum: [small, medium, large]
+      description: 'Deprecated textSize alias (#1040). Reads project resolved textSize. On bulk writes an explicitly submitted textSize wins; otherwise submitted fontSize sets textSize. Both values are validated before writes.'
+  description: >-
+    Known general fields in legacy bulk/export, including frozen-client aliases. Fields optional, unknown
+    keys/null leaves rejected before SQL (#495). Appearance alias compatibility is implemented by #1040;
+    reads resolve valid textSize, then valid legacy fontSize, then the shared default. Bulk/export fontSize
+    projects the resolved value. Arbitrary accentColor remains compatibility data. Stored unknown keys
+    are hidden on reads. It is not an extension point.
+
+LegacyNotificationSettings:
+  type: object
+  additionalProperties: false
+  properties:
+    privateChats:
+      type: boolean
+      description: Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md.
+    groups:
+      type: boolean
+      description: Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md.
+    channels:
+      type: boolean
+      description: Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md.
+    calls:
+      type: boolean
+      description: Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md.
+    videoCalls:
+      type: boolean
+      description: Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md.
+    inAppNotifications:
+      type: boolean
+      description: Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md.
+    messagePreview:
+      type: boolean
+      description: Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md.
+    readReceipts:
+      type: boolean
+      description: Compatibility preference; fallback false. Not an independently implemented MVP policy; see docs/notification-settings.md.
+    reactions:
+      type: boolean
+      description: Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md.
+    newContacts:
+      type: boolean
+      description: Compatibility preference; fallback true. Not an independently implemented MVP policy; see docs/notification-settings.md.
+  description: >-
+    Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys
+    are rejected before SQL by #495. Reads fill missing known keys from shared defaults (#451); this schema
+    does not turn stored compatibility data into an implemented feature.
+
+LegacySoundSettings:
+  type: object
+  additionalProperties: false
+  properties:
+    notificationsVolume:
+      type: integer
+      minimum: 0
+      maximum: 100
+      description: Compatibility percentage; fallback 80.
+    mediaVolume:
+      type: integer
+      minimum: 0
+      maximum: 100
+      description: Compatibility percentage; fallback 100. Not call conversation audio volume.
+    notificationsSound:
+      type: boolean
+      description: 'Compatibility alias of canonical sounds (#1042). Reads project sounds; a submitted alias writes sounds unless canonical sounds is provided in the same bulk patch.'
+    messagesSound:
+      type: boolean
+      description: 'Compatibility alias of canonical sounds (#1042). Conflicting submitted messagesSound/notificationsSound without canonical sounds reject the complete patch before SQL.'
+    sendSound:
+      type: boolean
+      description: 'Compatibility-only preference; fallback true. Not a global sound gate or an implemented send-sound feature.'
+    callsSound:
+      type: boolean
+      description: 'Compatibility alias of canonical callSounds (#1042), independent of message sounds and notifications.'
+    vibrateOnCall:
+      type: boolean
+      description: 'Compatibility-only preference; fallback true. Does not bypass effective notification/sound policy.'
+    notificationSound:
+      type: string
+      description: Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support.
+    messageSound:
+      type: string
+      description: Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support.
+    ringtone:
+      type: string
+      description: Opaque legacy sound identifier; fallback default. No supported sound catalogue is exposed; preserve identifiers without promising playback support.
+  description: >-
+    Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys
+    are rejected before SQL by #495. Reads fill missing known keys from shared defaults (#451); this schema
+    does not turn stored compatibility data into an implemented feature.
+
+LegacyStorageSettings:
+  type: object
+  additionalProperties: false
+  properties:
+    autoDownloadMobile:
+      type: boolean
+      description: Compatibility preference.
+    autoDownloadWifi:
+      type: boolean
+      description: Compatibility preference.
+    autoDownloadRoaming:
+      type: boolean
+      description: Compatibility preference.
+    deleteMediaAfter:
+      type: string
+      description: Opaque legacy retention identifier; known fallback never. No other supported retention catalogue or enforcement is defined.
+  description: >-
+    Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys
+    are rejected before SQL by #495. Reads fill missing known keys from shared defaults (#451); this schema
+    does not turn stored compatibility data into an implemented feature.
+
+LegacyAdvancedSettings:
+  type: object
+  additionalProperties: false
+  properties:
+    autoReconnect:
+      type: boolean
+      description: Compatibility-only stored data; not a new MVP control.
+    fastConnection:
+      type: boolean
+      description: Compatibility-only stored data; not a new MVP control.
+    dataCompression:
+      type: boolean
+      description: Compatibility-only stored data; not a new MVP control.
+    saveDrafts:
+      type: boolean
+      description: Compatibility-only stored data; not a new MVP control.
+    analytics:
+      type: boolean
+      description: Compatibility-only stored data; not a new MVP control.
+    developerMode:
+      type: boolean
+      description: Compatibility-only stored data; not a new MVP control.
+    debugLog:
+      type: boolean
+      description: Compatibility-only stored data; not a new MVP control.
+    hardwareAcceleration:
+      type: boolean
+      description: Compatibility-only stored data; not a new MVP control.
+    autoplayGifs:
+      type: boolean
+      description: Compatibility-only stored data; not a new MVP control.
+    connectionType:
+      type: string
+      description: Opaque legacy connection identifier; known fallback auto. No other supported connection catalogue is defined.
+  description: >-
+    Deprecated partial section. Omission preserves keys, empty object is a no-op, null leaves and unknown keys
+    are rejected before SQL by #495. Reads fill missing known keys from shared defaults (#451); this schema
+    does not turn stored compatibility data into an implemented feature.
+
+LegacyFolderValue:
+  description: >-
+    Opaque JSON value retained only for legacy folders (#441/#561). No folder domain DTO or new MVP folder
+    feature is promised. Scalar, object and nested array values are passed through, not interpreted.
+  anyOf:
+    - type: string
+      nullable: true
+    - type: number
+    - type: boolean
+    - type: object
+      additionalProperties: true
+    - type: array
+      items: {}
+
+LegacyFolders:
+  type: array
+  nullable: true
+  items:
+    $ref: '#/LegacyFolderValue'
+  description: >-
+    Stored legacy list; reads normalize JSON null to [] after #451. Empty array is the normalized empty list. Bulk
+    null/omission preserves; dedicated PUT requires a non-null array (#441).
+
+PrivacySettingsPatch:
+  type: object
+  additionalProperties: false
+  properties:
+    lastSeen:
+      type: string
+      enum: [all, nobody, everyone, everybody, contacts, none]
+      description: all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+    photoVisibility:
+      type: string
+      enum: [all, nobody, everyone, everybody, contacts, none]
+      description: all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+    phoneVisibility:
+      type: string
+      enum: [all, nobody, everyone, everybody, contacts, none]
+      description: all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+    forwards:
+      type: string
+      enum: [all, nobody, everyone, everybody, contacts, none]
+      description: all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+    calls:
+      type: string
+      enum: [all, nobody, everyone, everybody, contacts, none]
+      description: all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+    groupsAdd:
+      type: string
+      enum: [all, nobody, everyone, everybody, contacts, none]
+      description: all/everyone/everybody normalize to all; nobody/contacts/none normalize to nobody. No contacts model exists.
+    messagesFromStrangers:
+      type: boolean
+    twoFactorAuth:
+      type: boolean
+    autoDeleteAccount:
+      type: boolean
+  description: >-
+    Partial privacy write. Null root/leaves and unknown keys are invalid. Visibility aliases accepted for
+    compatibility; output is canonical. Empty object preserves all rules. twoFactorAuth/autoDeleteAccount are
+    stored compatibility switches, not proof that security/account deletion features are enabled.
+
+LegacyGeneralSettingsBulkSection:
+  description: >-
+    Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyGeneralSettings;
+    invalid leaves and unknown keys reject the complete command (#495).
+  anyOf:
+    - $ref: '#/LegacyGeneralSettings'
+    - $ref: '#/LegacyNullSection'
+PrivacySettingsPatchBulkSection:
+  description: >-
+    Bulk-only section: omission, null or {} preserves values. Non-null section follows PrivacySettingsPatch;
+    invalid leaves and unknown keys reject the complete command (#495).
+  anyOf:
+    - $ref: '#/PrivacySettingsPatch'
+    - $ref: '#/LegacyNullSection'
+LegacyNotificationSettingsBulkSection:
+  description: >-
+    Bulk-only section: omission, null or {} preserves values. Non-null section follows
+    LegacyNotificationSettings; invalid leaves and unknown keys reject the complete command (#495).
+  anyOf:
+    - $ref: '#/LegacyNotificationSettings'
+    - $ref: '#/LegacyNullSection'
+LegacySoundSettingsBulkSection:
+  description: >-
+    Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacySoundSettings;
+    invalid leaves and unknown keys reject the complete command (#495).
+  anyOf:
+    - $ref: '#/LegacySoundSettings'
+    - $ref: '#/LegacyNullSection'
+LegacyStorageSettingsBulkSection:
+  description: >-
+    Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyStorageSettings;
+    invalid leaves and unknown keys reject the complete command (#495).
+  anyOf:
+    - $ref: '#/LegacyStorageSettings'
+    - $ref: '#/LegacyNullSection'
+LegacyAdvancedSettingsBulkSection:
+  description: >-
+    Bulk-only section: omission, null or {} preserves values. Non-null section follows LegacyAdvancedSettings;
+    invalid leaves and unknown keys reject the complete command (#495).
+  anyOf:
+    - $ref: '#/LegacyAdvancedSettings'
+    - $ref: '#/LegacyNullSection'
+UserProfile:
+  type: object
+  required:
+    - id
+    - username
+    - firstName
+    - lastName
+    - bio
+    - avatarUrl
+    - badges
+    - isPremium
+    - isBot
+  properties:
+    id:
+      type: string
+      format: uuid
+    username:
+      type: string
+      description: Canonical username.
+    firstName:
+      type: string
+    lastName:
+      type: string
+    bio:
+      type: string
+    avatarUrl:
+      type: string
+      description: Empty when absent or hidden by privacy; a URI format is not guaranteed by the current writer.
+    badges:
+      type: array
+      nullable: true
+      items: {type: string}
+      description: Null is currently possible when empty (#435). Badge names are open server identifiers, not a closed enum.
+    isPremium:
+      type: boolean
+    isBot:
+      type: boolean
+
+UpdateAvatarRequest:
+  type: object
+  properties:
+    avatar:
+      type: string
+      nullable: true
+      description: Legacy alias; used only when avatarUrl is absent/null.
+    avatarUrl:
+      type: string
+      nullable: true
+      description: Preferred field; empty string clears the avatar.
+  description: >-
+    Partial compatibility update; absence/null of both fields leaves the avatar unchanged. No URI validation
+    is currently enforced.
+
+UserSearchItem:
+  type: object
+  required:
+    - id
+    - username
+    - firstName
+    - lastName
+    - avatarUrl
+  properties:
+    id:
+      type: string
+      format: uuid
+    username:
+      type: string
+    firstName:
+      type: string
+    lastName:
+      type: string
+    avatarUrl:
+      type: string
+      description: Empty when absent or hidden.
+
+UserSearchResponse:
+  type: object
+  required:
+    - users
+  properties:
+    users:
+      type: array
+      nullable: true
+      items: {$ref: '#/UserSearchItem'}
+      maxItems: 50
+      description: Empty query gives []; a nonempty search without matches may currently give null (#435). Ordered by username.
+
+UsernameAvailabilityResponse:
+  type: object
+  required:
+    - available
+  properties:
+    available:
+      type: boolean
+
+ProfileQrResponse:
+  type: object
+  required:
+    - qrCode
+  properties:
+    qrCode:
+      type: string
+      pattern: ^data:image/png;base64,
+      description: 256px PNG data URL. Encoded payload is the profile deep link, not a login token. Canonical URL policy and runtime gap are documented in docs/user-api-contract.md (#452).
+
+DatabaseTimestamp:
+  type: string
+  description: >-
+    Current PostgreSQL timestamptz::text serialization, including date, time and numeric offset; not
+    guaranteed RFC 3339. Consumers must not assume format date-time. UTC RFC 3339 normalization requires a
+    runtime change.
+  example: '2026-10-16 18:00:00+00'
+
+UserBlockedItem:
+  allOf:
+    - $ref: '#/UserSearchItem'
+    - type: object
+      required: [blockedAt]
+      properties: {blockedAt: {$ref: '#/DatabaseTimestamp'}}
+
+UserBlockedResponse:
+  type: object
+  required:
+    - blocked
+  properties:
+    blocked:
+      type: array
+      nullable: true
+      items: {$ref: '#/UserBlockedItem'}
+
+BlockUserRequest:
+  type: object
+  required:
+    - userId
+  properties:
+    userId:
+      type: string
+      format: uuid
+
+SettingsResponse:
+  type: object
+  required:
+    - settings
+    - privacy
+  properties:
+    settings:
+      $ref: '#/MvpSettings'
+    privacy:
+      $ref: '#/PrivacySettings'
+
+SettingsUpdateResponse:
+  type: object
+  required:
+    - settings
+  properties:
+    settings:
+      $ref: '#/MvpSettings'
+
+PrivacyUpdateResponse:
+  type: object
+  required:
+    - privacy
+  properties:
+    privacy:
+      $ref: '#/PrivacySettings'
+
+PrivacyExceptionsResponse:
+  type: object
+  required:
+    - exceptions
+  properties:
+    exceptions:
+      type: array
+      items: {$ref: '#/PrivacyException'}
+
+PrivacyExceptionRequest:
+  type: object
+  additionalProperties: false
+  required:
+    - mode
+  properties:
+    mode:
+      $ref: '#/PrivacyExceptionMode'
+
+PrivacyExceptionResponse:
+  type: object
+  required:
+    - exception
+  properties:
+    exception:
+      $ref: '#/PrivacyException'
+
+LegacyNotificationResponse:
+  type: object
+  required:
+    - settings
+  properties:
+    settings:
+      $ref: '#/LegacyNotificationSettings'
+
+LegacyNotificationUpdateResponse:
+  type: object
+  required:
+    - success
+    - settings
+  properties:
+    success:
+      type: boolean
+      enum: [true]
+    settings:
+      $ref: '#/LegacyNotificationSettings'
+
+LegacySoundResponse:
+  type: object
+  required:
+    - settings
+  properties:
+    settings:
+      $ref: '#/LegacySoundSettings'
+
+LegacySoundUpdateResponse:
+  type: object
+  required:
+    - success
+    - settings
+  properties:
+    success:
+      type: boolean
+      enum: [true]
+    settings:
+      $ref: '#/LegacySoundSettings'
+
+LegacyAdvancedResponse:
+  type: object
+  required:
+    - settings
+  properties:
+    settings:
+      $ref: '#/LegacyAdvancedSettings'
+
+LegacyAdvancedUpdateResponse:
+  type: object
+  required:
+    - success
+    - settings
+  properties:
+    success:
+      type: boolean
+      enum: [true]
+    settings:
+      $ref: '#/LegacyAdvancedSettings'
+
+LegacyFoldersResponse:
+  type: object
+  required:
+    - folders
+  properties:
+    folders:
+      $ref: '#/LegacyFolders'
+
+LegacyFoldersRequest:
+  type: object
+  required:
+    - folders
+  properties:
+    folders:
+      type: array
+      items: {}
+  description: >-
+    Dedicated PUT replaces the array; [] clears it. Omitted/null folders are invalid by contract, but the
+    handler currently clears them (#441). Bulk omission/null semantics differ (#454).
+
+StorageUsage:
+  type: object
+  required:
+    - messages
+    - media
+    - files
+    - cache
+  properties:
+    messages:
+      type: integer
+      format: int64
+      minimum: 0
+      description: 'Currently SUM(LENGTH(content)) for own nondeleted messages: character count of stored content, not physical bytes. #445.'
+    media:
+      type: integer
+      format: int64
+      minimum: 0
+      description: 'Currently always zero; actual storage accounting requires #445.'
+    files:
+      type: integer
+      format: int64
+      minimum: 0
+      description: 'Currently always zero; actual storage accounting requires #445.'
+    cache:
+      type: integer
+      format: int64
+      minimum: 0
+      description: 'Currently always zero; actual storage accounting requires #445.'
+
+StorageResponse:
+  type: object
+  required:
+    - storage
+    - settings
+  properties:
+    storage:
+      $ref: '#/StorageUsage'
+    settings:
+      $ref: '#/LegacyStorageSettings'
+
+StorageSettingsUpdateResponse:
+  type: object
+  required:
+    - success
+    - settings
+  properties:
+    success:
+      type: boolean
+      enum: [true]
+    settings:
+      $ref: '#/LegacyStorageSettings'
+
+UserExportChat:
+  type: object
+  required:
+    - id
+    - title
+    - type
+    - createdAt
+  properties:
+    id:
+      type: string
+      format: uuid
+    title:
+      type: string
+    type:
+      type: string
+      enum: [private, group, channel, self]
+    createdAt:
+      $ref: '#/DatabaseTimestamp'
+
+UserExport:
+  type: object
+  required:
+    - user
+    - chats
+    - settings
+    - privacy
+    - exportedAt
+  properties:
+    user:
+      $ref: '#/UserProfile'
+    chats:
+      type: array
+      nullable: true
+      items: {$ref: '#/UserExportChat'}
+    settings:
+      $ref: '#/LegacyGeneralSettings'
+    privacy:
+      $ref: '#/PrivacySettings'
+    exportedAt:
+      type: string
+      format: date-time
+      description: UTC RFC 3339 generation time.
+  description: >-
+    Current partial export: profile, chat membership metadata, general settings and privacy. Excludes message
+    bodies, attachments, private keys and other account resources. A full archive is separate #447. chats may
+    currently be null when empty (#435).
+
+PasscodeState:
+  type: object
+  required:
+    - enabled
+    - timeout
+  properties:
+    enabled:
+      type: boolean
+    timeout:
+      type: integer
+      description: Seconds. Current runtime defaults nonpositive writes to 60; target 0 means disabled auto-lock, positive values are delays (#442).
+
+PasscodeRequest:
+  type: object
+  required:
+    - passcode
+  properties:
+    passcode:
+      type: string
+      description: Exact supplied string for verify/disable; not a numeric PIN schema.
+
+SetPasscodeRequest:
+  type: object
+  required:
+    - passcode
+  properties:
+    passcode:
+      type: string
+      description: At least 4 bytes after trimming whitespace, as measured by the Go validator. No digit-only, 4-6 character or upper-length rule is implemented.
+      x-min-trimmed-utf8-bytes: 4
+
+PasscodeTimeoutRequest:
+  type: object
+  required:
+    - timeout
+  properties:
+    timeout:
+      type: integer
+      minimum: 0
+      description: Seconds; 0 disables automatic re-lock. Required; negatives are rejected without writes. Runtime currently substitutes 60 for missing/zero/negative (#442).
+
+DeviceRegistrationRequest:
+  type: object
+  properties:
+    deviceName:
+      type: string
+      nullable: true
+      description: Session metadata is replaced on every registration. Omitted/null/empty string writes an empty value. No enum, address or length validator exists.
+    deviceType:
+      type: string
+      nullable: true
+      description: Session metadata is replaced on every registration. Omitted/null/empty string writes an empty value. No enum, address or length validator exists.
+    userAgent:
+      type: string
+      nullable: true
+      description: Session metadata is replaced on every registration. Omitted/null/empty string writes an empty value. No enum, address or length validator exists.
+    clientIP:
+      type: string
+      nullable: true
+      description: Session metadata is replaced on every registration. Omitted/null/empty string writes an empty value. No enum, address or length validator exists.
+
+PushNotificationPayload:
+  type: object
+  additionalProperties: false
+  required: [v, kind, chatId, chatType, actorName, lang, silent]
+  description: >-
+    Web Push v1 metadata, extended compatibly with an explicit silent boolean (#1042).
+    No plaintext message, keys, full settings or subscription credentials are included.
+    Global notifications=false suppresses delivery; personal chat mute suppresses message delivery only.
+    Message silent follows sounds; call silent follows callSounds; missed_call is always silent.
+    Updated workers show legacy payloads with absent/invalid silent quietly; older workers ignore the new
+    property and must be updated to enforce sound policy. Browser fallback/ringtone remains #725.
+  properties:
+    v: { type: integer, enum: [1] }
+    kind: { type: string, enum: [message, call, missed_call] }
+    chatId: { type: string, format: uuid }
+    chatType: { type: string, enum: [private, group, channel, self] }
+    actorName: { type: string }
+    chatTitle: { type: string, description: Omitted for private chats. }
+    roomId: { type: string }
+    callKind: { type: string }
+    lang: { type: string }
+    silent: { type: boolean, description: Effective server sound decision; false explicitly permits sound, true disables sound/vibration. }
+PushVapidResponse:
+  type: object
+  required:
+    - publicKey
+  properties:
+    publicKey:
+      type: string
+      description: Base64url encoded uncompressed P-256 point.
+
+PushSubscriptionRequest:
+  type: object
+  required:
+    - endpoint
+    - keys
+  properties:
+    endpoint:
+      type: string
+      format: uri
+      maxLength: 2048
+      pattern: ^https://
+      description: HTTPS URL without userinfo or explicit port, on the service allowlist in internal/push/subscription.go; checked server-side. At most 20 endpoints/account.
+    keys:
+      type: object
+      required: [p256dh, auth]
+      properties: {p256dh: {type: string, description: '65 decoded bytes, first byte 0x04; curve membership is not checked by this handler. Base64url or standard base64, padded or unpadded.'}, auth: {type: string, description: '16 decoded bytes; base64url or standard base64, padded or unpadded.'}}
+
+PushSubscriptionResponse:
+  type: object
+  required:
+    - id
+  properties:
+    id:
+      type: string
+      format: uuid
+
+DeletePushSubscriptionRequest:
+  type: object
+  required:
+    - endpoint
+  properties:
+    endpoint:
+      type: string
+      minLength: 1
+
+
+UserInvalidJsonBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [invalid_json]}}
+
+UserInvalidPushSubscriptionBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [invalid_json, invalid_push_subscription]}}
+
+UserPasscodeNotSetBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [invalid_json, no_passcode_set]}}
+
+UserInvalidBlockBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [invalid_json, self_block, validation_failed]}}
+
+UserInvalidExceptionBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [invalid_json, self_exception, validation_failed]}}
+
+UserInvalidInputBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [invalid_json, validation_failed]}}
+
+UserInvalidSessionIdBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [invalid_request, validation_failed]}}
+
+UserInvalidParameterBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [validation_failed]}}
+
+UserUnauthorizedBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}
+
+UserPasscodeUnauthorizedBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked, wrong_passcode]}}
+
+UserForbiddenBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [cross_site_request]}}
+
+UserSessionNotFoundBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [not_found]}}
+
+UserPushNotConfiguredBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [push_not_configured]}}
+
+UserRouteNotFoundBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [route_not_found]}}
+
+UserProfileRouteNotFoundBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [route_not_found, user_not_found]}}
+
+UserNotFoundBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [user_not_found]}}
+
+UserMethodNotAllowedBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [method_not_allowed]}}
+
+UserAlreadyBlockedBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [already_blocked]}}
+
+UserCurrentSessionConflictBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [conflict_current_session]}}
+
+UserUsernameConflictBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [username_taken]}}
+
+UserRateLimitedBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [rate_limited]}}
+
+UserRenameRateLimitedBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [rate_limited, username_change_cooldown]}}
+
+UserInternalErrorBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [internal_error]}}
+
+UserBadGatewayBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [upstream_unavailable]}}
+
+UserUnavailableBody:
+  allOf:
+    - $ref: '#/Error'
+    - type: object
+      properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready]}}
+
+LegacyNullSection:
+  type: object
+  nullable: true
+  enum:
+    - null
+  description: Only JSON null. Bulk compatibility no-op, never a leaf reset.

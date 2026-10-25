@@ -121,6 +121,7 @@ func (m *MinioStore) Get(ctx context.Context, bucket, key string, options GetOpt
 		Body:          resp.Body,
 		StatusCode:    resp.StatusCode,
 		ContentLength: resp.ContentLength,
+		ContentType:   resp.Header.Get("Content-Type"),
 		ContentRange:  resp.Header.Get("Content-Range"),
 		AcceptRanges:  resp.Header.Get("Accept-Ranges"),
 	}, nil

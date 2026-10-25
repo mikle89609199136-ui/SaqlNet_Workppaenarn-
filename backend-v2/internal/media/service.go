@@ -81,6 +81,7 @@ type ObjectResponse struct {
 	Body          io.ReadCloser
 	StatusCode    int
 	ContentLength int64
+	ContentType   string
 	ContentRange  string
 	AcceptRanges  string
 }
@@ -120,7 +121,11 @@ func sanitizeFilename(filename string) string {
 }
 
 func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType string, data []byte, isEncrypted bool, encryptionJSON, purpose string) (Upload, error) {
-	if int64(len(data)) > s.maxUploadBytes {
+	limit := s.maxUploadBytes
+	if isEncrypted {
+		limit = s.encryptedUploadLimit()
+	}
+	if int64(len(data)) > limit {
 		return Upload{}, ErrTooBig
 	}
 
@@ -162,7 +167,7 @@ func (s *Service) UploadRaw(ctx context.Context, userID, filename, contentType s
 }
 
 func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64Ciphertext, encryptionJSON, contentType string) (Upload, error) {
-	data, err := decodeBase64Payload(base64Ciphertext, s.maxUploadBytes)
+	data, err := decodeBase64Payload(base64Ciphertext, s.encryptedUploadLimit())
 	if err != nil {
 		if errors.Is(err, ErrTooBig) {
 			return Upload{}, err
@@ -172,7 +177,7 @@ func (s *Service) UploadEncrypted(ctx context.Context, userID, filename, base64C
 	return s.UploadRaw(ctx, userID, filename, contentType, data, true, encryptionJSON, "message")
 }
 
-func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileHeader) (Upload, error) {
+func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileHeader, purpose string) (Upload, error) {
 	base, ok := allowedMediaType(fh.Header.Get("Content-Type"))
 	if !ok {
 		return Upload{}, ErrBadType
@@ -189,7 +194,7 @@ func (s *Service) Upload(ctx context.Context, userID string, fh *multipart.FileH
 		return Upload{}, err
 	}
 
-	return s.UploadRaw(ctx, userID, fh.Filename, base, data, false, "", "unknown")
+	return s.UploadRaw(ctx, userID, fh.Filename, base, data, false, "", purpose)
 }
 
 func normalizeUploadPurpose(purpose string) string {
@@ -250,6 +255,20 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		FROM media.uploads WHERE id = $1
 	`, uploadID).Scan(&bucket, &objectKey, &contentType, &sizeBytes, &isEncrypted, &encryptionJSON)
 
+	catalogObject := false
+	if errors.Is(err, sql.ErrNoRows) {
+		// Стикеры и иконки уже имеют идентификаторы хранилища (#973).
+		// URL из базы не скачиваем: только управляемые bucket/object_key.
+		err = s.db.QueryRowContext(ctx, `
+			SELECT bucket, object_key FROM media.stickers
+			WHERE EXISTS (SELECT 1 FROM media.sticker_packs p WHERE p.id = pack_id) AND id = $1 AND bucket <> '' AND object_key <> ''
+			UNION ALL
+			SELECT icon_bucket, icon_object_key FROM media.sticker_packs
+			WHERE id = $1 AND icon_bucket <> '' AND icon_object_key <> ''
+		`, uploadID).Scan(&bucket, &objectKey)
+		catalogObject = err == nil
+	}
+
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -295,7 +314,7 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		encodedSize := int64(base64.StdEncoding.EncodedLen(int(ciphertextSize)))
 		responseSize := int64(len(prefix)) + encodedSize + int64(len(suffix))
 
-		w.Header().Set("Cache-Control", "private")
+		w.Header().Set("Cache-Control", "private, no-cache")
 		w.Header().Add("Vary", "Authorization, Cookie")
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Length", strconv.FormatInt(responseSize, 10))
@@ -329,7 +348,7 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 	}
 	defer object.Body.Close()
 
-	w.Header().Set("Cache-Control", "private")
+	w.Header().Set("Cache-Control", "private, no-cache")
 	w.Header().Add("Vary", "Authorization, Cookie")
 	switch object.StatusCode {
 	case http.StatusOK, http.StatusPartialContent:
@@ -342,6 +361,11 @@ func (s *Service) ServeProxy(ctx context.Context, uploadID string, w http.Respon
 		return nil
 	default:
 		return ErrStorage
+	}
+
+	if catalogObject {
+		contentType = object.ContentType
+		sizeBytes = object.ContentLength
 	}
 
 	mediaType, allowed := allowedMediaType(contentType)

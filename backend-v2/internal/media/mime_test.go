@@ -240,7 +240,7 @@ func TestMultipartRejectsMIMEBeforeOpeningFile(t *testing.T) {
 	handler, assertNoPersistence := newRejectedMIMEHandler(t)
 	// This header has no backing file; opening it fails. MIME must win over that error.
 	fh := &multipart.FileHeader{Filename: "file.html", Header: textproto.MIMEHeader{"Content-Type": {"text/html"}}}
-	if _, err := handler.service.Upload(context.Background(), "user-id", fh); !errors.Is(err, ErrBadType) {
+	if _, err := handler.service.Upload(context.Background(), "user-id", fh, "unknown"); !errors.Is(err, ErrBadType) {
 		t.Fatalf("Service.Upload error=%v, want ErrBadType before fh.Open", err)
 	}
 	request := httptest.NewRequest(http.MethodPost, "/api/v2/media", nil)

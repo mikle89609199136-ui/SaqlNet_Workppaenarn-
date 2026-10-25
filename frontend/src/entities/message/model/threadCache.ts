@@ -1,6 +1,7 @@
 import type { InfiniteData } from '@tanstack/react-query';
 import type { IMessageDto, TMediaMessageType, TMessagesList } from './types';
 import { getOutboxItem } from './outboxStore';
+import { isUnsent } from './messageUtils';
 import {
   isCoveredBy,
   receiptPatch,
@@ -26,9 +27,28 @@ export type IThreadPages = InfiniteData<TMessagesList>;
  */
 export const EMPTY_THREAD: TMessagesList = [];
 
+function editedLater(candidate: IMessageDto, kept: IMessageDto): boolean {
+  if (!candidate.updatedAt || !kept.updatedAt) return false;
+  return new Date(candidate.updatedAt).getTime() > new Date(kept.updatedAt).getTime();
+}
+
+/**
+ * Страницы склеиваются без повторов.
+ *
+ * Повтор бывает на стыке страниц: история грузится по смещению, и если
+ * за это время пришли новые сообщения, следующая страница начинается с
+ * тех, что уже лежат в первой. Они показывались дважды подряд (#1064).
+ * Из двух копий остаётся та, что правили позже, а при равенстве — из
+ * более ранней страницы: её человек уже видит.
+ */
 export function flattenThread(data: IThreadPages | undefined): TMessagesList {
   if (!data) return [];
-  return sortMessagesChronologically<IMessageDto>(data.pages.flat());
+  const byId = new Map<string, IMessageDto>();
+  for (const message of data.pages.flat()) {
+    const kept = byId.get(message.id);
+    if (!kept || editedLater(message, kept)) byId.set(message.id, message);
+  }
+  return sortMessagesChronologically<IMessageDto>([...byId.values()]);
 }
 
 function hasMessage(data: IThreadPages, messageId: string): boolean {
@@ -73,7 +93,7 @@ export function patchMessage(
         ...(outboxItem.voice ? { voice: outboxItem.voice } : {}),
         replyTo: outboxItem.replyToId ?? null,
         replyToMessageId: outboxItem.replyToId ?? null,
-        senderId: '',
+        senderId: outboxItem.senderId,
         senderFirstName: '',
         senderName: '',
         forwardedSenderName: '',
@@ -132,6 +152,64 @@ export function removeMessage(data: IThreadPages, messageId: string): IThreadPag
     ...data,
     pages: data.pages.map((page) => page.filter((message) => message.id !== messageId)),
   };
+}
+
+/**
+ * Пропущенные удаления после обрыва связи (#1068).
+ *
+ * Удаление приходит только событием, и пропущенное за время обрыва
+ * оставалось в ленте. Сервер в истории удалённых и скрытых не отдаёт,
+ * поэтому подтверждённое сообщение, которого нет в свежей странице, хотя
+ * по времени оно внутри неё, удалили или скрыли.
+ *
+ * Граница — строго новее самого старого сообщения страницы: у сервера нет
+ * второго ключа сортировки, и сообщение с тем же временем могло просто
+ * не поместиться. Старше границы ничего не трогаем — это прокрученная
+ * история. Неотправленные сервер ещё не знает. Пустая страница ничего не
+ * удаляет: её не отличить от неполного ответа.
+ */
+export function dropMissingFromHead(data: IThreadPages, page: IMessageDto[]): IThreadPages {
+  if (page.length === 0) return data;
+
+  const fresh = new Set(page.map((message) => message.id));
+  const oldest = Math.min(...page.map((message) => new Date(message.createdAt).getTime()));
+  if (!Number.isFinite(oldest)) return data;
+
+  let changed = false;
+  const pages = data.pages.map((items) =>
+    items.filter((message) => {
+      const missing =
+        !fresh.has(message.id) &&
+        !isUnsent(message) &&
+        new Date(message.createdAt).getTime() > oldest;
+      if (missing) changed = true;
+      return !missing;
+    })
+  );
+
+  return changed ? { ...data, pages } : data;
+}
+
+/**
+ * Цитаты на удалённые сообщения (#1065).
+ *
+ * Превью исходника приходит от сервера вместе с ответом. После удаления
+ * у всех или скрытия у себя его текст иначе оставался бы в плашке до
+ * перезагрузки — а после неё сервер его уже не отдаёт.
+ */
+export function forgetReplyPreviews(data: IThreadPages, removedIds: string[]): IThreadPages {
+  const removed = new Set(removedIds);
+  let changed = false;
+  const pages = data.pages.map((page) =>
+    page.map((message) => {
+      const target = message.replyTo || message.replyToMessageId;
+      if (!message.replyPreview || !target || !removed.has(target)) return message;
+      changed = true;
+      return { ...message, replyPreview: undefined };
+    })
+  );
+
+  return changed ? { ...data, pages } : data;
 }
 
 export function replaceMessage(

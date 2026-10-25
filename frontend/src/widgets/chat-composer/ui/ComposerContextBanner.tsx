@@ -1,6 +1,7 @@
 import { useChatUiStore } from '@/entities/chat';
 import { getMessagePreview } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
+import { describeCallMessage } from '@/shared/lib';
 import { useTranslation } from 'react-i18next';
 import { ComposerStrip } from './ComposerStrip';
 
@@ -41,7 +42,15 @@ export const ComposerContextBanner = ({ onCancel }: Props) => {
       cancelLabel={t('cancelReply', 'Отменить ответ')}
       icon="reply"
       onCancel={onCancel}
-      text={getMessagePreview(replyToMessage)}
+      text={
+        // В content звонка служебный JSON — показываем вид звонка (#1073).
+        replyToMessage?.type === 'call'
+          ? describeCallMessage(replyToMessage.content, replyToMessage.senderId, undefined).kind ===
+            'video'
+            ? t('call.history.videoCall', 'Видеозвонок')
+            : t('lastMessage.call', 'Звонок')
+          : getMessagePreview(replyToMessage)
+      }
       title={author}
     />
   );

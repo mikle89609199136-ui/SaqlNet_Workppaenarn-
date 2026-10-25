@@ -496,3 +496,218 @@ describe('подключение по cookie сессии', () => {
     expect(FakeSocket.instances).toHaveLength(0);
   });
 });
+
+/* Соединение, которое молчит, мёртвое (#1069): браузер признаёт это
+   нескоро, а шапка всё это время показывала бы «на связи». */
+describe('сторожевой таймер соединения', () => {
+  const LIVENESS = 60_000;
+  const PROBE = 10_000;
+
+  /** Ещё не сработавшие таймеры тишины — по их длительности. */
+  const pending = (delay: number) =>
+    timers.filter((timer) => timer.delay === delay && !timer.cancelled && !timer.fired);
+
+  function connected() {
+    const client = makeClient({ livenessTimeout: LIVENESS, probeTimeout: PROBE });
+    const socket = client.connect() as unknown as FakeSocket;
+    socket.open();
+    return { client, socket };
+  }
+
+  it('60 с тишины после открытия — старое закрыто, новое создано, обрыв объявлен один раз', () => {
+    const { socket } = connected();
+    const disconnected = vi.fn();
+    eventBus.on('socket:disconnected', disconnected);
+
+    expect(pending(LIVENESS)).toHaveLength(1);
+    pending(LIVENESS)[0].run();
+
+    expect(socket.closeCalls).toBe(1);
+    expect(FakeSocket.instances).toHaveLength(2);
+    expect(disconnected).toHaveBeenCalledTimes(1);
+  });
+
+  it('любое входящее перезаводит таймер', () => {
+    const { socket } = connected();
+    const [first] = pending(LIVENESS);
+
+    socket.deliver({ type: 'ping' });
+    expect(first.cancelled).toBe(true);
+    expect(pending(LIVENESS)).toHaveLength(1);
+
+    socket.deliver({ type: 'new_message', payload: {} });
+    expect(pending(LIVENESS)).toHaveLength(1);
+  });
+
+  it('после закрытия и после disconnect таймера нет', () => {
+    const { client, socket } = connected();
+    socket.finishClosing();
+    expect(pending(LIVENESS)).toHaveLength(0);
+
+    const next = client.connect() as unknown as FakeSocket;
+    next.open();
+    client.disconnect();
+    expect(pending(LIVENESS)).toHaveLength(0);
+  });
+
+  it('брошенное по таймеру соединение позже закрывается — новое остаётся текущим', () => {
+    const { client, socket } = connected();
+    const disconnected = vi.fn();
+    eventBus.on('socket:disconnected', disconnected);
+    pending(LIVENESS)[0].run();
+    const fresh = FakeSocket.instances.at(-1)!;
+    fresh.open();
+
+    socket.finishClosing();
+
+    expect(disconnected).toHaveBeenCalledTimes(1);
+    expect(client.isConnected).toBe(true);
+  });
+
+  it('возврат сети при открытом соединении — ping и короткое ожидание ответа', () => {
+    const { socket } = connected();
+
+    wake('online');
+
+    expect(socket.sent).toEqual([JSON.stringify({ type: 'ping' })]);
+    expect(pending(PROBE)).toHaveLength(1);
+    expect(FakeSocket.instances).toHaveLength(1);
+
+    socket.deliver({ type: 'pong' });
+    expect(pending(PROBE)).toHaveLength(0);
+    expect(pending(LIVENESS)).toHaveLength(1);
+    expect(FakeSocket.instances).toHaveLength(1);
+  });
+
+  it('на ping нет ответа — переподключение', () => {
+    const { socket } = connected();
+
+    wake('online');
+    pending(PROBE)[0].run();
+
+    expect(socket.closeCalls).toBe(1);
+    expect(FakeSocket.instances).toHaveLength(2);
+  });
+
+  it('возврат во вкладку — тоже проверка; скрытая вкладка — нет', () => {
+    const { socket } = connected();
+
+    visibility = 'hidden';
+    wake('visibilitychange');
+    expect(socket.sent).toEqual([]);
+
+    visibility = 'visible';
+    wake('visibilitychange');
+    expect(socket.sent).toEqual([JSON.stringify({ type: 'ping' })]);
+  });
+
+  it('сообщение без соединения таймеров не заводит', () => {
+    const client = makeClient({ livenessTimeout: LIVENESS });
+
+    client.handleMessage({ data: JSON.stringify({ type: 'ping' }) });
+
+    expect(pending(LIVENESS)).toHaveLength(0);
+  });
+});
+
+/* Отозванная сессия (#1070): код отказа рукопожатия браузер не отдаёт, и
+   без проверки вкладка бесконечно висела бы на «Подключаемся…». */
+describe('проверка сессии при неудачных переподключениях', () => {
+  function failing(checkSession?: () => Promise<boolean>) {
+    const client = makeClient({ reconnectDelay: 1000, ...(checkSession ? { checkSession } : {}) });
+    client.connect();
+    /** Текущая попытка не удалась — следующая назначена. */
+    const fail = () => {
+      (FakeSocket.instances.at(-1) as FakeSocket).finishClosing();
+    };
+    const retry = () => scheduled()?.run();
+    return { client, fail, retry };
+  }
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('после 1–2 неудач не спрашивает, после третьей — один раз', async () => {
+    const checkSession = vi.fn(async () => true);
+    const { fail, retry } = failing(checkSession);
+
+    fail();
+    retry();
+    fail();
+    expect(checkSession).not.toHaveBeenCalled();
+
+    retry();
+    fail();
+    await settle();
+    expect(checkSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('сессии нет — попыток больше нет, и сеть их не будит', async () => {
+    const { fail, retry } = failing(async () => false);
+    fail();
+    retry();
+    fail();
+    retry();
+    fail();
+    await settle();
+
+    const sockets = FakeSocket.instances.length;
+    expect(scheduled()).toBeUndefined();
+    wake('online');
+    wake('visibilitychange');
+    expect(FakeSocket.instances).toHaveLength(sockets);
+  });
+
+  it('сессия жива — пробует дальше, следующая проверка на шестой неудаче', async () => {
+    const checkSession = vi.fn(async () => true);
+    const { fail, retry } = failing(checkSession);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      fail();
+      retry();
+    }
+    await settle();
+    expect(checkSession).toHaveBeenCalledTimes(1);
+
+    fail();
+    await settle();
+    expect(checkSession).toHaveBeenCalledTimes(2);
+    expect(scheduled()).toBeDefined();
+  });
+
+  it('удачное подключение сбрасывает счёт', async () => {
+    const checkSession = vi.fn(async () => true);
+    const { fail, retry } = failing(checkSession);
+
+    fail();
+    retry();
+    fail();
+    retry();
+    (FakeSocket.instances.at(-1) as FakeSocket).open();
+    fail();
+    retry();
+    fail();
+    await settle();
+
+    expect(checkSession).not.toHaveBeenCalled();
+  });
+
+  it('пока проверка не ответила, второй нет', async () => {
+    let answer!: (alive: boolean) => void;
+    const checkSession = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          answer = resolve;
+        })
+    );
+    const { fail, retry } = failing(checkSession);
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      fail();
+      retry();
+    }
+    expect(checkSession).toHaveBeenCalledTimes(1);
+
+    answer(true);
+    await settle();
+  });
+});

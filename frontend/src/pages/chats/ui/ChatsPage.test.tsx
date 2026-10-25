@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import { useMessageSearchStore } from '@/features/message-search';
 import { ChatsPage } from './ChatsPage';
 
 let mockIsMobile = false;
+let mockChatId: string | undefined;
 
 vi.mock('@/shared/lib', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -37,7 +39,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    useParams: () => ({ chatId: undefined }),
+    useParams: () => ({ chatId: mockChatId }),
     /* Тред открывает профиль через контекст — так же поступает и
        заглушка, чтобы проверять панель без настоящего треда. */
     Outlet: ({ context }: { context: { onProfileStateChange: (state: unknown) => void } }) => (
@@ -57,7 +59,50 @@ vi.mock('react-router-dom', async (importOriginal) => {
 describe('ChatsPage', () => {
   beforeEach(() => {
     mockIsMobile = false;
+    mockChatId = undefined;
     vi.clearAllMocks();
+  });
+
+  describe('поиск по переписке (#841)', () => {
+    const renderPage = () =>
+      render(
+        <MemoryRouter>
+          <ChatsPage />
+        </MemoryRouter>
+      );
+
+    it('смена ширины окна не закрывает поиск', () => {
+      mockChatId = 'chat-1';
+      const { rerender } = renderPage();
+      act(() => useMessageSearchStore.getState().open('chat-1'));
+
+      mockIsMobile = true;
+      rerender(
+        <MemoryRouter>
+          <ChatsPage />
+        </MemoryRouter>
+      );
+
+      expect(useMessageSearchStore.getState().chatId).toBe('chat-1');
+    });
+
+    it('другой чат или уход из чатов закрывают поиск', () => {
+      mockChatId = 'chat-1';
+      const { rerender, unmount } = renderPage();
+      act(() => useMessageSearchStore.getState().open('chat-1'));
+
+      mockChatId = 'chat-2';
+      rerender(
+        <MemoryRouter>
+          <ChatsPage />
+        </MemoryRouter>
+      );
+      expect(useMessageSearchStore.getState().chatId).toBeNull();
+
+      act(() => useMessageSearchStore.getState().open('chat-2'));
+      unmount();
+      expect(useMessageSearchStore.getState().chatId).toBeNull();
+    });
   });
 
   it('рендерит десктопную раскладку с панелью чатов и ресайзером', () => {

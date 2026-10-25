@@ -36,11 +36,11 @@ describe('CallHistoryList', () => {
     vi.restoreAllMocks();
   });
 
-  const renderComponent = (onOpenChat = vi.fn()) =>
+  const renderComponent = (onOpenChat = vi.fn(), onOpenProfile = vi.fn()) =>
     render(
       <QueryClientProvider client={queryClient}>
         <I18nextProvider i18n={testI18n}>
-          <CallHistoryList onOpenChat={onOpenChat} />
+          <CallHistoryList onOpenChat={onOpenChat} onOpenProfile={onOpenProfile} />
         </I18nextProvider>
       </QueryClientProvider>
     );
@@ -92,6 +92,19 @@ describe('CallHistoryList', () => {
 
     expect(await screen.findByText('Сергей Иванов')).toBeInTheDocument();
     expect(screen.getByTestId('call-history-item')).toBeInTheDocument();
+  });
+
+  it('профиль из строки доходит до того, кто собирает экран (#1074)', async () => {
+    queryClient.setQueryData(callKeys.history(), {
+      pages: [{ calls: [sampleCall], nextCursor: null, hasMore: false }],
+      pageParams: [undefined],
+    });
+    const onOpenProfile = vi.fn();
+
+    renderComponent(vi.fn(), onOpenProfile);
+    fireEvent.click(await screen.findByRole('button', { name: 'Профиль: Сергей Иванов' }));
+
+    expect(onOpenProfile).toHaveBeenCalledWith(sampleCall.chatId, sampleCall.peerId);
   });
 
   it('отображает кнопку дозагрузки при наличии следующей страницы', async () => {

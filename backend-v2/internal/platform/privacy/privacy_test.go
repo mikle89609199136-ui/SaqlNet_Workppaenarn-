@@ -24,15 +24,10 @@ func TestParseFailsClosed(t *testing.T) {
 		"повреждённый JSON":    `{"lastSeen":`,
 		"незнакомое значение":  `{"lastSeen":"friends","photoVisibility":"maybe"}`,
 		"значение не строкой":  `{"lastSeen":42,"photoVisibility":true}`,
-		"null в месте правила": `{"lastSeen":null}`,
+		"null в месте правила": `{"lastSeen":null,"photoVisibility":null}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := Parse([]byte(raw))
-			if name == "null в месте правила" {
-				// null — «не задано», а не «сломано»: значение по умолчанию.
-				require.Equal(t, Everyone, s.Base(LastSeen))
-				return
-			}
 			require.Equal(t, Nobody, s.Base(LastSeen))
 			require.Equal(t, Nobody, s.Base(Photo))
 		})
@@ -157,4 +152,15 @@ func TestExceptionRuleAndMode(t *testing.T) {
 	}
 	require.Equal(t, AlwaysAllow, ModeOf(true))
 	require.Equal(t, NeverAllow, ModeOf(false))
+}
+
+func TestCallsFailClosedAndNormalize(t *testing.T) {
+	for _, raw := range []string{`null`, `[]`, `42`, `{"calls":null}`, `{"calls":true}`, `{"calls":{}}`, `{"calls":"friends"}`} {
+		require.Equal(t, Nobody, Parse([]byte(raw)).Base(Calls), raw)
+	}
+	for input, want := range map[string]string{"all": Everyone, "nobody": Nobody, "everyone": Everyone, "contacts": Nobody, "none": Nobody} {
+		normalized, err := Normalize(map[string]any{"calls": input})
+		require.NoError(t, err)
+		require.Equal(t, want, normalized["calls"])
+	}
 }

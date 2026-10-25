@@ -21,7 +21,6 @@ function createAuthStorage() {
   return {
     setUser: (user: Parameters<ReturnType<typeof useProfileStore.getState>['setUser']>[0]) =>
       useProfileStore.getState().setUser(user),
-    clearProfile: () => useProfileStore.getState().clearProfile(),
   };
 }
 

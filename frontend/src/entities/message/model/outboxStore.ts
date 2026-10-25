@@ -6,11 +6,17 @@ import { create } from 'zustand';
 export interface IOutboxItem {
   tempId: string;
   chatId: string;
+  /**
+   * Автор — для сообщения, восстановленного из очереди после перезапроса
+   * ленты: без него оно рисовалось чужим, без «Повторить» (#1067).
+   */
+  senderId: string;
   content: string;
   /** Форматирование: при повторе после сбоя оно не должно потеряться. */
   entities?: IMessageEntity[];
   type: TMessageType;
   file?: File | Blob;
+  mediaUrl?: string;
   /** Пересжать фото перед загрузкой; после пересжатия снимается — повтор не сжимает заново. */
   optimizeImage?: boolean;
   /** Длительность и волна голосового (#843): уедут в шифрованном конверте. */

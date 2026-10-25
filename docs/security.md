@@ -15,6 +15,10 @@
   session revocation logic live in `backend-v2/internal/auth`.
 - Media uploads are validated against `ALLOWED_FILE_TYPES` and
   `MAX_FILE_SIZE`; keep validation server-side.
+- Media downloads (`GET`/`HEAD /api/v2/media/{uploadId}`) are still public: any
+  holder of the id gets the object. The target access model is decided in
+  `docs/security/media-download-access.md` (#615) — do not change the current
+  contract without it.
 
 ## Active WebSocket revocation (#409)
 

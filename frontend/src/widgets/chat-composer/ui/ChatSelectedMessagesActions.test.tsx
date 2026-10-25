@@ -64,6 +64,39 @@ describe('ChatSelectedMessagesActions', () => {
     expect(defaultProps.onCopyMessage).toHaveBeenCalledTimes(1);
   });
 
+  // Отмеченное пересылается одной пачкой (#1061): одно непересылаемое
+  // сорвало бы её целиком, поэтому кнопки нет.
+  it.each([
+    ['звонок', makeMessage({ id: 'call-1', type: 'call', content: '{}' })],
+    [
+      'вложение, которое не открылось',
+      makeMessage({
+        id: 'photo-1',
+        type: 'image',
+        mediaUrl: null,
+        mediaUnavailable: true,
+      } as never),
+    ],
+  ])('нет «Переслать», если среди отмеченных %s', (_name, blocked) => {
+    useChatUiStore.setState({ selectedMessages: [makeMessage({ id: 'msg-1' }), blocked] });
+    renderActions(defaultProps);
+
+    expect(screen.queryByRole('button', { name: 'Переслать' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Скопировать' })).toBeEnabled();
+  });
+
+  it('«Переслать» есть, когда отмечены текст и фото', () => {
+    useChatUiStore.setState({
+      selectedMessages: [
+        makeMessage({ id: 'msg-1' }),
+        makeMessage({ id: 'photo-1', type: 'image', content: '', mediaUrl: 'blob:p' } as never),
+      ],
+    });
+    renderActions(defaultProps);
+
+    expect(screen.getByRole('button', { name: 'Переслать' })).toBeEnabled();
+  });
+
   // Подтверждение — общий диалог чата (#840): панель только открывает его.
   it('«Удалить» открывает подтверждение, а не удаляет сразу', async () => {
     const user = userEvent.setup();

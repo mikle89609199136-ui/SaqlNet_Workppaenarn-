@@ -1,4 +1,4 @@
-/* global self, caches, fetch, URL, BUILD_ID, PRECACHE_URLS */
+/* global self, caches, fetch, URL, setTimeout, BUILD_ID, PRECACHE_URLS */
 /*
  * Service worker CraneApp (#880): установка на экран «Домой» и запуск без
  * сети. Данные не кешируются никогда.
@@ -9,7 +9,8 @@
  * ставит новый worker, а тот удаляет кеши прежней.
  *
  * - Навигация — сначала сеть: после деплоя сразу открывается новая версия.
- *   Кеш — только без сети: тогда отдаётся последняя загруженная оболочка.
+ *   Сеть не ответила за NAVIGATE_TIMEOUT_MS или её нет — отдаётся последняя
+ *   загруженная оболочка, а пришедший позже ответ обновит её в кеше (#899).
  * - /assets/* — имена с хешем содержимого, файл никогда не меняется: из
  *   кеша, а нет в кеше — из сети с сохранением. Файлы оболочки кладутся в
  *   кеш заранее, при установке worker, — без сети открывается любой экран.
@@ -27,6 +28,8 @@ const ASSETS_CACHE = 'craneapp-assets-' + BUILD_ID;
 const SHELL_URL = '/index.html';
 /** Столько файлов сборки держим: догружаемые по ходу работы не копятся без края. */
 const MAX_ASSETS = 300;
+/** Дольше медленная сеть не держит белый экран: дальше — оболочка из кеша (#899). */
+const NAVIGATE_TIMEOUT_MS = 800;
 
 /** Как обрабатывать запрос: 'navigate', 'asset', 'locale' или null — не трогать. */
 function strategyFor(request) {
@@ -56,20 +59,30 @@ async function trimAssets() {
   for (let i = 0; i < extra; i++) await cache.delete(keys[i]);
 }
 
-async function handleNavigate(request) {
-  try {
-    const response = await fetch(request);
-    const isPage = (response.headers.get('content-type') || '').includes('text/html');
-    if (response.ok && isPage) {
-      const cache = await caches.open(SHELL_CACHE);
-      await cache.put(SHELL_URL, response.clone());
-    }
-    return response;
-  } catch (error) {
-    const cached = await caches.match(SHELL_URL, { cacheName: SHELL_CACHE });
-    if (cached) return cached;
-    throw error;
+async function fetchShell(request) {
+  const response = await fetch(request);
+  const isPage = (response.headers.get('content-type') || '').includes('text/html');
+  if (response.ok && isPage) {
+    const cache = await caches.open(SHELL_CACHE);
+    await cache.put(SHELL_URL, response.clone());
   }
+  return response;
+}
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function handleNavigate(event) {
+  const network = fetchShell(event.request);
+  event.waitUntil(network.catch(() => undefined));
+
+  const fresh = await Promise.race([
+    network.catch(() => null),
+    delay(NAVIGATE_TIMEOUT_MS).then(() => null),
+  ]);
+  if (fresh) return fresh;
+
+  const cached = await caches.match(SHELL_URL, { cacheName: SHELL_CACHE });
+  return cached || network;
 }
 
 /*
@@ -180,7 +193,9 @@ function notificationFor(data) {
   const text = PUSH_TEXT[data.lang] || PUSH_TEXT.ru;
   const name = data.actorName || text.fallback;
   const url = data.chatId ? '/chats/' + encodeURIComponent(data.chatId) : '/';
-  const base = { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url } };
+  // Старые payload без policy тоже показываем, но без непроверенного звука.
+  const silent = data.kind === 'missed_call' || data.silent !== false;
+  const base = { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url }, silent };
 
   if (data.kind === 'call' || data.kind === 'missed_call') {
     const missed = data.kind === 'missed_call';
@@ -190,7 +205,7 @@ function notificationFor(data) {
         body: missed ? text.missedCall : data.callKind === 'video' ? text.videoCall : text.call,
         // Пропущенный заменяет входящий: тот же тег.
         tag: 'call:' + (data.roomId || data.chatId),
-        renotify: !missed,
+        renotify: !missed && !silent,
         requireInteraction: !missed,
       }),
     };
@@ -204,7 +219,7 @@ function notificationFor(data) {
       body: group ? name + ': ' + text.message : text.message,
       // Одно уведомление на чат, и каждое новое звучит (см. showPush).
       tag: 'chat:' + data.chatId,
-      renotify: true,
+      renotify: !silent,
     }),
     closePrevious: true,
   };
@@ -264,7 +279,7 @@ self.addEventListener('notificationclick', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const strategy = strategyFor(event.request);
-  if (strategy === 'navigate') event.respondWith(handleNavigate(event.request));
+  if (strategy === 'navigate') event.respondWith(handleNavigate(event));
   else if (strategy === 'asset') event.respondWith(handleAsset(event.request));
   else if (strategy === 'locale') event.respondWith(handleLocale(event.request));
 });

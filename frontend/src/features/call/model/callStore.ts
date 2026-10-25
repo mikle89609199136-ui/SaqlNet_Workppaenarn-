@@ -1,10 +1,13 @@
+import { appIsForeground } from '@/shared/lib/notifications/delivery';
 import { create } from 'zustand';
 import { services } from '@/services/serviceContainer';
-import { startRingtone, stopRingtone } from '@/services/ringtone';
+import * as callRingtone from './callRingtone';
+import { getCallSoundsEnabled } from './useCallSounds';
 import { WebSocketClient } from '@/services/WebSocketClient';
 import {
   useProfileStore,
   blockedUsersQuery,
+  refreshNotificationSettings,
   userProfileQuery,
   userKeys,
   type IBlockedUserDto,
@@ -51,12 +54,14 @@ interface CallStoreState {
   fsm: ICallFsmContext;
   currentAttemptId: number;
   isMinimized: boolean;
+  startsWithoutVideo: boolean;
   socket: WebSocketClient | null;
   callTimeoutTimer: ReturnType<typeof setTimeout> | null;
   reconnectTimeoutTimer: ReturnType<typeof setTimeout> | null;
 
   // Селекторы совместимости с UI
   incomingCall: IIncomingCall | null;
+  incomingAlertsReady: boolean;
   outgoingCall: IOutgoingCall | null;
   activeCall: IActiveCall | null;
   endedCall: IEndedCall | null;
@@ -89,7 +94,7 @@ interface CallStoreState {
     peerName?: string | null
   ) => Promise<void>;
   cancelCall: () => void;
-  acceptCall: () => void;
+  acceptCall: (options?: { video?: boolean }) => void;
   rejectCall: () => void;
   endCall: (reason?: TCallEndReason) => void;
   minimizeCall: () => void;
@@ -222,6 +227,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       fsm.state === 'incoming' && fsm.roomId && fsm.peerId
         ? {
             roomId: fsm.roomId,
+            chatId: fsm.chatId ?? undefined,
             from: fsm.peerId,
             fromName: fsm.peerName ?? undefined,
             fromAvatar: fsm.peerAvatar,
@@ -311,10 +317,12 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     fsm: initialCallContext,
     currentAttemptId: 0,
     isMinimized: false,
+    startsWithoutVideo: false,
     socket: null,
     callTimeoutTimer: null,
     reconnectTimeoutTimer: null,
     incomingCall: null,
+    incomingAlertsReady: false,
     outgoingCall: null,
     activeCall: null,
     endedCall: null,
@@ -464,6 +472,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     },
 
     handleIncoming: async (payload) => {
+      const receivingUserId = useProfileStore.getState().user?.id;
       const { fsm, socket } = get();
 
       if (!payload.roomId || !payload.from) {
@@ -522,7 +531,10 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
       // 4. Имя и аватар звонящего — из профиля / личного чата, но не из приглашения (#854)
       // Запрашиваем профиль ДО проверок отмены и FSM, чтобы все ожидания шли раньше финальных проверок
-      const callerInfo = await resolveCallerInfo(payload.from, directChat);
+      const [callerInfo, alertSettingsReady] = await Promise.all([
+        resolveCallerInfo(payload.from, directChat),
+        refreshNotificationSettings(queryClient),
+      ]);
 
       // 5. Проверяем, не была ли комната отменена за время асинхронных проверок (#854)
       if (cancelledRoomIds.has(payload.roomId)) {
@@ -549,6 +561,8 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         return;
       }
 
+      if (useProfileStore.getState().user?.id !== receivingUserId) return;
+      set({ incomingAlertsReady: alertSettingsReady });
       get().dispatch({
         type: 'RECEIVE_INCOMING',
         payload: {
@@ -561,9 +575,14 @@ export const useCallStore = create<CallStoreState>((set, get) => {
         },
       });
 
-      const soundsEnabled = useProfileStore.getState().settings.sounds;
-      if (soundsEnabled !== false) {
-        startRingtone();
+      if (alertSettingsReady && getCallSoundsEnabled() && appIsForeground()) {
+        callRingtone.startRingtone(
+          () =>
+            get().fsm.state === 'incoming' &&
+            get().fsm.roomId === payload.roomId &&
+            getCallSoundsEnabled() &&
+            appIsForeground()
+        );
       }
     },
 
@@ -574,7 +593,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       }
       const { fsm } = get();
       if (fsm.roomId === roomId) {
-        stopRingtone();
+        callRingtone.stopRingtone();
         clearTimer();
         const finishedRoomId = fsm.roomId;
         get().dispatch({ type: 'END_CALL', reason: 'peer_ended' });
@@ -589,7 +608,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     handleBroadcastEvent: (event) => {
       const { fsm } = get();
       if (fsm.state === 'incoming' && (!event.roomId || fsm.roomId === event.roomId)) {
-        stopRingtone();
+        callRingtone.stopRingtone();
         clearTimer();
         get().dispatch({ type: 'END_CALL', reason: 'cancelled' });
         get().dispatch({ type: 'RESET_TO_IDLE', roomId: event.roomId });
@@ -626,7 +645,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
 
       clearTimer();
       const attemptId = get().currentAttemptId + 1;
-      set({ currentAttemptId: attemptId });
+      set({ currentAttemptId: attemptId, startsWithoutVideo: false });
 
       const targetPeerId = peerId ?? '';
       const targetPeerName = peerName ?? title;
@@ -699,8 +718,23 @@ export const useCallStore = create<CallStoreState>((set, get) => {
           get().handleOutgoingTimeout();
         }, CALL_TIMEOUT_MS);
         set({ callTimeoutTimer: timer });
-      } catch {
+      } catch (err: unknown) {
         if (get().currentAttemptId === attemptId && get().fsm.state === 'outgoing') {
+          const errorCode = (err as { code?: string })?.code;
+          const isPrivacyForbidden =
+            errorCode === 'calls_forbidden' || errorCode === 'blocked_by_user';
+
+          if (isPrivacyForbidden) {
+            get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'declined' });
+            get().dispatch({ type: 'END_CALL', reason: 'declined' });
+            setTimeout(() => {
+              if (get().currentAttemptId === attemptId && get().fsm.state === 'ended') {
+                get().dispatch({ type: 'RESET_TO_IDLE' });
+              }
+            }, 1500);
+            return;
+          }
+
           get().dispatch({ type: 'SET_OUTGOING_PHASE', phase: 'failed' });
           get().dispatch({ type: 'END_CALL', reason: 'network_error' });
           setTimeout(() => {
@@ -755,10 +789,11 @@ export const useCallStore = create<CallStoreState>((set, get) => {
       }, 1500);
     },
 
-    acceptCall: () => {
-      stopRingtone();
+    acceptCall: (options) => {
+      callRingtone.stopRingtone();
       const { fsm, socket } = get();
       if (!fsm.roomId || !fsm.peerId) return;
+      set({ startsWithoutVideo: options?.video === false });
 
       broadcastCallEvent({ type: 'CALL_ACCEPTED', roomId: fsm.roomId });
 
@@ -784,7 +819,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     },
 
     rejectCall: () => {
-      stopRingtone();
+      callRingtone.stopRingtone();
       const { fsm, socket } = get();
       if (fsm.roomId) {
         broadcastCallEvent({ type: 'CALL_DISMISSED', roomId: fsm.roomId });
@@ -807,7 +842,7 @@ export const useCallStore = create<CallStoreState>((set, get) => {
     },
 
     endCall: (reason: TCallEndReason = 'completed') => {
-      stopRingtone();
+      callRingtone.stopRingtone();
       clearAllTimers();
       const { fsm, socket } = get();
 

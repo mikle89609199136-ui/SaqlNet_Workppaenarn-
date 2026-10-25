@@ -137,7 +137,7 @@ export const ChatThreadComposer = ({
     pendingAttachments,
     setPendingAttachments,
   });
-  const { handleSubmit, isSending } = useComposerSendMessage({
+  const { handleSubmit, isSending, sendSticker, sendGif } = useComposerSendMessage({
     attachmentInputRef,
     bottomRef,
     draftRef,
@@ -274,7 +274,7 @@ export const ChatThreadComposer = ({
             15/22 — как в макете. */}
           <RichTextInput
             ariaLabel={t('message', 'Сообщение')}
-            className="max-h-41 min-h-10 overflow-y-auto px-2 py-2.25 text-body leading-[22px] text-ink"
+            className="max-h-41 min-h-10 overflow-y-auto px-2 py-2.25 text-body leading-(--text-body--line-height) text-ink"
             disabled={encryption.status !== 'ready'}
             onChange={handleDraftChange}
             onPasteFiles={attachFiles}
@@ -283,7 +283,12 @@ export const ChatThreadComposer = ({
             ref={draftRef}
           />
 
-          <EmojiControl disabled={encryption.status !== 'ready'} draftRef={draftRef} />
+          <EmojiControl
+            disabled={encryption.status !== 'ready'}
+            draftRef={draftRef}
+            onPickGif={(gif) => sendGif(gif.url)}
+            onPickSticker={(sticker) => sendSticker(sticker.imageUrl)}
+          />
         </div>
 
         {/* Отправлять нечего — микрофон (#843); иначе «Отправить», залитая

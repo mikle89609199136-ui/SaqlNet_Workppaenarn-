@@ -23,6 +23,7 @@ const RULE_ICONS: Record<TPrivacyRuleSubsection, TIconTypes> = {
   'last-seen': 'eye',
   photo: 'image',
   forwards: 'forward',
+  calls: 'phone',
 };
 
 export function PrivacySection() {

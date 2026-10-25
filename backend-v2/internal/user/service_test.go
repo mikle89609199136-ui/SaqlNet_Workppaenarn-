@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -999,5 +1000,151 @@ func TestStatusReturnsOfflineForExistingUserWithoutSessions(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// searchBareAuthColumn matches a bare auth.users name column immediately
+// followed by ILIKE in the search query. The trailing \s+ ensures the
+// pattern does NOT match `au.first_name)` inside COALESCE(...), where the
+// column name is followed by ')' rather than whitespace.
+var searchBareAuthColumn = regexp.MustCompile(`au\.(first_name|last_name)\s+ILIKE`)
+
+// TestSearchSQL_UsesSameNameExpressionInSelectAndWhere guards against the
+// "Auditb -> UniqueSearchName260831" class of bugs: if SELECT reads
+// first_name/last_name from users.profiles (via COALESCE) while WHERE
+// matches against auth.users.first_name, then a search for the new name
+// returns nothing, a search for the old name still finds the user, and the
+// response shows the new name.
+//
+// Invariant: the expression computing first_name/last_name must be
+// literally identical in SELECT and WHERE.
+func TestSearchSQL_UsesSameNameExpressionInSelectAndWhere(t *testing.T) {
+	t.Parallel()
+
+	// searchSQL contains tabs and newlines; collapse all whitespace so the
+	// assertions do not depend on formatting.
+	normalized := strings.Join(strings.Fields(searchSQL), " ")
+
+	for _, field := range []string{"first_name", "last_name"} {
+		expr := "COALESCE(up." + field + ", au." + field + ")"
+
+		// The expression must appear at least twice: in SELECT and in WHERE.
+		if got := strings.Count(normalized, expr); got < 2 {
+			t.Fatalf("searchSQL: %q must appear in both SELECT and WHERE, found %d occurrences:\n%s",
+				expr, got, searchSQL)
+		}
+
+		// Pin that WHERE matches on the expression, not on a bare au.X.
+		likeExpr := expr + " ILIKE $1"
+		if !strings.Contains(normalized, likeExpr) {
+			t.Fatalf("searchSQL: WHERE must match on %q, not on a bare auth.users column:\n%s",
+				likeExpr, searchSQL)
+		}
+	}
+
+	if m := searchBareAuthColumn.FindString(normalized); m != "" {
+		t.Fatalf("searchSQL: WHERE matches a bare auth.users column (%q), want COALESCE:\n%s",
+			m, searchSQL)
+	}
+}
+
+// TestUpdateProfile_WritesToProfilesNotAuthUsers is a regression guard:
+// UpdateProfile must write to users.profiles, not auth.users.
+//
+// Search reads first_name/last_name from users.profiles (profiles has
+// priority via COALESCE), so writing to auth.users would immediately
+// diverge from what Search returns and what Profile reports.
+func TestUpdateProfile_WritesToProfilesNotAuthUsers(t *testing.T) {
+	const newFirstName = "UniqueSearchName260831"
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet sqlmock expectations: %v", err)
+		}
+		_ = db.Close()
+	})
+
+	// ensureProfile: INSERT ... ON CONFLICT (user_id) DO NOTHING.
+	mock.ExpectExec(`INSERT INTO users\.profiles`).
+		WithArgs("user-id").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	// The UPDATE. If the service unexpectedly touches auth.users, sqlmock
+	// fails with "call to Exec/Query ... was not expected", which is exactly
+	// the regression we want to catch. Args are asserted in call order:
+	// (user_id, first_name, last_name, bio, avatar_url).
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE users\.profiles SET`).
+		WithArgs("user-id", newFirstName, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	// profileByID after the update.
+	mock.ExpectCommit()
+	mock.ExpectQuery(`SELECT au\.id::text, au\.username`).
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "username", "first_name", "last_name",
+			"bio", "avatar_url", "badges", "is_premium",
+		}).AddRow("user-id", "alice", newFirstName, "", "", "", "{}", false))
+
+	firstName := newFirstName
+	profile, err := user.NewService(db).UpdateProfile(
+		context.Background(), "user-id", &firstName, nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+
+	if profile.FirstName != newFirstName {
+		t.Errorf("response must show the new first name, got %q", profile.FirstName)
+	}
+	if profile.Username != "alice" {
+		t.Errorf("username must not change during UpdateProfile, got %q", profile.Username)
+	}
+}
+
+// TestUpdateProfile_AllNilArgs_DoesNotFallOver verifies that calling
+// UpdateProfile with nil for every field does not break the pipeline
+// ensureProfile -> UPDATE -> profileByID.
+//
+// The actual NULL-safety lives in the SET clause's COALESCE; that
+// semantics can only be exercised by integration tests.
+func TestUpdateProfile_AllNilArgs_DoesNotFallOver(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet sqlmock expectations: %v", err)
+		}
+		_ = db.Close()
+	})
+
+	mock.ExpectExec(`INSERT INTO users\.profiles`).
+		WithArgs("user-id").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE users\.profiles SET`).
+		WithArgs("user-id", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mock.ExpectCommit()
+	mock.ExpectQuery(`SELECT au\.id::text, au\.username`).
+		WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "username", "first_name", "last_name",
+			"bio", "avatar_url", "badges", "is_premium",
+		}).AddRow("user-id", "alice", "Alice", "", "", "", "{}", false))
+
+	if _, err := user.NewService(db).UpdateProfile(
+		context.Background(), "user-id", nil, nil, nil, nil,
+	); err != nil {
+		t.Fatalf("UpdateProfile with nil args: %v", err)
 	}
 }

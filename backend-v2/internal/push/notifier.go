@@ -59,6 +59,7 @@ type Payload struct {
 	RoomID    string `json:"roomId,omitempty"`
 	CallKind  string `json:"callKind,omitempty"`
 	Lang      string `json:"lang"`
+	Silent    bool   `json:"silent"`
 }
 
 // Target — подписка получателя, которому уведомления не выключены.
@@ -67,6 +68,7 @@ type Target struct {
 	UserID         string
 	Subscription   Subscription
 	Lang           string
+	Silent         bool
 }
 
 // ChatInfo — тип и название чата для подписи.
@@ -81,8 +83,8 @@ type Directory interface {
 	DisplayName(ctx context.Context, userID string) (string, error)
 	IsMember(ctx context.Context, chatID, userID string) (bool, error)
 	MembersExcept(ctx context.Context, chatID, userID string) ([]string, error)
-	// Targets — подписки получателей, у которых уведомления включены.
-	Targets(ctx context.Context, userIDs []string) ([]Target, error)
+	// Targets — актуальный допуск global/personal notifications перед доставкой события.
+	Targets(ctx context.Context, userIDs []string, event Event) ([]Target, error)
 	DeleteSubscription(ctx context.Context, subscriptionID string) error
 }
 
@@ -212,7 +214,7 @@ func (n *Notifier) deliver(ctx context.Context, event Event) {
 		slog.Warn("push actor name", "err", err)
 		return
 	}
-	targets, err := n.directory.Targets(ctx, recipients)
+	targets, err := n.directory.Targets(ctx, recipients, event)
 	if err != nil {
 		slog.Warn("push targets", "err", err)
 		return
@@ -238,6 +240,7 @@ func (n *Notifier) deliver(ctx context.Context, event Event) {
 			RoomID:    event.RoomID,
 			CallKind:  event.CallKind,
 			Lang:      target.Lang,
+			Silent:    target.Silent || event.Kind == KindMissedCall,
 		}
 		if chat.Type != "private" {
 			payload.ChatTitle = chat.Title

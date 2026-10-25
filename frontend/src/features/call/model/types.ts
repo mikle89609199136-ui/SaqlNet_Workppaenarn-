@@ -217,6 +217,7 @@ export interface ICall {
 }
 
 export interface IIncomingCall extends ICall {
+  chatId?: string;
   fromName?: string;
   fromAvatar?: string | null;
   kind: TCallKind;
@@ -234,12 +235,6 @@ export interface IActiveCall {
   peerName?: string;
   peerAvatar?: string | null;
   isCaller?: boolean;
-}
-
-export interface IRingtone {
-  ctx: AudioContext;
-  ringtoneTimer: ReturnType<typeof setInterval>;
-  vibrateTimer: ReturnType<typeof setInterval> | null;
 }
 
 export interface ICallInviteResponsePayload {
@@ -313,4 +308,6 @@ export interface IStartMediaOptions {
   videoDeviceId?: string;
   facingMode?: TFacingMode;
   timeoutMs?: number;
+  /** Видео не обязательно: при отказе в камере звонок продолжается голосом. */
+  videoOptional?: boolean;
 }
