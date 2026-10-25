@@ -126,6 +126,31 @@ export class MessageService {
     offset: number = 0,
     limit: number = 50
   ): Promise<TMessagesList> {
+    return this.fetchDecryptedPage(chatId, offset, limit, (item, chatContext) =>
+      this.processMessageForDisplay(chatId, item, chatContext)
+    );
+  }
+
+  /**
+   * Страница истории только с текстом — для поиска по переписке (#841):
+   * вложения не скачиваются и не расшифровываются.
+   */
+  async fetchMessageTextsPage(
+    chatId: string,
+    offset: number = 0,
+    limit: number = 50
+  ): Promise<TMessagesList> {
+    return this.fetchDecryptedPage(chatId, offset, limit, (item, chatContext) =>
+      this.decryptMessageText(chatId, item, chatContext)
+    );
+  }
+
+  private async fetchDecryptedPage(
+    chatId: string,
+    offset: number,
+    limit: number,
+    decrypt: (item: IMessageDto, chatContext: IChatContext) => Promise<IMessageDto>
+  ): Promise<TMessagesList> {
     const response = await this.apiClient.get<IMessagesResponse>(API_ENDPOINTS.MESSAGES(chatId), {
       limit,
       offset,
@@ -136,11 +161,7 @@ export class MessageService {
     const chatContext = await this.getChatContext(chatId, 'decryption');
 
     return sortMessagesChronologically<IMessageDto>(
-      await Promise.all(
-        response.data.messages.map((item: IMessageDto) =>
-          this.processMessageForDisplay(chatId, item, chatContext)
-        )
-      )
+      await Promise.all(response.data.messages.map((item) => decrypt(item, chatContext)))
     );
   }
 
@@ -465,6 +486,16 @@ export class MessageService {
     chatContext: IChatContext | null = null
   ) {
     const context = chatContext || (await this.getChatContext(chatId, 'display'));
+    const decrypted = await this.decryptMessageText(chatId, item, context);
+    const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
+    return this.decryptReplyPreview(chatId, { ...decrypted, ...mediaPatch }, context);
+  }
+
+  private async decryptMessageText(
+    chatId: string,
+    item: IMessageDto,
+    context: IChatContext
+  ): Promise<IMessageDto> {
     let content = item.content;
     // В каналах форматирование приходит открытым полем, в шифрованных чатах —
     // из конверта: серверное поле там всегда пустое.
@@ -485,20 +516,14 @@ export class MessageService {
       if (item.type === 'voice') voice = decrypted.voice;
     }
 
-    const mediaPatch = await this.resolveMediaForDisplay(chatId, item);
-    return this.decryptReplyPreview(
-      chatId,
-      {
-        ...item,
-        content,
-        entities,
-        senderVerified,
-        undecryptable,
-        ...(voice ? { voice } : {}),
-        ...mediaPatch,
-      },
-      context
-    );
+    return {
+      ...item,
+      content,
+      entities,
+      senderVerified,
+      undecryptable,
+      ...(voice ? { voice } : {}),
+    };
   }
 
   async processPinnedMessageForDisplay(

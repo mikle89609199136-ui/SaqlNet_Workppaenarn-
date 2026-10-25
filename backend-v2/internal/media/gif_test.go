@@ -44,9 +44,13 @@ func TestCreateGif(t *testing.T) {
 			handler, mock, _ := newMediaTestHandler(t, defaultTestMaxUploadBytes)
 			mock.ExpectQuery(gifSourceQuery).WithArgs(gifTestUploadID, "user-id").
 				WillReturnRows(sqlmock.NewRows([]string{"content_type", "is_encrypted"}).AddRow(tt.contentType, false))
+			mock.ExpectBegin()
 			mock.ExpectQuery(gifInsertQuery).WithArgs("user-id", tt.wantName, gifTestURL).
 				WillReturnRows(sqlmock.NewRows([]string{"id", "name", "url", "created_at"}).
 					AddRow("gif-id", tt.wantName, gifTestURL, "2026-09-27"))
+			mock.ExpectExec("INSERT INTO media.upload_refs").WithArgs(gifTestUploadID, "gif", "", "", "", "gif-id", "").WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectExec("UPDATE media.uploads SET first_attached_at").WithArgs(gifTestUploadID).WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectCommit()
 			response := executeCreateGif(handler, `{"url":"`+gifTestURL+`"`+tt.nameJSON+`}`)
 			if response.Code != http.StatusCreated {
 				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
@@ -143,8 +147,10 @@ func TestCreateGifRejectsInvalidSourceAndDatabaseErrors(t *testing.T) {
 				query.WillReturnRows(rows.AddRow(tt.contentType, tt.encrypted))
 			}
 			if tt.insertError {
+				mock.ExpectBegin()
 				mock.ExpectQuery(gifInsertQuery).WithArgs("user-id", "", gifTestURL).
 					WillReturnError(errors.New(driverMessage))
+				mock.ExpectRollback()
 			}
 			response := executeCreateGif(handler, `{"url":"`+gifTestURL+`"}`)
 			assertGifError(t, response, tt.status, tt.code)

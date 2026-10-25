@@ -368,6 +368,10 @@ func TestSendCatalogMessage(t *testing.T) {
 			mock.ExpectQuery(`WITH inserted AS`).WithArgs(messageValidationChatID, messageValidationUserID, "", kind, sql.NullString{}, metadata, 0, []byte("[]")).
 				WillReturnRows(sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}).
 					AddRow(messageValidationMessageID, messageValidationChatID, messageValidationUserID, "Alice", "", "", []byte("[]"), kind, nil, metadata, false, false, "2026-10-12T00:00:00Z", "2026-10-12T00:00:00Z", nil))
+			if kind == "gif" {
+				mock.ExpectExec("INSERT INTO media.upload_refs").WithArgs(messageValidationMessageID, "message", messageValidationMessageID, messageValidationChatID, "", "", "").WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec("UPDATE media.uploads SET first_attached_at").WithArgs(messageValidationMessageID).WillReturnResult(sqlmock.NewResult(0, 1))
+			}
 			mock.ExpectCommit()
 			rr := httptest.NewRecorder()
 			req := messageValidationRequest(http.MethodPost, "/api/v2/messages/"+messageValidationChatID,
