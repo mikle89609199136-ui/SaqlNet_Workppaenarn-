@@ -19,6 +19,7 @@ import (
 	"craneapp/backend-v2/internal/auth"
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/blockevent"
+	"craneapp/backend-v2/internal/platform/mediarefs"
 	"craneapp/backend-v2/internal/platform/notificationpolicy"
 	"craneapp/backend-v2/internal/platform/privacy"
 	"craneapp/backend-v2/internal/platform/profileevent"
@@ -138,7 +139,27 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, l
 	if err := s.ensureProfile(ctx, userID); err != nil {
 		return Profile{}, err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Profile{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	uploadID := ""
+	if avatarURL != nil && strings.HasPrefix(*avatarURL, mediarefs.URLPrefix) {
+		var ok bool
+		uploadID, ok = mediarefs.UploadIDFromURL(*avatarURL)
+		if !ok {
+			return Profile{}, ErrInvalidInput
+		}
+		var owned bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM media.uploads WHERE id = $1 AND uploader_id = $2)`, uploadID, userID).Scan(&owned); err != nil {
+			return Profile{}, err
+		}
+		if !owned {
+			return Profile{}, ErrInvalidInput
+		}
+	}
+	_, err = tx.ExecContext(ctx, `
 		UPDATE users.profiles SET
 			first_name = COALESCE(NULLIF($2, ''), first_name),
 			last_name = COALESCE($3, last_name),
@@ -148,6 +169,14 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, l
 		WHERE user_id = $1
 	`, userID, stringOrNil(firstName), stringOrNil(lastName), stringOrNil(bio), stringOrNil(avatarURL))
 	if err != nil {
+		return Profile{}, err
+	}
+	if avatarURL != nil {
+		if err := mediarefs.ReplaceOwner(ctx, tx, mediarefs.Avatar, userID, uploadID); err != nil {
+			return Profile{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return Profile{}, err
 	}
 	return s.profileByID(ctx, userID)

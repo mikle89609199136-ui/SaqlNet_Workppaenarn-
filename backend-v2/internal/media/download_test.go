@@ -51,6 +51,10 @@ func newDownloadHandler(t *testing.T, store Store, contentType string, size int6
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
+	mock.ExpectQuery("SELECT uploader_id::text, first_attached_at").WithArgs(testUploadID).
+		WillReturnRows(sqlmock.NewRows([]string{"uploader_id", "first_attached_at"}).AddRow("user-id", nil))
+	mock.ExpectQuery("SELECT COALESCE\\(bool_or").WithArgs(testUploadID, "user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"live", "allowed"}).AddRow(false, false))
 	mock.ExpectQuery("SELECT bucket, object_key, content_type, size_bytes, is_encrypted, encryption_key_id").
 		WithArgs(testUploadID).
 		WillReturnRows(sqlmock.NewRows([]string{"bucket", "object_key", "content_type", "size_bytes", "is_encrypted", "encryption_key_id"}).
@@ -76,7 +80,7 @@ func serveDownload(t *testing.T, handler *Handler, method string, headers http.H
 		}
 	}
 	w := httptest.NewRecorder()
-	handler.Serve(w, req)
+	handler.Serve(w, uploadRequestWithUser(req))
 	return w
 }
 
@@ -203,10 +207,10 @@ func TestDownloadMissingDatabaseRowIsNotFound(t *testing.T) {
 		t.Fatal("storage must not be called")
 		return nil, nil
 	}}
-	mock.ExpectQuery("SELECT bucket, object_key, content_type, size_bytes, is_encrypted, encryption_key_id").
+	mock.ExpectQuery("SELECT uploader_id::text, first_attached_at").
 		WithArgs(testUploadID).
-		WillReturnRows(sqlmock.NewRows([]string{"bucket", "object_key", "content_type", "size_bytes", "is_encrypted", "encryption_key_id"}))
-	mock.ExpectQuery("SELECT bucket, object_key FROM media.stickers").WithArgs(testUploadID).WillReturnRows(sqlmock.NewRows([]string{"bucket", "object_key"}))
+		WillReturnRows(sqlmock.NewRows([]string{"uploader_id", "first_attached_at"}))
+	mock.ExpectQuery("SELECT EXISTS").WithArgs(testUploadID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	service := NewService(db, store, "crane-media", defaultTestMaxUploadBytes)
 	handler := NewHandler(service)
 
@@ -329,7 +333,7 @@ func TestDownloadWritesBeforeReadingWholeObject(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v2/media/"+testUploadID, nil)
 	w := &streamingRecorder{header: make(http.Header), reader: reader}
 
-	handler.Serve(w, req)
+	handler.Serve(w, uploadRequestWithUser(req))
 
 	if !w.firstWriteBeforeEOF {
 		t.Fatal("response body was not written until after the whole object had been read")
@@ -443,7 +447,7 @@ func TestMediaDownloadClearsExpiredWriteDeadline(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handler.Serve(w, req)
+		handler.Serve(w, uploadRequestWithUser(req))
 	}()
 
 	waitForTestSignal(t, w.firstWrite)
@@ -518,7 +522,7 @@ func TestMediaDownloadStillPropagatesRequestCancellation(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handler.Serve(httptest.NewRecorder(), req)
+		handler.Serve(httptest.NewRecorder(), uploadRequestWithUser(req))
 	}()
 
 	waitForTestSignal(t, started)
@@ -567,7 +571,7 @@ func TestEncryptedDownloadWritesBeforeReadingWholeObject(t *testing.T) {
 		reader: reader,
 	}
 
-	handler.Serve(w, req)
+	handler.Serve(w, uploadRequestWithUser(req))
 
 	if !w.firstWriteBeforeEOF {
 		t.Fatal("encrypted response was not written until the whole object had been read")
@@ -677,6 +681,11 @@ func TestEncryptedHeadReturnsGetContentLength(t *testing.T) {
 	}
 
 	wantLength := strconv.Itoa(getResponse.Body.Len())
+	for _, response := range []*httptest.ResponseRecorder{getResponse, headResponse} {
+		if response.Header().Get("Cache-Control") != "private, no-cache" || response.Header().Get("Vary") != "Authorization, Cookie" {
+			t.Fatalf("unexpected encrypted cache headers: %v", response.Header())
+		}
+	}
 	if got := headResponse.Header().Get("Content-Length"); got != wantLength {
 		t.Fatalf(
 			"HEAD Content-Length=%q, want %q",
@@ -700,9 +709,10 @@ func TestEncryptedHeadReturnsGetContentLength(t *testing.T) {
 	}
 }
 
-// Файл по /media/{id} неизменен — браузер должен держать его в кеше, а не
-// качать заново: иначе аватарки в PWA грузились на каждом запуске.
-func TestDownloadIsCachedAsImmutable(t *testing.T) {
+// Защищённый ответ не должен переотдаваться без проверки прав, поэтому
+// срок жизни кэша снят (#615). Условных запросов нет: ETag и Last-Modified
+// не проксируются.
+func TestDownloadCacheIsPrivate(t *testing.T) {
 	store := &downloadStore{get: func(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
 		return objectResponse(http.StatusOK, "stored bytes"), nil
 	}}
@@ -710,8 +720,11 @@ func TestDownloadIsCachedAsImmutable(t *testing.T) {
 
 	w := serveDownload(t, handler, http.MethodGet, nil)
 
-	if got := w.Header().Get("Cache-Control"); got != "private, max-age=31536000, immutable" {
+	if got := w.Header().Get("Cache-Control"); got != "private, no-cache" {
 		t.Fatalf("Cache-Control=%q", got)
+	}
+	if got := w.Header().Get("Vary"); got != "Authorization, Cookie" {
+		t.Fatalf("Vary=%q", got)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -726,6 +739,8 @@ func TestDownloadCatalogObject(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer db.Close()
+			mock.ExpectQuery("SELECT uploader_id::text, first_attached_at").WithArgs(testUploadID).WillReturnRows(sqlmock.NewRows([]string{"uploader_id", "first_attached_at"}))
+			mock.ExpectQuery("SELECT EXISTS").WithArgs(testUploadID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 			mock.ExpectQuery("SELECT bucket, object_key, content_type, size_bytes, is_encrypted, encryption_key_id").WithArgs(testUploadID).
 				WillReturnRows(sqlmock.NewRows([]string{"bucket", "object_key", "content_type", "size_bytes", "is_encrypted", "encryption_key_id"}))
 			mock.ExpectQuery("SELECT bucket, object_key FROM media.stickers").WithArgs(testUploadID).

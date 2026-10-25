@@ -10,6 +10,7 @@ import (
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	"craneapp/backend-v2/internal/platform/httpx"
+	"craneapp/backend-v2/internal/platform/mediarefs"
 )
 
 type Gif struct {
@@ -114,11 +115,24 @@ func (h *Handler) CreateGif(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var gif Gif
-	err = h.service.db.QueryRowContext(r.Context(), `
+	tx, err := h.service.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		slog.Error("create GIF", "err", err)
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	err = tx.QueryRowContext(r.Context(), `
 		INSERT INTO media.gifs (user_id, name, url)
 		VALUES ($1, $2, $3)
 		RETURNING id::text, name, url, created_at::text
 	`, user.ID, name, req.URL).Scan(&gif.ID, &gif.Name, &gif.URL, &gif.CreatedAt)
+	if err == nil {
+		err = mediarefs.Add(r.Context(), tx, mediarefs.Ref{Kind: mediarefs.Gif, UploadID: uploadID, GifID: gif.ID})
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
 	if err != nil {
 		slog.Error("create GIF", "err", err)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "internal server error")

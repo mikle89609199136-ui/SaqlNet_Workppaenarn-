@@ -2292,14 +2292,17 @@ export interface paths {
         };
         /**
          * Download media
-         * @description Streams an upload, managed sticker, or sticker-pack icon by UUID through the media service. Catalog imageUrl and iconUrl use this relative path; no redirect or direct storage URL is returned. Legacy catalog objects without a verified storage identity are unavailable (#973).
+         * @description uploadId is not a capability: knowing the identifier does not grant access. Downloads require authentication and access through a live attachment, or ownership of a never-attached upload. Range is not supported for the encrypted JSON envelope; its successful response is always 200. Streams an upload, managed sticker, or sticker-pack icon by UUID through the media service. Catalog imageUrl and iconUrl use this relative path; no redirect or direct storage URL is returned. Legacy catalog objects without a verified storage identity are unavailable (#973).
          */
         get: operations["getMedia"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
-        /** Get media headers */
+        /**
+         * Get media headers
+         * @description uploadId is not a capability: knowing the identifier does not grant access. Downloads require authentication and access through a live attachment, or ownership of a never-attached upload. Range is not supported for the encrypted JSON envelope; its successful response is always 200.
+         */
         head: operations["headMedia"];
         patch?: never;
         trace?: never;
@@ -8678,6 +8681,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
             /** @description Requested range is not satisfiable */
             416: {
@@ -8714,6 +8719,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
             /** @description Requested range is not satisfiable */
             416: {
