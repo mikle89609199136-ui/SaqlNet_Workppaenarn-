@@ -51,7 +51,7 @@ func TestDeleteMessagesOnRealSchema(t *testing.T) {
 	}
 
 	t.Run("у всех — только свои: чужое в пачке отклоняет всю пачку", func(t *testing.T) {
-		_, err := chats.DeleteMessages(ctx, me, chatID, []string{mine, theirs}, true)
+		_, err := chats.DeleteMessages(ctx, peer, chatID, []string{mine, theirs}, true)
 		require.ErrorIs(t, err, ErrForbidden)
 		require.Contains(t, contents(peer), "моё", "своё из отклонённой пачки не удалено")
 	})
@@ -125,5 +125,140 @@ func TestDeleteMessagesOnRealSchema(t *testing.T) {
 		require.NoError(t, err)
 		require.NotContains(t, contents(peer), "моё")
 		require.NotContains(t, contents(me), "моё")
+	})
+}
+
+// Права удаления у всех и чтение скрытого (#840).
+func TestDeleteMessagesPermissionsAndHiddenReads(t *testing.T) {
+	const (
+		owner  = "b1111111-1111-4111-8111-111111111111"
+		admin  = "b2222222-2222-4222-8222-222222222222"
+		member = "b3333333-3333-4333-8333-333333333333"
+		author = "b4444444-4444-4444-8444-444444444444"
+	)
+	db := dbtest.Postgres(t)
+	ctx := context.Background()
+	dbtest.User(t, db, owner, "delete_owner")
+	dbtest.User(t, db, admin, "delete_admin")
+	dbtest.User(t, db, member, "delete_member")
+	dbtest.User(t, db, author, "delete_author")
+	chats := NewService(db, nil, nil)
+
+	groupID, err := chats.CreateGroup(ctx, owner, "Удаление", "", "", []string{admin, member})
+	require.NoError(t, err)
+	require.NoError(t, chats.SetMemberRole(ctx, owner, groupID, admin, "admin"))
+
+	send := func(chat, from, content string) string {
+		sent, err := chats.SendMessages(ctx, from, chat, []OutgoingMessage{{Content: content, Type: "text"}})
+		require.NoError(t, err)
+		return sent[0].ID
+	}
+	sees := func(viewer, chat, content string) bool {
+		listed, err := chats.ListMessages(ctx, viewer, chat, 50, 0)
+		require.NoError(t, err)
+		for _, msg := range listed {
+			if msg.Content == content {
+				return true
+			}
+		}
+		return false
+	}
+
+	t.Run("владелец удаляет чужое у всех", func(t *testing.T) {
+		id := send(groupID, member, "сообщение участника")
+		_, err := chats.DeleteMessages(ctx, owner, groupID, []string{id}, true)
+		require.NoError(t, err)
+		require.False(t, sees(owner, groupID, "сообщение участника"))
+		require.False(t, sees(member, groupID, "сообщение участника"))
+	})
+
+	t.Run("админ без права удалять сообщения получает отказ", func(t *testing.T) {
+		id := send(groupID, member, "без права")
+		_, err := chats.DeleteMessages(ctx, admin, groupID, []string{id}, true)
+		require.ErrorIs(t, err, ErrForbidden)
+		require.True(t, sees(member, groupID, "без права"))
+	})
+
+	t.Run("админ с can_delete_messages удаляет чужое у всех", func(t *testing.T) {
+		_, err := db.ExecContext(ctx, `
+			UPDATE chats.members
+			SET permissions = '{"can_delete_messages": true}'::jsonb
+			WHERE chat_id = $1 AND user_id = $2
+		`, groupID, admin)
+		require.NoError(t, err)
+		id := send(groupID, member, "с правом")
+		_, err = chats.DeleteMessages(ctx, admin, groupID, []string{id}, true)
+		require.NoError(t, err)
+		require.False(t, sees(member, groupID, "с правом"))
+	})
+
+	privateID, _, err := chats.CreatePrivate(ctx, owner, author)
+	require.NoError(t, err)
+
+	t.Run("повтор удаления у всех уже удалённого — успех", func(t *testing.T) {
+		id := send(privateID, owner, "уже удалено")
+		_, err := chats.DeleteMessages(ctx, owner, privateID, []string{id}, true)
+		require.NoError(t, err)
+		_, err = chats.DeleteMessages(ctx, owner, privateID, []string{id}, true)
+		require.NoError(t, err)
+	})
+
+	t.Run("скрыть у себя уже удалённое у всех — успех", func(t *testing.T) {
+		id := send(privateID, author, "удалено у всех")
+		_, err := chats.DeleteMessages(ctx, owner, privateID, []string{id}, true)
+		require.NoError(t, err)
+		_, err = chats.DeleteMessages(ctx, owner, privateID, []string{id}, false)
+		require.NoError(t, err)
+	})
+
+	t.Run("скрыты все сообщения — последнего нет и непрочитанных нет", func(t *testing.T) {
+		chatID, _, err := chats.CreatePrivate(ctx, member, author)
+		require.NoError(t, err)
+		send(chatID, author, "первое")
+		send(chatID, member, "второе")
+		listed, err := chats.ListMessages(ctx, member, chatID, 50, 0)
+		require.NoError(t, err)
+		ids := make([]string, len(listed))
+		for i, msg := range listed {
+			ids[i] = msg.ID
+		}
+		last, err := chats.DeleteMessages(ctx, member, chatID, ids, false)
+		require.NoError(t, err)
+		require.Nil(t, last)
+		chat, err := chats.Get(ctx, member, chatID)
+		require.NoError(t, err)
+		require.Nil(t, chat.LastMessage)
+		require.Equal(t, 0, chat.UnreadCount)
+	})
+
+	t.Run("реакция и источник пересылки скрытого — не найдено", func(t *testing.T) {
+		id := send(privateID, author, "скрытая реакция")
+		_, err := chats.DeleteMessages(ctx, owner, privateID, []string{id}, false)
+		require.NoError(t, err)
+		_, _, _, err = chats.ToggleReaction(ctx, owner, id, "👍")
+		require.ErrorIs(t, err, ErrNotFound)
+		_, err = chats.ForwardOrigin(ctx, owner, id)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("прочтение скрытого не сдвигает границу", func(t *testing.T) {
+		chatID, _, err := chats.CreatePrivate(ctx, admin, author)
+		require.NoError(t, err)
+		older := send(chatID, author, "старое")
+		newer := send(chatID, author, "новое")
+		_, err = chats.DeleteMessages(ctx, admin, chatID, []string{newer}, false)
+		require.NoError(t, err)
+		before, err := chats.Get(ctx, admin, chatID)
+		require.NoError(t, err)
+		require.Equal(t, 1, before.UnreadCount)
+		require.Equal(t, older, before.LastMessage.ID)
+
+		mark, err := chats.MarkMessagesRead(ctx, admin, chatID, []string{newer})
+		require.NoError(t, err)
+		require.Empty(t, mark.ReadIDs)
+		after, err := chats.Get(ctx, admin, chatID)
+		require.NoError(t, err)
+		require.Equal(t, before.UnreadCount, after.UnreadCount)
+		require.Equal(t, before.LastReadAt, after.LastReadAt)
 	})
 }
