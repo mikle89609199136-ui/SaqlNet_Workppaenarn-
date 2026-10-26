@@ -1344,10 +1344,15 @@ func (s *Service) MarkMessagesRead(ctx context.Context, userID, chatID string, m
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id::text, COALESCE(sender_id::text, ''), deleted_at IS NOT NULL, created_at
-		FROM messages.messages
-		WHERE chat_id = $1 AND id = ANY($2::uuid[])
-	`, chatID, pq.Array(ids))
+		SELECT m.id::text, COALESCE(m.sender_id::text, ''), m.deleted_at IS NOT NULL,
+		       EXISTS (
+		           SELECT 1 FROM messages.hidden_messages hm
+		           WHERE hm.message_id = m.id AND hm.user_id = $3
+		       ),
+		       m.created_at
+		FROM messages.messages m
+		WHERE m.chat_id = $1 AND m.id = ANY($2::uuid[])
+	`, chatID, pq.Array(ids), userID)
 	if err != nil {
 		return ReadMark{}, err
 	}
@@ -1357,13 +1362,13 @@ func (s *Service) MarkMessagesRead(ctx context.Context, userID, chatID string, m
 	var newest time.Time
 	for rows.Next() {
 		var id, senderID string
-		var deleted bool
+		var deleted, hidden bool
 		var createdAt time.Time
-		if err := rows.Scan(&id, &senderID, &deleted, &createdAt); err != nil {
+		if err := rows.Scan(&id, &senderID, &deleted, &hidden, &createdAt); err != nil {
 			return ReadMark{}, err
 		}
 		found++
-		if deleted || senderID == userID {
+		if deleted || hidden || senderID == userID {
 			continue
 		}
 		readIDs = append(readIDs, id)
@@ -2839,7 +2844,8 @@ func (s *Service) ForwardOrigin(ctx context.Context, userID, messageID string) (
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		WHERE m.id = $1 AND m.deleted_at IS NULL
-	`, messageID).Scan(&chatID, &senderName, &senderID, &metadataBytes)
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)
+	`, messageID, userID).Scan(&chatID, &senderName, &senderID, &metadataBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ForwardSource{}, ErrNotFound
 	}
@@ -3130,8 +3136,8 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	// drift away from the subsequent locking.
 	var chatID string
 	err = tx.QueryRowContext(ctx,
-		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-		messageID,
+		`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+		messageID, userID,
 	).Scan(&chatID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", nil, ErrNotFound
