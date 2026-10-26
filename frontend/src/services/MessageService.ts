@@ -15,6 +15,7 @@ import type {
   IMessagesResponse,
   IPinnedDto,
   IPinnedListResponse,
+  IReactionAuthorsPage,
   IReactionsResponse,
   ISuccessResponse,
   TMediaMessageType,
@@ -930,6 +931,16 @@ export class MessageService {
     return this.apiClient
       .get<IReactionsResponse>(API_ENDPOINTS.MESSAGE_REACTIONS(messageId))
       .then((response) => response.data?.reactions ?? []);
+  }
+
+  async listReactionAuthors(messageId: string, emoji: string, cursor?: string, limit?: number) {
+    const params: Record<string, string | number> = { emoji };
+    if (cursor) params.cursor = cursor;
+    if (typeof limit === 'number') params.limit = limit;
+
+    return this.apiClient
+      .get<IReactionAuthorsPage>(API_ENDPOINTS.MESSAGE_REACTION_USERS(messageId), params)
+      .then((response) => response.data);
   }
 
   async listPins(chatId: string) {

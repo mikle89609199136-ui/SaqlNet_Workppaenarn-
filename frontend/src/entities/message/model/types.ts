@@ -2,6 +2,7 @@ import type { IMessageEntity } from '@/shared/lib/richText';
 import type { IVoiceMeta } from '@/shared/lib/voice';
 import type { IEncryptedMedia } from '@/types/encryption.types';
 import type { ILastMessageDto } from '@/entities/chat';
+import type { components } from '@/types/api.generated';
 
 export type TMessageType =
   'text' | 'image' | 'audio' | 'video' | 'voice' | 'sticker' | 'gif' | 'file' | 'call';
@@ -25,6 +26,9 @@ interface IMediaMetadata {
   mediaUrl: string;
   sizeBytes: number;
 }
+
+export type IReactionAuthor = components['schemas']['ReactionAuthor'];
+export type IReactionAuthorsPage = components['schemas']['ReactionAuthorsPage'];
 
 export interface IReaction {
   emoji: string;

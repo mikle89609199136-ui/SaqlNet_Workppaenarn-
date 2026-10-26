@@ -14,3 +14,6 @@ export * from './model/estimateMessageSize';
 export * from './model/messageKeys';
 export * from './ui/MessageBubble';
 export * from './model/sharedQueries';
+export * from './model/reactionQueries';
+export * from './model/useReactionAuthors';
+export * from './model/reactionAuthorsSummary';

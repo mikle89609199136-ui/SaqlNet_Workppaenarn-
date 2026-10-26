@@ -8,7 +8,11 @@ import { ForwardChatMessagesModal } from '@/features/forward-messages';
 import { GroupInfoModal } from '@/widgets/group-info';
 import { useCall } from '@/features/call';
 import { CALLS_ENABLED } from '@/shared/config';
-import { DeleteMessagesDialog, MessageActionsPopover } from '@/features/message-actions';
+import {
+  DeleteMessagesDialog,
+  MessageActionsPopover,
+  ReactionAuthorsModal,
+} from '@/features/message-actions';
 import { useOpenOriginalMessage } from '@/features/jump-to-message';
 import { PinnedMessagesNavigator } from '@/features/pinned-messages';
 import { SavedMessagesModal, UserProfileModal } from '@/features/user-profile';
@@ -242,6 +246,7 @@ export function ChatThreadPage() {
             isSavedMessages={chat?.type === 'self'}
             onConfirm={confirmDelete}
           />
+          <ReactionAuthorsModal currentUserId={currentUserId} />
           {selectionMode && (
             <ChatSelectedMessagesActions
               handleCancelSelection={handleCancelSelection}
