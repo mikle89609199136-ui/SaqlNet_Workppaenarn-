@@ -651,7 +651,7 @@ x-secure: &secure [{ sessionCookie: [] }]
     {
       tags: [Messages],
       summary: Delete messages for everyone or only for me,
-      description: "Up to 100 messages of one chat, all or nothing (#840). forEveryone — only the caller's own messages; the members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only (any message of the chat); the caller's devices get messages_hidden. Hidden messages are not returned to the caller anywhere and are not counted as unread.",
+      description: "Up to 100 messages of one chat, all or nothing (#840). forEveryone deletes messages the caller sent, or any message when the caller is owner or an admin with can_delete_messages; members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only; the caller's devices get messages_hidden. A repeat that changes nothing is a success and sends no event. Hidden messages are not returned to the caller anywhere and are not counted as unread.",
       operationId: deleteMessages,
       security: *secure,
       parameters: [*chatId],
@@ -669,9 +669,10 @@ x-secure: &secure [{ sessionCookie: [] }]
               content:
                 { application/json: { schema: { $ref: '../components/schemas.yaml#/DeleteMessageResponse' } } },
             },
-          '400': { description: Empty or more than 100 ids, or an invalid id },
-          '403': { description: Not a member, or forEveryone with someone else's message },
-          '404': { description: A message is not in this chat or already deleted },
+          '400': { description: Empty or more than 100 ids, an invalid id, or forEveryone missing },
+          '403': { description: Not a member, or forEveryone without permission on one of the messages },
+          '404': { description: A message is not in this chat },
+          '500': { description: Database error (internal_error) },
         },
     }
 /chats/{chatId}/pins:

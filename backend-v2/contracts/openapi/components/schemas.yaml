@@ -781,8 +781,9 @@ MarkMessagesReadRequest:
       type: array
       description: >-
         Messages of this chat seen by the reader (duplicates are ignored). All
-        must belong to the chat, otherwise 400 invalid_message_ids. Own and
-        deleted messages are skipped.
+        must belong to the chat, otherwise 400 invalid_message_ids. Own,
+        deleted, and hidden messages are skipped and do not move the read
+        boundary.
       minItems: 1
       maxItems: 500
       items: { type: string, format: uuid }
