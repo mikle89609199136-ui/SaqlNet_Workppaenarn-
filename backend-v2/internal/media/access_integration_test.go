@@ -224,3 +224,75 @@ func TestManagedCatalogDownloadAccess(t *testing.T) {
 	check(packID, owner, 404)
 	check(legacyID, other, 404)
 }
+
+// Unlike the ACL matrix's auth stub, this exercises the real session checker
+// on the download route, including the next request after session revocation.
+func TestMediaDownloadHonorsSessionLifecycle(t *testing.T) {
+	t.Setenv("CRANE_ENV", "development")
+	db := dbtest.Postgres(t)
+	const owner = "aaaaaaaa-0986-4986-8986-111111111111"
+	dbtest.User(t, db, owner, "download_session_owner")
+	uploadID := accessUpload(t, db, owner)
+	_, err := db.Exec(`INSERT INTO auth.sessions (user_id, access_token_hash, expires_at)
+		VALUES ($1, $2, NOW() + INTERVAL '1 hour')`, owner, authctx.TokenHash(owner))
+	require.NoError(t, err)
+	store := &downloadStore{get: func(context.Context, string, string, GetOptions) (*ObjectResponse, error) {
+		return objectResponse(http.StatusOK, "data"), nil
+	}}
+	h := NewHandler(NewService(db, store, "uploads", 1024))
+	mux := http.NewServeMux()
+	mux.Handle("/api/v2/media/", authctx.Middleware(accessTestAuth{}, authctx.NewDBTokenChecker(db))(http.HandlerFunc(h.Serve)))
+
+	check := func(t *testing.T, cookie, bearer bool, want int) {
+		t.Helper()
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			r := httptest.NewRequest(method, mediarefs.URLPrefix+uploadID, nil)
+			if cookie {
+				r.AddCookie(&http.Cookie{Name: authctx.SessionCookieName(), Value: owner})
+			}
+			if bearer {
+				r.Header.Set("Authorization", "Bearer "+owner)
+			}
+			before := store.getCalls
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, r)
+			require.Equal(t, want, w.Code, "%s: %s", method, w.Body.String())
+			if want == http.StatusOK {
+				require.Equal(t, before+1, store.getCalls)
+				require.Equal(t, "private, no-cache", w.Header().Get("Cache-Control"))
+			} else {
+				require.Equal(t, before, store.getCalls, "denied requests must not reach storage")
+				require.NotContains(t, w.Body.String(), "image.gif")
+				for _, header := range []string{"Content-Length", "Content-Disposition", "Content-Range", "ETag", "Last-Modified"} {
+					require.Empty(t, w.Header().Get(header), header)
+				}
+			}
+		}
+	}
+
+	t.Run("active session cookie can download", func(t *testing.T) {
+		check(t, true, false, http.StatusOK)
+	})
+	t.Run("anonymous and bearer-only requests are rejected", func(t *testing.T) {
+		check(t, false, false, http.StatusUnauthorized)
+		check(t, false, true, http.StatusUnauthorized)
+	})
+	t.Run("revoked session loses access on the next request", func(t *testing.T) {
+		_, err := db.Exec(`UPDATE auth.sessions SET revoked_at = NOW() WHERE user_id = $1`, owner)
+		require.NoError(t, err)
+		check(t, true, false, http.StatusUnauthorized)
+	})
+	t.Run("expired session is rejected even with valid token claims", func(t *testing.T) {
+		_, err := db.Exec(`UPDATE auth.sessions SET revoked_at = NULL, expires_at = NOW() - INTERVAL '1 second' WHERE user_id = $1`, owner)
+		require.NoError(t, err)
+		check(t, true, false, http.StatusUnauthorized)
+	})
+	t.Run("logout-all generation invalidates the session", func(t *testing.T) {
+		_, err := db.Exec(`UPDATE auth.sessions SET expires_at = NOW() + INTERVAL '1 hour' WHERE user_id = $1`, owner)
+		require.NoError(t, err)
+		check(t, true, false, http.StatusOK)
+		_, err = db.Exec(`UPDATE auth.users SET token_generation = token_generation + 1 WHERE id = $1`, owner)
+		require.NoError(t, err)
+		check(t, true, false, http.StatusUnauthorized)
+	})
+}
