@@ -76,6 +76,26 @@ func TestCallPeerLeftReasonOnRealSchema(t *testing.T) {
 		t.Fatal("call_peer_left не пришёл")
 		return nil
 	}
+	nextCallEvent := func(t *testing.T, c *Client) map[string]any {
+		t.Helper()
+		timeout := time.NewTimer(3 * time.Second)
+		defer timeout.Stop()
+		for {
+			select {
+			case payload := <-c.Send:
+				var event map[string]any
+				require.NoError(t, json.Unmarshal(payload, &event))
+				// Сообщение о предыдущем звонке сохраняется и рассылается
+				// асинхронно: оно может опередить call_joined/call_error.
+				if event["type"] != "new_message" {
+					return event
+				}
+			case <-timeout.C:
+				t.Fatal("событие звонка не пришло")
+				return nil
+			}
+		}
+	}
 
 	t.Run("«Завершить» — reason left", func(t *testing.T) {
 		roomID, mashaConn, igorConn := callBetween(t)
@@ -95,12 +115,13 @@ func TestCallPeerLeftReasonOnRealSchema(t *testing.T) {
 		require.Equal(t, "disconnected", event["reason"])
 		require.NotNil(t, ws.callRooms.GetRoomPublic(roomID))
 		returned := connect(igor)
+		// Воспроизводим порядок событий из CI, независимо от планировщика.
+		returned.Send <- []byte(`{"type":"new_message"}`)
 		ws.handleCallJoin(returned, map[string]interface{}{"roomId": roomID})
 		require.Equal(t, roomID, returned.CallRoomID)
 		require.True(t, ws.callRooms.IsParticipant(roomID, masha))
 		require.True(t, ws.callRooms.IsParticipant(roomID, igor))
-		var joined map[string]any
-		require.NoError(t, json.Unmarshal(<-returned.Send, &joined))
+		joined := nextCallEvent(t, returned)
 		require.Equal(t, "call_joined", joined["type"])
 		require.Len(t, joined["peers"], 1)
 		ws.handleCallLeave(returned, map[string]interface{}{"roomId": roomID})
@@ -151,8 +172,7 @@ func TestCallPeerLeftReasonOnRealSchema(t *testing.T) {
 				late := connect(igor)
 				ws.handleCallJoin(late, map[string]interface{}{"roomId": roomID})
 				require.Empty(t, late.CallRoomID)
-				var event map[string]any
-				require.NoError(t, json.Unmarshal(<-late.Send, &event))
+				event := nextCallEvent(t, late)
 				require.Equal(t, "call_error", event["type"])
 				require.Equal(t, "room_not_found", event["reason"])
 			})

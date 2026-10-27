@@ -1050,14 +1050,14 @@ CallHistoryResponse:
     hasMore: { type: boolean }
 UploadResponse:
   type: object
-  required: [success, url]
+  required: [success, url, fileName, sizeBytes, contentType]
   properties:
-    success: { type: boolean }
-    url: { type: string }
-    encrypted: { type: boolean }
-    encryption: {}
+    success: { type: boolean, enum: [true] }
+    url: { $ref: '#/MediaUrl' }
+    encrypted: { type: boolean, enum: [true], description: Present for encrypted uploads only. }
+    encryption: { type: string, description: JSON-encoded encryption metadata, not a nested JSON object. Present for encrypted uploads only. }
     fileName: { type: string }
-    sizeBytes: { type: integer, format: int64 }
+    sizeBytes: { type: integer, format: int64, minimum: 0, description: Plaintext size for encrypted uploads; file byte size otherwise. }
     contentType: { type: string }
 Object:
   type: object
@@ -2253,3 +2253,112 @@ LegacyNullSection:
   enum:
     - null
   description: Only JSON null. Bulk compatibility no-op, never a leaf reset.
+
+# Media API wire DTOs (#614). Catalog timestamps preserve the legacy SQL text.
+MediaUrl:
+  type: string
+  pattern: '^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+  description: Relative authenticated download URL; the UUID alone grants no access.
+MediaDataUrl:
+  type: string
+  pattern: '^data:[^,]*,[A-Za-z0-9+/=\r\n]*$'
+  description: >-
+    Complete data URL with base64-encoded bytes, e.g. data:image/png;base64,YQ==.
+    This is not a bare base64 string. Decoded size is checked at runtime; plain uploads also validate MIME.
+    Sticker handlers currently also accept a data URL without the ;base64 marker
+    and do not apply the plain-upload MIME allowlist.
+  example: 'data:image/png;base64,YQ=='
+MediaTimestamp:
+  description: >-
+    Non-null timestamp. Current catalog handlers return PostgreSQL timestamptz
+    text (created_at::text), with a space and UTC offset such as +00. RFC 3339
+    date-time is also accepted for compatibility; no timestamp rewrite is required.
+  oneOf:
+    - { type: string, format: date-time }
+    - type: string
+      pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2}(?::\d{2})?$'
+      example: '2026-10-28 10:20:30.123456+00'
+MediaEmoji:
+  type: object
+  required: [code, img]
+  properties:
+    code: { type: string, description: Emoji shortcode, e.g. ':grinning:'. }
+    img: { type: string, description: Unicode emoji text; not an image URL. }
+MediaEmojisResponse:
+  type: object
+  required: [emojis]
+  properties:
+    emojis: { type: array, items: { $ref: '#/MediaEmoji' } }
+MediaGif:
+  type: object
+  required: [id, name, url, userName, createdAt]
+  properties:
+    id: { type: string, format: uuid }
+    name: { type: string }
+    url: { type: string, description: New records use a relative MediaUrl; legacy records may retain external URLs. }
+    userName: { type: string, description: Username in list responses; currently empty in the create response (#608). }
+    createdAt: { $ref: '#/MediaTimestamp' }
+MediaGifsResponse:
+  type: object
+  required: [gifs]
+  properties:
+    gifs: { type: array, items: { $ref: '#/MediaGif' } }
+MediaGifResponse:
+  type: object
+  required: [success, gif]
+  properties:
+    success: { type: boolean, enum: [true] }
+    gif: { $ref: '#/MediaGif' }
+MediaStickerPack:
+  type: object
+  required: [id, name, description, iconUrl, stickerCount, createdAt]
+  properties:
+    id: { type: string, format: uuid }
+    name: { type: string }
+    description: { type: string }
+    iconUrl: { type: string, description: Relative MediaUrl when managed; empty when no verified icon is available. }
+    stickerCount: { type: integer, minimum: 0 }
+    createdAt: { $ref: '#/MediaTimestamp' }
+MediaSticker:
+  type: object
+  required: [id, imageUrl, createdAt]
+  properties:
+    id: { type: string, format: uuid }
+    imageUrl: { type: string, description: Relative MediaUrl when managed; empty for legacy objects without verified storage coordinates. }
+    createdAt: { $ref: '#/MediaTimestamp' }
+MediaStickerPacksResponse:
+  type: object
+  required: [packs]
+  properties:
+    packs: { type: array, items: { $ref: '#/MediaStickerPack' } }
+MediaStickersResponse:
+  type: object
+  required: [stickers]
+  properties:
+    stickers: { type: array, items: { $ref: '#/MediaSticker' } }
+MediaStickerPackResponse:
+  type: object
+  required: [success, pack]
+  properties:
+    success: { type: boolean, enum: [true] }
+    pack: { $ref: '#/MediaStickerPack' }
+MediaStickerResponse:
+  type: object
+  required: [success, sticker]
+  properties:
+    success: { type: boolean, enum: [true] }
+    sticker: { $ref: '#/MediaSticker' }
+MediaEncryptedDownload:
+  type: object
+  required: [encrypted, mimeType, sizeBytes, ciphertext]
+  description: Complete encrypted envelope; version/algorithm/iv/keyEpoch may be absent in legacy uploads.
+  properties:
+    encrypted: { type: boolean, enum: [true] }
+    mimeType: { type: string }
+    sizeBytes: { type: integer, format: int64, minimum: 0 }
+    ciphertext: { type: string, format: byte }
+    version: { type: integer }
+    algorithm: { type: string }
+    iv: { type: string }
+    keyEpoch: { type: integer }
+    fileName: { type: string }

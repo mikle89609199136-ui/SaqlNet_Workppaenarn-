@@ -1,14 +1,4 @@
-export interface IStickerPack {
-  id: string;
-  name: string;
-  description: string;
-  iconUrl: string;
-  stickerCount: number;
-  createdAt: string;
-}
+import type { components } from '@/types/api.generated';
 
-export interface ISticker {
-  id: string;
-  imageUrl: string;
-  createdAt: string;
-}
+export type IStickerPack = components['schemas']['MediaStickerPack'];
+export type ISticker = components['schemas']['MediaSticker'];
