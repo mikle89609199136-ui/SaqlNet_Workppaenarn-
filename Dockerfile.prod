@@ -11,6 +11,7 @@ COPY frontend/src ./src
 COPY frontend/public ./public
 # Шаблон service worker: сборка дописывает в него номер сборки и кладёт в dist/sw.js (#880).
 COPY frontend/pwa ./pwa
+COPY backend-v2/contracts/openapi/media-policy.json /app/backend-v2/contracts/openapi/media-policy.json
 RUN npm run build
 
 # Stage 2: Build Go services

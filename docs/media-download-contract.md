@@ -4,7 +4,10 @@
 
 Нужны Go из `backend-v2/go.mod` и запущенный Docker. Тест сам поднимает
 PostgreSQL со всеми миграциями и отдельный MinIO с приватным бакетом.
-Образы и тестовые credentials заданы в тесте; production secrets и внешний
+MinIO собирается из исходников той же версии, что в `Dockerfile.prod`, по
+`backend-v2/cmd/edge/testdata/minio.Dockerfile`: публичные готовые образы больше
+не доступны. Первый прогон скачивает Go dependencies и собирает образ,
+повторные используют Docker build cache. Версия и тестовые credentials заданы в тесте; production secrets и внешний
 стенд не требуются. Контейнер MinIO удаляется после прогона, PostgreSQL
 убирает testcontainers/Ryuk.
 

@@ -56,10 +56,14 @@ func TestMediaStorageContract(t *testing.T) {
 	dbtest.User(t, db, stranger, "storage_stranger")
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			// Same S3 implementation as Compose, pinned to an immutable image.
-			Image: "minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
-			Env:   map[string]string{"MINIO_ROOT_USER": "media-test", "MINIO_ROOT_PASSWORD": "media-test-local-only"},
-			Cmd:   []string{"server", "/data"}, ExposedPorts: []string{"9000/tcp"},
+			// Build the same MinIO release as Dockerfile.prod; prebuilt images
+			// are no longer available from Docker Hub/Quay.
+			FromDockerfile: testcontainers.FromDockerfile{
+				Context: "testdata", Dockerfile: "minio.Dockerfile",
+				Repo: "craneapp-media-minio-test", Tag: "2025-10-15", KeepImage: true,
+			},
+			Env: map[string]string{"MINIO_ROOT_USER": "media-test", "MINIO_ROOT_PASSWORD": "media-test-local-only"},
+			Cmd: []string{"server", "/data"}, ExposedPorts: []string{"9000/tcp"},
 			WaitingFor: wait.ForHTTP("/minio/health/live").WithPort("9000/tcp").WithStartupTimeout(time.Minute),
 		}, Started: true,
 	})

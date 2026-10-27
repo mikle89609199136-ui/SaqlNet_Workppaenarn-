@@ -4,6 +4,7 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+COPY backend-v2/contracts/openapi/media-policy.json /src/backend-v2/contracts/openapi/media-policy.json
 RUN npm run build
 
 FROM golang:1.26-alpine AS backend
