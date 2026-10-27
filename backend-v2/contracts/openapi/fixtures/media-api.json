@@ -1,0 +1,298 @@
+[
+  {
+    "name": "upload",
+    "operationId": "uploadMedia",
+    "status": 201,
+    "body": {
+      "success": true,
+      "url": "/api/v2/media/11111111-1111-1111-1111-111111111111",
+      "fileName": "note.txt",
+      "sizeBytes": 5,
+      "contentType": "text/plain"
+    }
+  },
+  {
+    "name": "encrypted-upload",
+    "operationId": "uploadMedia",
+    "status": 201,
+    "body": {
+      "success": true,
+      "url": "/api/v2/media/11111111-1111-1111-1111-111111111111",
+      "fileName": "secret.pdf",
+      "sizeBytes": 42,
+      "contentType": "application/pdf",
+      "encrypted": true,
+      "encryption": "{\"encrypted\":true,\"version\":2,\"algorithm\":\"AES-GCM\",\"iv\":\"AAECAwQFBgcICQoL\",\"keyEpoch\":1,\"sizeBytes\":42,\"mimeType\":\"application/pdf\",\"fileName\":\"secret.pdf\"}"
+    }
+  },
+  {
+    "name": "encrypted-download",
+    "operationId": "getMedia",
+    "status": 200,
+    "body": {
+      "encrypted": true,
+      "version": 1,
+      "mimeType": "application/pdf",
+      "sizeBytes": 42,
+      "ciphertext": "Y2lwaGVy"
+    }
+  },
+  {
+    "name": "emojis",
+    "operationId": "listEmojis",
+    "status": 200,
+    "body": {
+      "emojis": [
+        {
+          "code": ":grinning:",
+          "img": "😀"
+        },
+        {
+          "code": ":smile:",
+          "img": "😄"
+        },
+        {
+          "code": ":joy:",
+          "img": "😂"
+        },
+        {
+          "code": ":heart:",
+          "img": "❤️"
+        },
+        {
+          "code": ":fire:",
+          "img": "🔥"
+        },
+        {
+          "code": ":thumbsup:",
+          "img": "👍"
+        },
+        {
+          "code": ":rocket:",
+          "img": "🚀"
+        },
+        {
+          "code": ":eyes:",
+          "img": "👀"
+        },
+        {
+          "code": ":tada:",
+          "img": "🎉"
+        },
+        {
+          "code": ":sparkles:",
+          "img": "✨"
+        }
+      ]
+    }
+  },
+  {
+    "name": "listGifs",
+    "operationId": "listGifs",
+    "status": 200,
+    "body": {
+      "gifs": [
+        {
+          "id": "abcdef01-2345-6789-abcd-ef0123456789",
+          "name": "GIF",
+          "url": "/api/v2/media/11111111-1111-1111-1111-111111111111",
+          "userName": "alice",
+          "createdAt": "2026-10-28 10:20:30.123456+00"
+        }
+      ]
+    }
+  },
+  {
+    "name": "listGifs-empty",
+    "operationId": "listGifs",
+    "status": 200,
+    "body": {
+      "gifs": []
+    }
+  },
+  {
+    "name": "listFavoriteGifs",
+    "operationId": "listFavoriteGifs",
+    "status": 200,
+    "body": {
+      "gifs": [
+        {
+          "id": "abcdef01-2345-6789-abcd-ef0123456789",
+          "name": "GIF",
+          "url": "/api/v2/media/11111111-1111-1111-1111-111111111111",
+          "userName": "alice",
+          "createdAt": "2026-10-28 10:20:30.123456+00"
+        }
+      ]
+    }
+  },
+  {
+    "name": "listFavoriteGifs-empty",
+    "operationId": "listFavoriteGifs",
+    "status": 200,
+    "body": {
+      "gifs": []
+    }
+  },
+  {
+    "name": "listStickerPacks",
+    "operationId": "listStickerPacks",
+    "status": 200,
+    "body": {
+      "packs": [
+        {
+          "id": "44444444-4444-4444-8444-444444444444",
+          "name": "Pack",
+          "description": "",
+          "iconUrl": "",
+          "stickerCount": 0,
+          "createdAt": "2026-10-28 10:20:30.123456+00"
+        }
+      ]
+    }
+  },
+  {
+    "name": "listStickerPacks-empty",
+    "operationId": "listStickerPacks",
+    "status": 200,
+    "body": {
+      "packs": []
+    }
+  },
+  {
+    "name": "listStickers",
+    "operationId": "listStickers",
+    "status": 200,
+    "body": {
+      "stickers": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "imageUrl": "/api/v2/media/33333333-3333-4333-8333-333333333333",
+          "createdAt": "2026-10-28 10:20:30.123456+00"
+        }
+      ]
+    }
+  },
+  {
+    "name": "listStickers-empty",
+    "operationId": "listStickers",
+    "status": 200,
+    "body": {
+      "stickers": []
+    }
+  },
+  {
+    "name": "create-gif",
+    "operationId": "createGif",
+    "status": 201,
+    "body": {
+      "success": true,
+      "gif": {
+        "id": "abcdef01-2345-6789-abcd-ef0123456789",
+        "name": "GIF",
+        "url": "/api/v2/media/11111111-1111-1111-1111-111111111111",
+        "userName": "",
+        "createdAt": "2026-10-28 10:20:30.123456+00"
+      }
+    }
+  },
+  {
+    "name": "create-pack",
+    "operationId": "createStickerPack",
+    "status": 201,
+    "body": {
+      "success": true,
+      "pack": {
+        "id": "44444444-4444-4444-8444-444444444444",
+        "name": "Pack",
+        "description": "",
+        "iconUrl": "",
+        "stickerCount": 0,
+        "createdAt": "2026-10-28 10:20:30.123456+00"
+      }
+    }
+  },
+  {
+    "name": "create-sticker",
+    "operationId": "addSticker",
+    "status": 201,
+    "body": {
+      "success": true,
+      "sticker": {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "imageUrl": "/api/v2/media/33333333-3333-4333-8333-333333333333",
+        "createdAt": "2026-10-28 10:20:30.123456+00"
+      }
+    }
+  },
+  {
+    "name": "favorite-new",
+    "operationId": "favoriteGif",
+    "status": 201,
+    "body": {
+      "success": true
+    }
+  },
+  {
+    "name": "favorite-existing",
+    "operationId": "favoriteGif",
+    "status": 200,
+    "body": {
+      "success": true
+    }
+  },
+  {
+    "name": "unfavorite",
+    "operationId": "unfavoriteGif",
+    "status": 200,
+    "body": {
+      "success": true
+    }
+  },
+  {
+    "name": "delete-pack",
+    "operationId": "deleteStickerPack",
+    "status": 200,
+    "body": {
+      "success": true
+    }
+  },
+  {
+    "name": "delete-sticker",
+    "operationId": "deleteSticker",
+    "status": 200,
+    "body": {
+      "success": true
+    }
+  },
+  {
+    "name": "invalid-json",
+    "operationId": "createGif",
+    "status": 400,
+    "body": {
+      "code": "invalid_json",
+      "message": "invalid json",
+      "requestId": "media-contract-test"
+    }
+  },
+  {
+    "name": "missing-gif",
+    "operationId": "favoriteGif",
+    "status": 404,
+    "body": {
+      "code": "gif_not_found",
+      "message": "GIF not found",
+      "requestId": "media-contract-test"
+    }
+  },
+  {
+    "name": "method",
+    "operationId": "listEmojis",
+    "status": 405,
+    "body": {
+      "code": "method_not_allowed",
+      "message": "method not allowed",
+      "requestId": "media-contract-test"
+    }
+  }
+]

@@ -1,11 +1,6 @@
+import type { components } from './api.generated';
 import type { IChatDto, TChatsList, TMembersList } from '@/entities/chat';
-import type {
-  IMessageDto,
-  TEmojisList,
-  TMessagesList,
-  TPinnedList,
-  TReactionsList,
-} from '@/entities/message';
+import type { IMessageDto, TMessagesList, TPinnedList, TReactionsList } from '@/entities/message';
 import type { IUserDto, TSearchUsersList } from '@/entities/user';
 
 /**
@@ -51,18 +46,13 @@ export interface IMessagesResponse {
   messages: TMessagesList;
 }
 
-export interface IUploadResponse {
-  url?: string;
-  [key: string]: unknown;
-}
+export type IUploadResponse = components['schemas']['UploadResponse'];
 export interface IMessageApiResponse {
   message?: IMessageDto;
   [key: string]: unknown;
 }
 
-export interface IEmojisResponse {
-  reactions: TEmojisList;
-}
+export type IEmojisResponse = components['schemas']['MediaEmojisResponse'];
 
 export interface IPinnedListResponse {
   pins: TPinnedList;

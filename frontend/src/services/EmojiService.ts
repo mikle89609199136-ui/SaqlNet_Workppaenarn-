@@ -1,4 +1,5 @@
 import { API_ENDPOINTS, ApiClient } from '@/shared/api';
+import type { IEmojisResponse } from '@/types/response.types';
 
 export class EmojiService {
   private apiClient: ApiClient;
@@ -7,7 +8,9 @@ export class EmojiService {
     this.apiClient = apiClient;
   }
 
-  list() {
-    return this.apiClient.get(API_ENDPOINTS.EMOJIS).then((response) => response.data);
+  list(): Promise<IEmojisResponse> {
+    return this.apiClient
+      .get<IEmojisResponse>(API_ENDPOINTS.EMOJIS)
+      .then((response) => response.data);
   }
 }

@@ -5,7 +5,6 @@ import { resolveChat } from '@/entities/chat/model/chatResolver';
 import type {
   IChatContext,
   IDeleteMessageResponse,
-  IEmojisResponse,
   IEncryptedMedia,
   ILastMessageDto,
   IMediaDisplayPatch,
@@ -963,9 +962,9 @@ export class MessageService {
     return response.data;
   }
 
-  async reactToMessage(messageId: string, emoji: string): Promise<IEmojisResponse> {
+  async reactToMessage(messageId: string, emoji: string): Promise<IReactionsResponse> {
     return this.apiClient
-      .post<IEmojisResponse>(API_ENDPOINTS.MESSAGE_REACT(messageId), { emoji })
+      .post<IReactionsResponse>(API_ENDPOINTS.MESSAGE_REACT(messageId), { emoji })
       .then((response) => response.data);
   }
 }
