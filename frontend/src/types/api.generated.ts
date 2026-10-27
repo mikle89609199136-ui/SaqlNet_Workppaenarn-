@@ -2000,7 +2000,7 @@ export interface paths {
         /**
          * Delete a message for everyone
          * @deprecated
-         * @description Alias of a single forEveryone delete. Use POST /chats/{chatId}/messages/delete.
+         * @description Legacy single-message delete. Use POST /chats/{chatId}/messages/delete for idempotent deletion.
          */
         delete: operations["deleteMessage"];
         options?: never;

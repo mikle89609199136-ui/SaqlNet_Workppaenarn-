@@ -4,6 +4,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -195,6 +196,35 @@ func TestDeleteMessagesPermissionsAndHiddenReads(t *testing.T) {
 	privateID, _, err := chats.CreatePrivate(ctx, owner, author)
 	require.NoError(t, err)
 
+	t.Run("событие только нужным получателям и только при изменении", func(t *testing.T) {
+		for _, forEveryone := range []bool{false, true} {
+			id := send(privateID, owner, "проверка события")
+			ws := &recordingRealtime{}
+			deleting := NewService(db, ws, nil)
+			_, err := deleting.DeleteMessages(ctx, owner, privateID, []string{id, id}, forEveryone)
+			require.NoError(t, err)
+			require.Len(t, ws.broadcasts, 1)
+			var event struct {
+				Type       string   `json:"type"`
+				MessageIDs []string `json:"messageIds"`
+			}
+			require.NoError(t, json.Unmarshal(ws.broadcasts[0].payload, &event))
+			require.Equal(t, []string{id}, event.MessageIDs)
+			if forEveryone {
+				require.Equal(t, "messages_deleted", event.Type)
+				require.Equal(t, privateID, ws.broadcasts[0].chatID)
+				require.Empty(t, ws.broadcasts[0].exclude)
+			} else {
+				require.Equal(t, "messages_hidden", event.Type)
+				require.Equal(t, owner, ws.broadcasts[0].chatID)
+			}
+			ws.broadcasts = nil
+			_, err = deleting.DeleteMessages(ctx, owner, privateID, []string{id}, forEveryone)
+			require.NoError(t, err)
+			require.Empty(t, ws.broadcasts, "повтор не рассылает событие")
+		}
+	})
+
 	t.Run("повтор удаления у всех уже удалённого — успех", func(t *testing.T) {
 		id := send(privateID, owner, "уже удалено")
 		_, err := chats.DeleteMessages(ctx, owner, privateID, []string{id}, true)
@@ -237,8 +267,33 @@ func TestDeleteMessagesPermissionsAndHiddenReads(t *testing.T) {
 		require.NoError(t, err)
 		_, _, _, err = chats.ToggleReaction(ctx, owner, id, "👍")
 		require.ErrorIs(t, err, ErrNotFound)
+		_, err = chats.ListReactions(ctx, owner, id)
+		require.ErrorIs(t, err, ErrNotFound)
 		_, err = chats.ForwardOrigin(ctx, owner, id)
 		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("ответ удаления не раскрывает скрытый оригинал цитаты", func(t *testing.T) {
+		for _, legacy := range []bool{false, true} {
+			original := send(privateID, author, "скрытый оригинал")
+			reply := send(privateID, author, "ответ на скрытое")
+			_, err := db.ExecContext(ctx, `UPDATE messages.messages SET reply_to = $1 WHERE id = $2`, original, reply)
+			require.NoError(t, err)
+			_, err = chats.DeleteMessages(ctx, owner, privateID, []string{original}, false)
+			require.NoError(t, err)
+			latest := send(privateID, owner, "удалить последнее")
+			var last *Message
+			if legacy {
+				last, err = chats.DeleteMessage(ctx, owner, latest)
+			} else {
+				last, err = chats.DeleteMessages(ctx, owner, privateID, []string{latest}, true)
+			}
+			require.NoError(t, err)
+			require.NotNil(t, last)
+			require.Equal(t, reply, last.ID)
+			require.Nil(t, last.ReplyPreview, "legacy=%v", legacy)
+			require.Empty(t, last.ReplySenderName)
+		}
 	})
 
 	t.Run("прочтение скрытого не сдвигает границу", func(t *testing.T) {
