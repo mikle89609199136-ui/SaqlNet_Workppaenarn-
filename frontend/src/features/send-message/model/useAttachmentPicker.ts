@@ -1,5 +1,6 @@
 import { useChatUiStore } from '@/entities/chat';
 import type { IPendingAttachment } from '@/types';
+import { MEDIA_UPLOAD_POLICY } from '@/shared/config/mediaPolicy';
 import {
   useCallback,
   type ChangeEvent,
@@ -17,7 +18,7 @@ interface Params {
 
 /** Больше за раз — не приложить: как альбом в Telegram. */
 export const MAX_PENDING_ATTACHMENTS = 10;
-export const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = MEDIA_UPLOAD_POLICY.maxFileSizeBytes;
 
 function getMediaMessageType(mimeType = '') {
   if (mimeType.startsWith('image/')) return 'image';

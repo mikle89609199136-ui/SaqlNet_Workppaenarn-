@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import Ajv from '@redocly/ajv';
 import { describe, expect, it } from 'vitest';
 import type { components } from './api.generated';
+import { MEDIA_UPLOAD_POLICY } from '../shared/config/mediaPolicy';
 
 const { load } = createRequire(import.meta.url)('js-yaml') as {
   load: (source: string) => unknown;
@@ -65,6 +66,14 @@ const emojis = {
 } satisfies components['schemas']['MediaEmojisResponse'];
 
 describe('Media API contract (#614)', () => {
+  it('publishes the client upload limits and plain MIME policy (#718)', () => {
+    expect(MEDIA_UPLOAD_POLICY).toEqual(JSON.parse(read('openapi/media-policy.json')));
+    expect(MEDIA_UPLOAD_POLICY.maxFileSizeBytes).toBe(100 * 1024 * 1024);
+    expect(MEDIA_UPLOAD_POLICY.encryptionOverheadBytes).toBe(16);
+    expect(MEDIA_UPLOAD_POLICY.maxVoiceCiphertextBytes).toBe(8 * 1024 * 1024);
+    expect(MEDIA_UPLOAD_POLICY.plainMimeTypes).toHaveLength(11);
+    expect(MEDIA_UPLOAD_POLICY.plainMimeTypes).not.toContain('text/html');
+  });
   it('covers all 15 published operations and separates public/protected routes', () => {
     expect(operations).toHaveLength(15);
     expect(new Set(operations.map((op) => op.operationId)).size).toBe(15);

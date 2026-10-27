@@ -2292,7 +2292,7 @@ export interface paths {
         put?: never;
         /**
          * Upload media
-         * @description MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB). Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies must allow at least 140 MiB with the default file limit. Oversized uploads return a flat 413 file_too_large error with message and requestId. Voice uploads have a separate 8 MiB ciphertext limit.
+         * @description MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB). Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies must allow at least 140 MiB with the default file limit. Oversized uploads return a flat 413 file_too_large error with message and requestId. Voice uploads have a separate 8 MiB ciphertext limit. GET /docs/media-policy.json publishes the default byte limits and the plain-upload MIME allowlist shared with the client. Encrypted message uploads may carry any MIME type.
          */
         post: operations["uploadMedia"];
         delete?: never;
