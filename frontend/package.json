@@ -1,6 +1,6 @@
 {
   "name": "craneapp-frontend",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "CraneApp Messenger - React/Vite client",
   "private": true,
   "type": "module",
