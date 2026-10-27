@@ -80,6 +80,9 @@ go test -tags=integration ./internal/chat -run 'TestCall(History|RestoreAfterRes
 
 ## Media upload limits (#897)
 
+The reproducible edge/media/PostgreSQL/MinIO suite, browser download headers
+and published client policy are documented in [Media download contract](media-download-contract.md).
+
 Use `MAX_FILE_SIZE=104857600` in the local `.env` and the hosting environment
 to match the client's 100 MB limit (the UI uses binary megabytes). An explicit
 older value, such as `52428800`, overrides the entrypoint/Compose default:

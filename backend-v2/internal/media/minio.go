@@ -80,7 +80,7 @@ func (m *MinioStore) Put(ctx context.Context, bucket, key string, r io.Reader, s
 	if err != nil {
 		return err
 	}
-	reqURL := fmt.Sprintf("%s/%s/%s", m.endpoint, bucket, key)
+	reqURL := fmt.Sprintf("%s/%s", m.endpoint, escapeS3Path(bucket+"/"+key))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, bytes.NewReader(data))
 	if err != nil {
 		return err
@@ -104,7 +104,7 @@ func (m *MinioStore) Get(ctx context.Context, bucket, key string, options GetOpt
 	if options.Head {
 		method = http.MethodHead
 	}
-	reqURL := fmt.Sprintf("%s/%s/%s", m.endpoint, bucket, key)
+	reqURL := fmt.Sprintf("%s/%s", m.endpoint, escapeS3Path(bucket+"/"+key))
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, nil)
 	if err != nil {
 		return nil, err
@@ -146,7 +146,7 @@ func (m *MinioStore) PresignGet(ctx context.Context, bucket, key string, ttl tim
 	host := strings.TrimPrefix(strings.TrimPrefix(m.endpoint, "https://"), "http://")
 	canonicalHeaders := "host:" + host + "\n"
 
-	canonicalURI := "/" + bucket + "/" + key
+	canonicalURI := "/" + escapeS3Path(bucket+"/"+key)
 	canonicalRequest := strings.Join([]string{
 		"GET",
 		canonicalURI,
@@ -171,7 +171,7 @@ func (m *MinioStore) PresignGet(ctx context.Context, bucket, key string, ttl tim
 }
 
 func (m *MinioStore) Delete(ctx context.Context, bucket, key string) error {
-	reqURL := fmt.Sprintf("%s/%s/%s", m.endpoint, bucket, key)
+	reqURL := fmt.Sprintf("%s/%s", m.endpoint, escapeS3Path(bucket+"/"+key))
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
 	if err != nil {
 		return err
@@ -227,7 +227,7 @@ func (m *MinioStore) signRequest(req *http.Request, body []byte) {
 	credScope := fmt.Sprintf("%s/%s/s3/aws4_request", dateStamp, m.region)
 	canonicalRequest := strings.Join([]string{
 		req.Method,
-		req.URL.Path,
+		req.URL.EscapedPath(),
 		req.URL.RawQuery,
 		canonicalHeaders,
 		signedHeaders,
@@ -265,6 +265,12 @@ func hmacSHA256(key, data []byte) []byte {
 func hexHash(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
+}
+
+// S3 SigV4 preserves path separators and escapes every other non-unreserved
+// byte. QueryEscape supplies that encoding once spaces are changed to %20.
+func escapeS3Path(value string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(url.QueryEscape(value), "+", "%20"), "%2F", "/")
 }
 
 func sortedEncode(v url.Values) string {

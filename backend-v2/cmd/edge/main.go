@@ -342,6 +342,7 @@ func main() {
 
 	// API documentation. The OpenAPI contract is embedded in the edge binary.
 	mux.HandleFunc("/docs/openapi.yaml", openapi.ServeSpec)
+	mux.Handle("/docs/media-policy.json", openapi.Files())
 	mux.Handle("/docs/paths/", openapi.Files())
 	mux.Handle("/docs/components/", openapi.Files())
 	mux.Handle("/docs/", httpSwagger.Handler(
@@ -474,8 +475,9 @@ func originGuard(next http.Handler) http.Handler {
 		if origin := r.Header.Get("Origin"); origin != "" && allowedOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Crane-Language")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Crane-Language, Range, If-None-Match, If-Modified-Since, If-Range")
+			w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition, Content-Range, Accept-Ranges, X-Request-ID")
 			// С credentials (cookie сессии, #705) — только точно
 			// перечисленным адресам: "*" разрешает чужой Origin без них,
 			// иначе любой сайт читал бы ответы от имени человека.
