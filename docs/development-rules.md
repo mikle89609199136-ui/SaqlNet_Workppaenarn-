@@ -57,7 +57,33 @@ ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:517
 - **`services/serviceContainer.ts`** собирает все сервисы и раздаёт их через `services`. Сервисы не держат состояние — только запросы; данные оседают в TanStack Query.
 - **`realtime/`** — сокет и раскладка событий в инвалидации кеша. `invalidationMap.ts` связывает тип события с тем, что перечитать.
 - **`crypto/`** — сквозное шифрование целиком на клиенте: `identity` (пара ключей ECDH и ECDSA), `chatKeys` (ключ чата с эпохами, завёрнутый под каждого участника), `envelope` (AES-GCM с привязкой к контексту), `signing`. Приватные ключи неизвлекаемые, лежат в IndexedDB. Сервер видит только шифровку.
-- **Звонки** — `features/call`: модель звонка и сигналинг через общий сокет, WebRTC. Старый `call.html` в `<iframe>` удалён (#776); пока нет нового экрана разговора (#774), звонки выключены флагом `CALLS_ENABLED` (`shared/config/calls.ts`).
+- **Звонки** — `features/call`: модель звонка, WebRTC и сигналинг через общий сокет `useRealtimeSocket`. React-экран включён (`CALLS_ENABLED = true`, `shared/config/calls.ts`); `CallProvider` и `CallOverlay` находятся выше роутера в `app/App.tsx`, поэтому звонок сохраняется при переходах. Старый экран и iframe удалены (#776). Звонок из профиля передаётся пропом `startCall` от страницы, без импорта другой фичи (#863).
+
+## Приёмка звонков 1:1 (#770)
+
+Подзадачи #771–#776, #853, #854, #954, #1001 и #1002 выполнены. Для #777
+зафиксировано [решение от 09.10.2026](https://github.com/mikle89609199136-ui/CraneApp/issues/777#issuecomment-6089325311):
+отдельные Playwright-сценарии звонков не входят в MVP. Критерий эпика проверяется
+модульными и интеграционными тестами плюс живыми проверками при изменении звонков.
+
+Автоматическая проверка из корня репозитория:
+
+```bash
+npm --prefix frontend test -- src/features/call src/services/CallService.node.test.ts src/shared/api/realtime/useRealtimeSocket.test.ts src/app/layouts/AppLayout.test.tsx src/pages/chat-thread/__tests__/callButtons.test.tsx src/features/user-profile/ui/UserProfilePanel.test.tsx
+(cd backend-v2 && go test -race -tags=integration ./internal/chat -run '^TestCall' -count=1)
+npm --prefix frontend run build
+npm --prefix frontend run check:cycles
+```
+
+После изменения поведения звонков проверить на стенде с двумя пользователями:
+аудио- и видеовызов, ответ и медиа в обе стороны, отказ/отмену/таймаут/«занят»,
+переключение микрофона и камеры, сворачивание и переход между страницами,
+краткий обрыв и возвращение после перезагрузки. Эти живые проверки отдельно
+подтверждают браузерные разрешения, реальный звук и работу сети; моки в тестах
+их не заменяют. Для стенда нужен один процесс `chat`, см.
+[ограничения и восстановление](deployment.md#calls-one-chat-process-per-environment-713).
+TURN и его сетевые ограничения остаются отдельными задачами #851/#855;
+шифрование сигналинга — #852.
 
 ## Стили
 
