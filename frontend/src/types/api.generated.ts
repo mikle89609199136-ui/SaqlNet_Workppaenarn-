@@ -1837,7 +1837,7 @@ export interface paths {
         put?: never;
         /**
          * Delete messages for everyone or only for me
-         * @description Up to 100 messages of one chat, all or nothing (#840). forEveryone — only the caller's own messages; the members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only (any message of the chat); the caller's devices get messages_hidden. Hidden messages are not returned to the caller anywhere and are not counted as unread.
+         * @description Up to 100 messages of one chat, all or nothing (#840). forEveryone deletes messages the caller sent, or any message when the caller is owner or an admin with can_delete_messages; members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only; the caller's devices get messages_hidden. A repeat that changes nothing is a success and sends no event. Hidden messages are not returned to the caller anywhere and are not counted as unread.
          */
         post: operations["deleteMessages"];
         delete?: never;
@@ -2000,7 +2000,7 @@ export interface paths {
         /**
          * Delete a message for everyone
          * @deprecated
-         * @description Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+         * @description Legacy single-message delete. Use POST /chats/{chatId}/messages/delete for idempotent deletion.
          */
         delete: operations["deleteMessage"];
         options?: never;
@@ -3900,7 +3900,7 @@ export interface components {
         MarkMessagesReadRequest: {
             /** Format: uuid */
             chatId: string;
-            /** @description Messages of this chat seen by the reader (duplicates are ignored). All must belong to the chat, otherwise 400 invalid_message_ids. Own and deleted messages are skipped. */
+            /** @description Messages of this chat seen by the reader (duplicates are ignored). All must belong to the chat, otherwise 400 invalid_message_ids. Own, deleted, and hidden messages are skipped and do not move the read boundary. */
             messageIds: string[];
         };
         ReadMark: {
@@ -7862,8 +7862,15 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description A message is not in this chat or already deleted */
+            /** @description A message is not in this chat */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Database error (internal_error) */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

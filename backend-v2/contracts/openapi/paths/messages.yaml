@@ -171,7 +171,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
   delete:
     tags: [Messages]
     summary: Delete a message for everyone
-    description: Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+    description: Legacy single-message delete. Use POST /chats/{chatId}/messages/delete for idempotent deletion.
     deprecated: true
     operationId: deleteMessage
     security: *secure
