@@ -191,7 +191,9 @@ metadata:
   name: chat
   namespace: craneapp-v2
 spec:
-  replicas: 2
+  # Calls keep live rooms and signaling in process memory (#713).
+  replicas: 1
+  strategy: { type: Recreate }
   selector:
     matchLabels: { app: chat }
   template:
