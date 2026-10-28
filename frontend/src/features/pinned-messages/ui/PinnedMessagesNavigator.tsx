@@ -129,6 +129,11 @@ export const PinnedMessagesNavigator = ({ messages, setPinnedMessagesOpen }: Pro
 
         <div className="flex min-w-0 flex-1 flex-col gap-px text-caption">
           <span className="truncate font-semibold text-brand">
+            {currentMessage.isPersonalPinned && (
+              <span role="img" aria-label={t('pinDialog.personalMarker', 'Личное закрепление')}>
+                🔒{' '}
+              </span>
+            )}
             {t('pinnedMessages', 'Закреплённое сообщение')}
             {messages.length > 1
               ? ` · ${t('pinnedMessages.position', '{{current}} из {{total}}', {

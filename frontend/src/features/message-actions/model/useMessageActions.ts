@@ -222,66 +222,16 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     }
   };
 
-  const handleUnpinMessage = async (message: IMessageDto) => {
-    try {
-      if (selectionMode) {
-        for (const message of selectedMessages) {
-          await services.messageService.unpinMessage(chatId, message.id);
-        }
-        return;
-      }
-
-      await services.messageService.unpinMessage(chatId, message.id);
-    } catch (err: any) {
-      setError(describeApiError(err, t, t('messageUnpinError', 'Не удалось открепить сообщение')));
-      if (
-        chatType === CHAT_TYPES.GROUP &&
-        chatRole !== CHAT_ROLES.ADMIN &&
-        chatRole !== CHAT_ROLES.OWNER
-      ) {
-        showToast(
-          'error',
-          t(
-            'messageUnpinMemberError',
-            'Не удалось открепить сообщение. У вас нет прав администратора.'
-          )
-        );
-        return;
-      }
-
-      showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'));
-    }
+  const handleUnpinMessage = (message: IMessageDto) => {
+    useChatUiStore
+      .getState()
+      .setPinRequest({ targets: selectionMode ? selectedMessages : [message], unpin: true });
   };
 
-  const handlePinMessage = async (message: IMessageDto) => {
-    try {
-      if (selectionMode) {
-        for (const message of selectedMessages) {
-          await services.messageService.pinMessage(chatId, message.id);
-        }
-        return;
-      }
-
-      await services.messageService.pinMessage(chatId, message.id);
-    } catch (err: any) {
-      setError(describeApiError(err, t, t('messagePinError', 'Не удалось закрепить сообщение')));
-      if (
-        chatType === CHAT_TYPES.GROUP &&
-        chatRole !== CHAT_ROLES.ADMIN &&
-        chatRole !== CHAT_ROLES.OWNER
-      ) {
-        showToast(
-          'error',
-          t(
-            'messagePinMemberError',
-            'Не удалось закрепить сообщение. У вас нет прав администратора.'
-          )
-        );
-        return;
-      }
-
-      showToast('error', t('messagePinError', 'Не удалось закрепить сообщение'));
-    }
+  const handlePinMessage = (message: IMessageDto) => {
+    useChatUiStore
+      .getState()
+      .setPinRequest({ targets: selectionMode ? selectedMessages : [message], unpin: false });
   };
 
   const startSelection = (message: IMessageDto) => {

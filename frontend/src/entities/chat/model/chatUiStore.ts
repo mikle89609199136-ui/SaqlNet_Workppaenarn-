@@ -52,6 +52,7 @@ interface IChatState {
   profileRequest: { chatId: string; userId: string } | null;
   /** Что удалить — открытый диалог «Удалить сообщение?» (#840). */
   deleteTargets: TMessagesList | null;
+  pinRequest: { targets: TMessagesList; unpin: boolean } | null;
   /** Просмотр списка авторов реакций (#998). */
   reactionAuthorsModal: IReactionAuthorsModalState | null;
 }
@@ -69,6 +70,7 @@ interface IChatActions {
   setHighlightedMessageId: (id: string | null) => void;
   setJumpRequest: (request: { chatId: string; messageId: string } | null) => void;
   setProfileRequest: (request: { chatId: string; userId: string } | null) => void;
+  setPinRequest: (request: IChatState['pinRequest']) => void;
   setDeleteTargets: (targets: TMessagesList | null) => void;
   setReactionAuthorsModal: (modal: IReactionAuthorsModalState | null) => void;
   resetChatState: (keepJumpForChatId?: string) => void;
@@ -86,6 +88,7 @@ const initialChatState: IChatState = {
   jumpRequest: null,
   profileRequest: null,
   deleteTargets: null,
+  pinRequest: null,
   reactionAuthorsModal: null,
 };
 
@@ -117,6 +120,7 @@ export const useChatUiStore = create<InitialState>((set) => {
     setHighlightedMessageId: (highlightedMessageId) => set({ highlightedMessageId }),
     setJumpRequest: (jumpRequest) => set({ jumpRequest }),
     setProfileRequest: (profileRequest) => set({ profileRequest }),
+    setPinRequest: (pinRequest) => set({ pinRequest }),
     setDeleteTargets: (deleteTargets) => set({ deleteTargets }),
     setReactionAuthorsModal: (reactionAuthorsModal) => set({ reactionAuthorsModal }),
     // Запрос перехода, адресованный новому чату, переживает смену чата: его

@@ -18,6 +18,7 @@ export const chatKeys = {
   /** Общее в переписке по виду — вкладки профиля (#842). */
   shared: (chatId: string, kind: string) => [...chatKeys.detail(chatId), 'shared', kind] as const,
   pins: (chatId: string) => [...chatKeys.detail(chatId), 'pins'] as const,
+  personalPins: (chatId: string) => [...chatKeys.pins(chatId), 'personal'] as const,
   members: (chatId: string) => [...chatKeys.detail(chatId), 'members'] as const,
   membersOnline: (chatId: string) => [...chatKeys.detail(chatId), 'members-online'] as const,
 };

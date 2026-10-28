@@ -59,6 +59,10 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
     return keys;
   },
 
+  [WS_EVENTS.MESSAGE.PERSONAL_PINNED]: ({ chatId }) =>
+    chatId ? [chatKeys.personalPins(chatId)] : [],
+  [WS_EVENTS.MESSAGE.PERSONAL_UNPINNED]: ({ chatId }) =>
+    chatId ? [chatKeys.personalPins(chatId)] : [],
   [WS_EVENTS.MESSAGE.PINNED]: ({ chatId }) => (chatId ? [chatKeys.pins(chatId)] : []),
 
   [WS_EVENTS.MESSAGE.UNPINNED]: ({ chatId }) => (chatId ? [chatKeys.pins(chatId)] : []),

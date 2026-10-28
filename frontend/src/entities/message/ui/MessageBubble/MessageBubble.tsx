@@ -393,7 +393,16 @@ export const MessageBubble = memo(
     );
     const metaContent = (
       <>
-        {message.isPinned && (
+        {message.isPersonalPinned && (
+          <span
+            aria-label={t('pinDialog.personalMarker', 'Личное закрепление')}
+            className="flex"
+            role="img"
+          >
+            <Icon className="size-3 stroke-2" name="lock" />
+          </span>
+        )}
+        {(message.isChatPinned ?? message.isPinned) && (
           <span aria-label={t('pinned', 'Закреплено')} className="flex" role="img">
             <Icon className="size-3 stroke-2" name="pin" />
           </span>
@@ -422,7 +431,13 @@ export const MessageBubble = memo(
       </>
     );
     /* В звонке, голосовом и под медиа — строкой рядом с содержимым. */
-    const hasMeta = message.isPinned || message.isEdited || showMessageTime || Boolean(delivery);
+    const hasMeta =
+      message.isPersonalPinned ||
+      message.isChatPinned ||
+      message.isPinned ||
+      message.isEdited ||
+      showMessageTime ||
+      Boolean(delivery);
     const meta = hasMeta ? (
       <span className={cn(metaClass, 'inline-flex align-[-2px]')}>{metaContent}</span>
     ) : undefined;

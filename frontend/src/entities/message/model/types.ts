@@ -60,6 +60,8 @@ export interface IMessageDto {
   isEdited: boolean;
   isForwarded: boolean;
   isPinned: boolean;
+  isChatPinned?: boolean;
+  isPersonalPinned?: boolean;
   replyTo: string | null;
   replyToMessageId: string | null;
   replySenderName: string | null;
