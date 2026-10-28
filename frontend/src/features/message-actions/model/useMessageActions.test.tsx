@@ -48,6 +48,16 @@ describe('желаемое состояние реакции', () => {
     return { message, hook, reactions };
   }
 
+  it('действие закрепления открывает диалог без запроса к API', () => {
+    const { message, hook } = setup();
+    const request = vi.spyOn(services.messageService, 'pinMessage');
+    act(() => hook.result.current.handlePinMessage(message));
+    expect(useChatUiStore.getState().pinRequest).toEqual({ targets: [message], unpin: false });
+    expect(request).not.toHaveBeenCalled();
+    act(() => hook.result.current.handleUnpinMessage(message));
+    expect(useChatUiStore.getState().pinRequest?.unpin).toBe(true);
+  });
+
   it('заменяет реакцию одним запросом, в том числе для premium', async () => {
     const { message, hook, reactions } = setup();
     let finish!: (value: { reactions: typeof message.reactions }) => void;

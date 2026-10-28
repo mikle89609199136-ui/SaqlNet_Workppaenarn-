@@ -10,6 +10,7 @@ import { useCall } from '@/features/call';
 import { CALLS_ENABLED } from '@/shared/config';
 import {
   DeleteMessagesDialog,
+  PinMessageDialog,
   MessageActionsPopover,
   ReactionAuthorsModal,
 } from '@/features/message-actions';
@@ -58,6 +59,8 @@ export function ChatThreadPage() {
     chatId,
     chat,
     pinnedMessages,
+    pinsLoading,
+    pinsError,
     messages,
     isLoading,
     hasOlder,
@@ -117,6 +120,7 @@ export function ChatThreadPage() {
 
   return (
     <>
+      <PinMessageDialog />
       {modals.isForwardModalOpen && (
         <ForwardChatMessagesModal
           messages={selectedMessages}
@@ -130,8 +134,8 @@ export function ChatThreadPage() {
           pinnedMessages={pinnedMessages}
           threadMessages={messages}
           onClose={() => modals.setPinnedMessagesOpen(false)}
-          isLoading={isLoading}
-          error={threadError}
+          isLoading={pinsLoading}
+          error={pinsError}
           openedImage={modals.openedImage}
           setOpenedImage={modals.setOpenedImage}
           onSelection={toggleMessageSelection}

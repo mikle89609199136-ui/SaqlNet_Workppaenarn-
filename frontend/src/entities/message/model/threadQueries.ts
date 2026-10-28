@@ -70,10 +70,10 @@ export function messagesQuery(chatId: string) {
   });
 }
 
-export function pinsQuery(chatId: string) {
+export function pinsQuery(chatId: string, scope: 'chat' | 'personal' = 'chat') {
   return queryOptions({
-    queryKey: chatKeys.pins(chatId),
-    queryFn: () => services.messageService.listPins(chatId),
+    queryKey: scope === 'chat' ? chatKeys.pins(chatId) : chatKeys.personalPins(chatId),
+    queryFn: () => services.messageService.listPins(chatId, scope),
     staleTime: 60 * 1000,
     enabled: Boolean(chatId),
   });

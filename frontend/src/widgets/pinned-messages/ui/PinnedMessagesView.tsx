@@ -1,6 +1,9 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { chatKeys, chatQuery } from '@/entities/chat';
+import { patchThreadMessage } from '@/entities/message';
 import { ChatThreadHeader } from '@/widgets/chat-header';
 import { MessagesList } from '@/widgets/chat-messages';
-import { MessageActionsPopover } from '@/features/message-actions';
+import { MessageActionsPopover, useMessageActions } from '@/features/message-actions';
 import { Button, ConfirmDialog, showToast } from '@/shared/ui';
 import { services } from '@/services/serviceContainer';
 import { type IActionMenu } from '@/entities/chat';
@@ -38,25 +41,52 @@ export const PinnedMessagesView = ({
   setPinnedMessagesOpen,
 }: Props) => {
   const { t } = useTranslation();
+  const { handleReact } = useMessageActions({ setIsForwardModalOpen });
   const { chatId = '' } = useParams<{ chatId: string }>();
+  const { data: chat } = useQuery(chatQuery(chatId));
+  const client = useQueryClient();
+  const canShare = chat?.type === 'private' || chat?.role === 'owner' || chat?.role === 'admin';
+  const canUnpinAny = canShare || pinnedMessages.some((pin) => pin.message.isPersonalPinned);
   const [isUnpinAllOpen, setIsUnpinAllOpen] = useState(false);
   const [isUnpinning, setIsUnpinning] = useState(false);
 
   // Закрывать страницу закреплений, когда закреплений не осталось
   useEffect(() => {
-    if (!isLoading && pinnedMessages.length === 0) {
+    if (!isLoading && !error && pinnedMessages.length === 0) {
       onClose();
     }
-  }, [isLoading, pinnedMessages.length, onClose]);
+  }, [isLoading, error, pinnedMessages.length, onClose]);
 
   const handleUnpinAllMessages = async () => {
     if (!pinnedMessages.length) return;
     setIsUnpinning(true);
     try {
       const results = await Promise.allSettled(
-        pinnedMessages.map((pinned) =>
-          services.messageService.unpinMessage(chatId, pinned.messageId)
-        )
+        pinnedMessages.flatMap((pinned) => {
+          const scopes: ('chat' | 'personal')[] = [];
+          if (pinned.message.isPersonalPinned) scopes.push('personal');
+          if (
+            canShare &&
+            (pinned.message.isChatPinned ??
+              (!pinned.message.isPersonalPinned || pinned.message.isPinned))
+          )
+            scopes.push('chat');
+          return scopes.map(async (scope) => {
+            await services.messageService.unpinMessage(chatId, pinned.messageId, scope);
+            patchThreadMessage(
+              client,
+              chatId,
+              pinned.messageId,
+              scope === 'personal'
+                ? { isPersonalPinned: false }
+                : { isPinned: false, isChatPinned: false }
+            );
+            await client.invalidateQueries({
+              queryKey:
+                scope === 'personal' ? chatKeys.personalPins(chatId) : chatKeys.pins(chatId),
+            });
+          });
+        })
       );
 
       const rejected = results.filter((result) => result.status === 'rejected');
@@ -82,6 +112,7 @@ export const PinnedMessagesView = ({
 
       <MessagesList
         chatId={chatId}
+        onReact={handleReact}
         error={error}
         isLoading={isLoading}
         messages={pinnedMessages.map((pinned) => pinned.message)}
@@ -120,7 +151,7 @@ export const PinnedMessagesView = ({
         </div>
       )}
 
-      {pinnedMessages.length > 0 && (
+      {pinnedMessages.length > 0 && canUnpinAny && (
         <div className="p-3 bg-panel border-t border-line flex shrink-0">
           <Button
             type="button"
@@ -143,7 +174,10 @@ export const PinnedMessagesView = ({
         onConfirm={handleUnpinAllMessages}
         onCancel={() => setIsUnpinAllOpen(false)}
       >
-        {t('unpinAllConfirm', 'Закрепления пропадут у всех участников чата.')}
+        {t(
+          'pinDialog.unpinAllHint',
+          'Личные закрепления исчезнут только у вас; общие — у всех, если у вас есть права. Собеседники сохранят свои личные закрепления.'
+        )}
       </ConfirmDialog>
     </main>
   );

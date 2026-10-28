@@ -5,6 +5,7 @@ import type { IWsEventMap } from '@/types';
 import { useRealtimeSocket } from '@/shared/api';
 import {
   messageKeys,
+  patchThreadMessage,
   applyThreadReactionEvent,
   dropPinnedMessage,
   dropThreadMessages,
@@ -13,7 +14,7 @@ import {
   putThreadMessage,
   putThreadReceipt,
 } from '@/entities/message';
-import { putChatListReceipt, useTypingStore, useChatUiStore } from '@/entities/chat';
+import { chatKeys, putChatListReceipt, useTypingStore, useChatUiStore } from '@/entities/chat';
 import { useProfileStore, refreshSettings, isSettingsInvalidation } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { createPresenceBuffer, refreshPresence } from './applyPresence';
@@ -61,6 +62,20 @@ export function useServerEvents(enabled: boolean): void {
             payload.userId === useProfileStore.getState().user?.id
           )
             void refreshSettings(queryClient);
+          return;
+        }
+        if (
+          (eventType === WS_EVENTS.MESSAGE.PERSONAL_PINNED ||
+            eventType === WS_EVENTS.MESSAGE.PERSONAL_UNPINNED) &&
+          payload?.scope === 'personal' &&
+          payload?.chatId &&
+          payload?.messageId &&
+          typeof payload?.isPersonalPinned === 'boolean'
+        ) {
+          patchThreadMessage(queryClient, payload.chatId, payload.messageId, {
+            isPersonalPinned: payload.isPersonalPinned,
+          });
+          void queryClient.invalidateQueries({ queryKey: chatKeys.personalPins(payload.chatId) });
           return;
         }
         // Новое сообщение появляется в ленте сразу: расшифровываем и кладём

@@ -10,6 +10,8 @@ export const WS_EVENTS = {
     RECEIPTS: 'receipts',
     PINNED: 'message_pinned',
     UNPINNED: 'message_unpinned',
+    PERSONAL_PINNED: 'message_personal_pinned',
+    PERSONAL_UNPINNED: 'message_personal_unpinned',
   },
   SOCKET: {
     CONNECTED: 'socket:connected',

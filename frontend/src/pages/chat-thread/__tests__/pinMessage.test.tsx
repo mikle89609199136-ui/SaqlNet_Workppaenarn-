@@ -74,11 +74,13 @@ describe('закрепление сообщения', () => {
 
     await openMessageActions('сообщение 1');
     await user.click(screen.getByRole('menuitem', { name: 'Закрепить' }));
+    await user.click(screen.getByRole('radio', { name: /Для меня и/ }));
+    await user.click(screen.getByRole('button', { name: 'Закрепить' }));
 
     await waitFor(() => expect(pinRequests).toHaveLength(1));
     expect(pinRequests[0]).toEqual({
       method: 'POST',
-      url: api(`/chats/${chat.id}/pins/${target.id}`),
+      url: api(`/chats/${chat.id}/pins/${target.id}?scope=chat`),
     });
 
     // Ответ на POST закреплённое в интерфейсе не показывает: страница ждёт
@@ -113,15 +115,15 @@ describe('закрепление сообщения', () => {
     // что страница считает сообщение закреплённым.
     await openMessageActions('сообщение 1');
     await user.click(screen.getByRole('menuitem', { name: 'Открепить' }));
+    await user.click(screen.getByRole('button', { name: 'Открепить' }));
 
     await waitFor(() => expect(pinRequests).toHaveLength(1));
     expect(pinRequests[0]).toEqual({
       method: 'DELETE',
-      url: api(`/chats/${chat.id}/pins/${pin.messageId}`),
+      url: api(`/chats/${chat.id}/pins/${pin.messageId}?scope=chat`),
     });
 
-    // Ответ на DELETE навигатор не убирает — ждём подтверждения сокетом.
-    expect(screen.getByRole('button', { name: 'Закреплённые сообщения' })).toBeInTheDocument();
+    // REST подтверждает удаление; повторное событие другого устройства безопасно.
 
     await act(async () => {
       fakeSocket.emit('message_unpinned', { chatId: chat.id, messageId: pin.messageId });
