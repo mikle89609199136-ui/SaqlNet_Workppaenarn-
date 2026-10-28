@@ -676,34 +676,66 @@ x-secure: &secure [{ sessionCookie: [] }]
         },
     }
 /chats/{chatId}/pins:
+  parameters:
+    - *chatId
+    - &pinScope
+      name: scope
+      in: query
+      description: >-
+        chat (default) is shared and retains role permissions; personal belongs
+        only to the authenticated user and requires membership, not an admin role.
+        Unknown, empty and duplicate scope values return 400. all is not supported.
+      schema: { type: string, enum: [chat, personal], default: chat }
   get:
-    {
-      tags: [Chats],
-      summary: List pinned messages,
-      operationId: listPinnedMessages,
-      security: *secure,
-      parameters: [*chatId],
-      responses: { '200': { description: Pins } },
-    }
+    tags: [Chats]
+    summary: List shared or personal pinned messages
+    operationId: listPinnedMessages
+    security: *secure
+    parameters:
+      - name: limit
+        in: query
+        description: Personal scope page size; ignored for chat scope.
+        schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      - name: cursor
+        in: query
+        description: Personal scope keyset cursor; ignored for chat scope.
+        schema: { type: string }
+    responses:
+      '200':
+        description: Pins; both Message pin flags are viewer-specific and independent.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/MessagePinsPage' }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '403': { $ref: '../components/responses.yaml#/Error' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
 /chats/{chatId}/pins/{messageId}:
   parameters:
-    [*chatId, { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }]
+    - *chatId
+    - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+    - *pinScope
   post:
-    {
-      tags: [Chats],
-      summary: Pin a message,
-      operationId: pinMessage,
-      security: *secure,
-      responses: { '200': { description: Pinned } },
-    }
+    tags: [Chats]
+    summary: Pin a message
+    description: >-
+      Personal adds are idempotent and preserve pinnedAt. The message must belong
+      to the supplied chat and be accessible. Emits PersonalPinEvent only to the
+      owner after commit; common pins retain existing shared WS events.
+    operationId: pinMessage
+    security: *secure
+    responses: &pinResponses
+      '200': { description: Desired state saved; repeats succeed. }
+      '400': { $ref: '../components/responses.yaml#/Error' }
+      '403': { $ref: '../components/responses.yaml#/Error' }
+      '404': { $ref: '../components/responses.yaml#/Error' }
+      '500': { $ref: '../components/responses.yaml#/Error' }
   delete:
-    {
-      tags: [Chats],
-      summary: Unpin a message,
-      operationId: unpinMessage,
-      security: *secure,
-      responses: { '200': { description: Unpinned } },
-    }
+    tags: [Chats]
+    summary: Unpin a message
+    description: Personal removes are idempotent; only changed state emits PersonalPinEvent to the owner after commit.
+    operationId: unpinMessage
+    security: *secure
+    responses: *pinResponses
 /chats/{chatId}/leave:
   parameters: [*chatId]
   post:

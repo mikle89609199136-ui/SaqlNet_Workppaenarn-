@@ -258,7 +258,7 @@ func TestEditMessageAllowsEmptyCaptionForMedia(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "chat_id", "sender_id", "sender_name", "sender_avatar",
 			"content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited",
-			"created_at", "updated_at", "deleted_at",
+			"created_at", "updated_at", "deleted_at", "is_personal_pinned",
 		}).AddRow(
 			messageValidationMessageID,
 			messageValidationChatID,
@@ -274,7 +274,7 @@ func TestEditMessageAllowsEmptyCaptionForMedia(t *testing.T) {
 			true,
 			"2026-09-13T00:00:00Z",
 			"2026-09-13T00:01:00Z",
-			nil,
+			nil, false,
 		))
 
 	message, err := NewService(db, nil, nil).EditMessage(

@@ -539,7 +539,7 @@ LastMessagePreview:
         — the first member.
 Message:
   type: object
-  required: [id, chatId, senderId, senderFirstName, content, entities, type, reactions, isForwarded, isPinned, isEdited, createdAt, updatedAt]
+  required: [id, chatId, senderId, senderFirstName, content, entities, type, reactions, isForwarded, isPinned, isChatPinned, isPersonalPinned, isEdited, createdAt, updatedAt]
   properties:
     id: { type: string, format: uuid }
     chatId: { type: string, format: uuid }
@@ -588,7 +588,9 @@ Message:
         Original author, to open their profile. Present only when the author's
         forwards rule allowed the forwarder to link to them; absent together
         with forwardedFrom when the link is hidden.
-    isPinned: { type: boolean }
+    isPinned: { type: boolean, deprecated: true, description: Alias of isChatPinned. }
+    isChatPinned: { type: boolean, description: Shared pin visible to the chat. }
+    isPersonalPinned: { type: boolean, description: Personal pin of the authenticated viewer. Never copied from another user in chat broadcasts. }
     isEdited: { type: boolean }
     createdAt: { type: string }
     updatedAt: { type: string }
@@ -2362,3 +2364,38 @@ MediaEncryptedDownload:
     iv: { type: string }
     keyEpoch: { type: integer }
     fileName: { type: string }
+
+MessagePin:
+  type: object
+  required: [id, messageId, chatId, pinnedBy, pinnedAt, message]
+  properties:
+    id: { type: string, format: uuid }
+    messageId: { type: string, format: uuid }
+    chatId: { type: string, format: uuid }
+    pinnedBy: { type: string, format: uuid }
+    pinnedAt: { type: string, format: date-time }
+    message: { $ref: '#/Message' }
+MessagePinsPage:
+  type: object
+  required: [pins]
+  properties:
+    pins: { type: array, items: { $ref: '#/MessagePin' } }
+    nextCursor:
+      type: string
+      description: Personal scope only. Opaque cursor ordered by pinned_at DESC, message_id DESC; absent on the last page.
+PersonalPinEvent:
+  type: object
+  description: >-
+    Sent after a committed change only to the owner via BroadcastToUsers, on all
+    active devices; never to the chat. Idempotent repeats emit no event.
+    Membership removal cascades pins in the revocation transaction; rejoining
+    does not restore them. Message soft deletion clears pins by trigger;
+    hard deletion of user, chat or message clears pins by FK cascade.
+  required: [type, scope, chatId, messageId, isPersonalPinned]
+  properties:
+    type: { type: string, enum: [message_personal_pinned, message_personal_unpinned] }
+    scope: { type: string, enum: [personal] }
+    chatId: { type: string, format: uuid }
+    messageId: { type: string, format: uuid }
+    isPersonalPinned: { type: boolean }
+    pinnedAt: { type: string, format: date-time, description: Present on message_personal_pinned. }

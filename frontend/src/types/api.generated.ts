@@ -1888,12 +1888,17 @@ export interface paths {
     };
     "/chats/{chatId}/pins": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description chat (default) is shared and retains role permissions; personal belongs only to the authenticated user and requires membership, not an admin role. Unknown, empty and duplicate scope values return 400. all is not supported. */
+                scope?: "chat" | "personal";
+            };
             header?: never;
-            path?: never;
+            path: {
+                chatId: string;
+            };
             cookie?: never;
         };
-        /** List pinned messages */
+        /** List shared or personal pinned messages */
         get: operations["listPinnedMessages"];
         put?: never;
         post?: never;
@@ -1905,7 +1910,10 @@ export interface paths {
     };
     "/chats/{chatId}/pins/{messageId}": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description chat (default) is shared and retains role permissions; personal belongs only to the authenticated user and requires membership, not an admin role. Unknown, empty and duplicate scope values return 400. all is not supported. */
+                scope?: "chat" | "personal";
+            };
             header?: never;
             path: {
                 chatId: string;
@@ -1915,9 +1923,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Pin a message */
+        /**
+         * Pin a message
+         * @description Personal adds are idempotent and preserve pinnedAt. The message must belong to the supplied chat and be accessible. Emits PersonalPinEvent only to the owner after commit; common pins retain existing shared WS events.
+         */
         post: operations["pinMessage"];
-        /** Unpin a message */
+        /**
+         * Unpin a message
+         * @description Personal removes are idempotent; only changed state emits PersonalPinEvent to the owner after commit.
+         */
         delete: operations["unpinMessage"];
         options?: never;
         head?: never;
@@ -2773,7 +2787,15 @@ export interface components {
              * @description Original author, to open their profile. Present only when the author's forwards rule allowed the forwarder to link to them; absent together with forwardedFrom when the link is hidden.
              */
             forwardedSenderId?: string;
+            /**
+             * @deprecated
+             * @description Alias of isChatPinned.
+             */
             isPinned: boolean;
+            /** @description Shared pin visible to the chat. */
+            isChatPinned: boolean;
+            /** @description Personal pin of the authenticated viewer. Never copied from another user in chat broadcasts. */
+            isPersonalPinned: boolean;
             isEdited: boolean;
             createdAt: string;
             updatedAt: string;
@@ -3945,6 +3967,24 @@ export interface components {
              * Format: uuid
              * @description Pass as before for the next page; absent — nothing older.
              */
+            nextCursor?: string;
+        };
+        MessagePin: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            messageId: string;
+            /** Format: uuid */
+            chatId: string;
+            /** Format: uuid */
+            pinnedBy: string;
+            /** Format: date-time */
+            pinnedAt: string;
+            message: components["schemas"]["Message"];
+        };
+        MessagePinsPage: {
+            pins: components["schemas"]["MessagePin"][];
+            /** @description Personal scope only. Opaque cursor ordered by pinned_at DESC, message_id DESC; absent on the last page. */
             nextCursor?: string;
         };
         MarkMessagesReadRequest: {
@@ -8129,7 +8169,14 @@ export interface operations {
     };
     listPinnedMessages: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description chat (default) is shared and retains role permissions; personal belongs only to the authenticated user and requires membership, not an admin role. Unknown, empty and duplicate scope values return 400. all is not supported. */
+                scope?: "chat" | "personal";
+                /** @description Personal scope page size; ignored for chat scope. */
+                limit?: number;
+                /** @description Personal scope keyset cursor; ignored for chat scope. */
+                cursor?: string;
+            };
             header?: never;
             path: {
                 chatId: string;
@@ -8138,18 +8185,26 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pins */
+            /** @description Pins; both Message pin flags are viewer-specific and independent. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessagePinsPage"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     pinMessage: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description chat (default) is shared and retains role permissions; personal belongs only to the authenticated user and requires membership, not an admin role. Unknown, empty and duplicate scope values return 400. all is not supported. */
+                scope?: "chat" | "personal";
+            };
             header?: never;
             path: {
                 chatId: string;
@@ -8159,18 +8214,25 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pinned */
+            /** @description Desired state saved; repeats succeed. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     unpinMessage: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description chat (default) is shared and retains role permissions; personal belongs only to the authenticated user and requires membership, not an admin role. Unknown, empty and duplicate scope values return 400. all is not supported. */
+                scope?: "chat" | "personal";
+            };
             header?: never;
             path: {
                 chatId: string;
@@ -8180,13 +8242,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Unpinned */
+            /** @description Desired state saved; repeats succeed. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     markMessagesRead: {

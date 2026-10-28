@@ -16,6 +16,10 @@ func entityMessageRows(content, entities string) *sqlmock.Rows {
 	return sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at"}).AddRow(messageValidationMessageID, messageValidationChatID, messageValidationUserID, "Alice", "", content, []byte(entities), "text", nil, []byte("{}"), false, false, "created", "updated", nil)
 }
 
+func entityReadMessageRows(content, entities string) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "entities", "type", "reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at", "is_personal_pinned"}).AddRow(messageValidationMessageID, messageValidationChatID, messageValidationUserID, "Alice", "", content, []byte(entities), "text", nil, []byte("{}"), false, false, "created", "updated", nil, false)
+}
+
 func TestSendEntitiesPreservesContentAndBroadcast(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -72,7 +76,7 @@ func TestEditReplacesOrClearsEntities(t *testing.T) {
 			handler := NewHandler(NewService(db, ws, nil))
 			content := "x & <i>y</i>"
 			mock.ExpectQuery(`SELECT m\.type`).WithArgs(messageValidationMessageID, messageValidationUserID).WillReturnRows(sqlmock.NewRows([]string{"type"}).AddRow("text"))
-			mock.ExpectQuery(`SET content = \$1, entities = \$4`).WithArgs(content, messageValidationMessageID, messageValidationUserID, []byte(tc.want)).WillReturnRows(entityMessageRows(content, tc.want))
+			mock.ExpectQuery(`SET content = \$1, entities = \$4`).WithArgs(content, messageValidationMessageID, messageValidationUserID, []byte(tc.want)).WillReturnRows(entityReadMessageRows(content, tc.want))
 			rr := httptest.NewRecorder()
 			handler.EditMessage(rr, messageValidationRequest(http.MethodPut, "/api/v2/messages/"+messageValidationMessageID, `{"content":"`+content+`"`+tc.field+`}`, "messageId", messageValidationMessageID))
 			require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
@@ -153,7 +157,7 @@ func TestLegacyMessageDefaultEntitiesInListResponse(t *testing.T) {
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	// Загрузка ленты отмечает доставку (#657) — границы не сдвинулись.
 	mock.ExpectQuery("WITH source").WillReturnRows(sqlmock.NewRows([]string{"chat_id", "user_id", "up_to", "at", "type"}))
-	mock.ExpectQuery("SELECT ").WillReturnRows(entityMessageRows("legacy &amp; text", "[]"))
+	mock.ExpectQuery("SELECT ").WillReturnRows(entityReadMessageRows("legacy &amp; text", "[]"))
 	mock.ExpectQuery("SELECT message_id::text").WillReturnRows(sqlmock.NewRows([]string{"message_id", "emoji", "count", "my_reaction"}))
 	mock.ExpectQuery("chats.receipt_marks").WillReturnRows(sqlmock.NewRows([]string{"id", "delivered_at", "read_at"}))
 	h := NewHandler(NewService(db, nil, nil))

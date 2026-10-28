@@ -57,5 +57,6 @@ func forBroadcast(msg *Message) *Message {
 	}
 	copied := *msg
 	copied.SenderAvatar = ""
+	copied.IsPersonalPinned = false
 	return &copied
 }

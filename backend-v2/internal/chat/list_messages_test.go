@@ -28,7 +28,7 @@ SELECT m.id::text, m.chat_id::text, m.sender_id::text,
       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
       m.content, m.entities, m.type, m.reply_to::text, m.metadata,
       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
-      m.created_at::text, m.updated_at::text, m.deleted_at::text
+      m.created_at::text, m.updated_at::text, m.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $4)
 FROM messages.messages m
 LEFT JOIN auth.users au ON au.id = m.sender_id
 LEFT JOIN users.profiles up ON up.user_id = m.sender_id
