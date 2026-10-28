@@ -126,7 +126,9 @@ type Message struct {
 	// ForwardedSenderID — автор оригинала, чтобы открыть его профиль. Только
 	// когда его правило «Пересылка» разрешило ссылку (#785).
 	ForwardedSenderID string  `json:"forwardedSenderId,omitempty"`
-	IsPinned          bool    `json:"isPinned"`
+	IsPinned          bool    `json:"isPinned"` // Deprecated alias of IsChatPinned.
+	IsChatPinned      bool    `json:"isChatPinned"`
+	IsPersonalPinned  bool    `json:"isPersonalPinned"`
 	IsEdited          bool    `json:"isEdited"`
 	CreatedAt         string  `json:"createdAt"`
 	UpdatedAt         string  `json:"updatedAt"`
@@ -2175,7 +2177,7 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
 		       m.content, m.entities, m.type, m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
-		       m.created_at::text, m.updated_at::text, m.deleted_at::text
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $4)
 		FROM messages.messages m
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
@@ -2219,10 +2221,11 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 			&msg.SenderName, &msg.SenderAvatar,
 			&msg.Content, &msg.Entities, &msg.Type, &replyTo, &metadataBytes,
 			&msg.IsPinned, &msg.IsEdited,
-			&msg.CreatedAt, &msg.UpdatedAt, &deletedAt,
+			&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &msg.IsPersonalPinned,
 		); err != nil {
 			return nil, err
 		}
+		msg.IsChatPinned = msg.IsPinned
 		if replyTo.Valid {
 			msg.ReplyTo = &replyTo.String
 		}
@@ -2540,7 +2543,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
 		       u.content, u.entities, u.type, u.reply_to::text, u.metadata,
 		       (p.message_id IS NOT NULL), u.updated_at > u.created_at,
-		       u.created_at::text, u.updated_at::text, u.deleted_at::text
+		       u.created_at::text, u.updated_at::text, u.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = u.id AND pp.user_id = $3)
 		FROM updated u
 		LEFT JOIN auth.users au ON au.id = u.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = u.sender_id
@@ -2550,8 +2553,9 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 		&msg.SenderName, &msg.SenderAvatar,
 		&msg.Content, &msg.Entities, &msg.Type, &replyToStr, &metadataBytes,
 		&msg.IsPinned, &msg.IsEdited,
-		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
+		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &msg.IsPersonalPinned)
 
+	msg.IsChatPinned = msg.IsPinned
 	if err == sql.ErrNoRows {
 		return Message{}, ErrNotFound
 	}
@@ -2674,7 +2678,7 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
 		       m.content, m.entities, m.type, m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
-		       m.created_at::text, m.updated_at::text, m.deleted_at::text,
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $4),
 		       COALESCE((
 		           SELECT jsonb_agg(jsonb_build_object(
 		               'emoji', grouped.emoji,
@@ -2704,8 +2708,9 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 		&msg.SenderName, &msg.SenderAvatar,
 		&msg.Content, &msg.Entities, &msg.Type, &replyTo, &metadataBytes,
 		&msg.IsPinned, &msg.IsEdited,
-		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &reactionsBytes,
+		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &msg.IsPersonalPinned, &reactionsBytes,
 	)
+	msg.IsChatPinned = msg.IsPinned
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -3690,7 +3695,8 @@ func (s *Service) ListPins(
 			m.metadata,
 			m.updated_at > m.created_at,
 			m.created_at::text,
-			m.updated_at::text
+			m.updated_at::text,
+ EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $2)
 		FROM messages.pins AS p
 		JOIN messages.messages AS m
 			ON m.id = p.message_id
@@ -3736,6 +3742,7 @@ func (s *Service) ListPins(
 			&pin.Message.IsEdited,
 			&pin.Message.CreatedAt,
 			&pin.Message.UpdatedAt,
+			&pin.Message.IsPersonalPinned,
 		); err != nil {
 			return nil, err
 		}
@@ -3753,6 +3760,7 @@ func (s *Service) ListPins(
 
 		// Сообщение получено из таблицы закреплений.
 		pin.Message.IsPinned = true
+		pin.Message.IsChatPinned = true
 
 		// WHERE m.deleted_at IS NULL гарантирует, что DeletedAt остаётся nil.
 		pins = append(pins, pin)
@@ -3839,6 +3847,7 @@ func (s *Service) PinMessage(ctx context.Context, userID, chatID, messageID stri
 func messagePinnedPayload(pin Pin) ([]byte, error) {
 	// Событие уходит всем участникам — без аватара отправителя (#789).
 	pin.Message.SenderAvatar = ""
+	pin.Message.IsPersonalPinned = false
 	return json.Marshal(map[string]any{
 		"type":      "message_pinned",
 		"chatId":    pin.ChatID,
@@ -3906,7 +3915,7 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 		       m.content, m.entities, m.type,
 		       m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
-		       m.created_at::text, m.updated_at::text, m.deleted_at::text
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $1)
 		FROM messages.messages m
 		JOIN chats.members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
 		LEFT JOIN auth.users au ON au.id = m.sender_id
@@ -3954,7 +3963,7 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 		       m.content, m.entities, m.type,
 		       m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
-		       m.created_at::text, m.updated_at::text, m.deleted_at::text
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $1)
 		FROM messages.favorites f
 		JOIN messages.messages m ON m.id = f.message_id
 		LEFT JOIN auth.users au ON au.id = m.sender_id

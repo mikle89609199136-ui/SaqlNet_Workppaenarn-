@@ -997,6 +997,32 @@ func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	scope := "chat"
+	if values, exists := r.URL.Query()["scope"]; exists {
+		if len(values) != 1 || (values[0] != "chat" && values[0] != "personal") {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid scope")
+			return
+		}
+		scope = values[0]
+	}
+	if scope == "personal" && suffix == "/pins" && r.Method == http.MethodGet {
+		limit := 50
+		if raw := r.URL.Query().Get("limit"); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 || n > 100 {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid limit")
+				return
+			}
+			limit = n
+		}
+		page, err := h.service.ListPersonalPins(r.Context(), current.ID, chatID, r.URL.Query().Get("cursor"), limit)
+		if err != nil {
+			respondSuccess(w, r, err)
+			return
+		}
+		httpx.JSON(w, http.StatusOK, page)
+		return
+	}
 	if suffix == "/pins" && r.Method == http.MethodGet {
 		pins, err := h.service.ListPins(r.Context(), current.ID, chatID)
 		if errors.Is(err, ErrForbidden) {
@@ -1028,6 +1054,10 @@ func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if scope == "personal" && (r.Method == http.MethodPost || r.Method == http.MethodDelete) {
+		respondSuccess(w, r, h.service.SetPersonalPin(r.Context(), current.ID, pinsData.ChatID, pinsData.MessageID, r.Method == http.MethodPost))
+		return
+	}
 	switch r.Method {
 	case http.MethodPost:
 		respondSuccess(w, r, h.service.PinMessage(r.Context(), current.ID, pinsData.ChatID, pinsData.MessageID))
