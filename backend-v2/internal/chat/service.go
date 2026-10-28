@@ -3091,28 +3091,11 @@ func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, ch
 func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (ReactionStatus, string, []Reaction, error) {
 	const method = "ToggleReaction"
 
-	if emoji == "" {
-		slog.WarnContext(ctx, "empty emoji rejected",
-			"layer", "service",
-			"method", method,
-			"user_id", userID,
-			"message_id", messageID,
-		)
-		return "", "", nil, ErrInvalidInput
+	canonical, err := canonicalReactionEmoji(emoji)
+	if err != nil {
+		return "", "", nil, err
 	}
-	// Length limit and rejection of characters that would break rendering
-	// or downstream consumers (HTML/JSON). UTF-8 is measured in bytes: 64
-	// bytes comfortably covers any single emoji with modifiers.
-	if len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
-		slog.WarnContext(ctx, "invalid emoji rejected",
-			"layer", "service",
-			"method", method,
-			"user_id", userID,
-			"message_id", messageID,
-			"emoji_len", len(emoji),
-		)
-		return "", "", nil, ErrInvalidInput
-	}
+	emoji = canonical
 
 	// READ COMMITTED is enough here: serialization of concurrent toggles
 	// is provided by the advisory lock, not by the isolation level.
@@ -3465,7 +3448,7 @@ func (s *Service) ListReactionAuthors(
 	if validate.Var(viewerID, "required,uuid") != nil {
 		return ReactionAuthorsPage{}, ErrInvalidInput
 	}
-	// Same rules as in ToggleReaction: empty, too long, or markup-breaking
+	// Author queries may address legacy reactions: empty, too long, or markup-breaking
 	// characters → ErrInvalidInput.
 	if emoji == "" || len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
 		return ReactionAuthorsPage{}, ErrInvalidInput
