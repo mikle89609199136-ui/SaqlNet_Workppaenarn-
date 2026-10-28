@@ -3089,13 +3089,24 @@ func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, ch
 // transaction under an advisory lock on the (message_id, user_id) pair, so
 // that concurrent toggles by the same user cannot race.
 func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (ReactionStatus, string, []Reaction, error) {
-	const method = "ToggleReaction"
+	return s.writeReaction(ctx, userID, messageID, &emoji, true)
+}
 
-	canonical, err := canonicalReactionEmoji(emoji)
-	if err != nil {
-		return "", "", nil, err
+// SetReaction sets the desired state. Nil removes the reaction idempotently.
+func (s *Service) SetReaction(ctx context.Context, userID, messageID string, emoji *string) (ReactionStatus, string, []Reaction, error) {
+	return s.writeReaction(ctx, userID, messageID, emoji, false)
+}
+
+func (s *Service) writeReaction(ctx context.Context, userID, messageID string, desired *string, toggle bool) (ReactionStatus, string, []Reaction, error) {
+	const method = "writeReaction"
+	emoji := ""
+	if desired != nil {
+		canonical, err := canonicalReactionEmoji(*desired)
+		if err != nil {
+			return "", "", nil, err
+		}
+		emoji = canonical
 	}
-	emoji = canonical
 
 	// READ COMMITTED is enough here: serialization of concurrent toggles
 	// is provided by the advisory lock, not by the isolation level.
@@ -3200,7 +3211,14 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	}
 
 	var status ReactionStatus
+	changed := true
 	switch {
+	case !toggle && !hasCurrent && emoji == "":
+		status = StatusRemoved
+		changed = false
+	case !toggle && hasCurrent && currentEmoji == emoji:
+		status = StatusAdded
+		changed = false
 	case !hasCurrent:
 		result, execErr := tx.ExecContext(ctx,
 			`INSERT INTO messages.reactions (message_id, user_id, emoji)
@@ -3223,7 +3241,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		currentEmoji = emoji
 		status = StatusAdded
 
-	case currentEmoji == emoji:
+	case emoji == "" || (toggle && currentEmoji == emoji):
 		result, execErr := tx.ExecContext(ctx,
 			`DELETE FROM messages.reactions
 			 WHERE message_id = $1 AND user_id = $2`,
@@ -3285,7 +3303,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 
 	// The WS notification is sent after the commit: if the broadcast
 	// fails, the transaction still remains consistent.
-	if s.ws != nil {
+	if changed && s.ws != nil {
 		change := ChangeResponse{Action: string(status)}
 		switch status {
 		case StatusAdded:

@@ -2028,6 +2028,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/messages/{messageId}/react": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Legacy reaction toggle alias
+         * @deprecated
+         */
+        post: operations["toggleMessageReactionLegacy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/messages/{messageId}/reactions/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set my reaction state idempotently
+         * @description Sets the user's single reaction atomically, or removes it for emoji null. Repeating the same desired state does not toggle or broadcast a change. Responses use added for an already-present desired reaction and removed for an already-absent reaction. Legacy POST reactions and react remain toggles.
+         */
+        put: operations["setMyMessageReaction"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/messages/{messageId}/reactions/users": {
         parameters: {
             query?: never;
@@ -8384,6 +8428,72 @@ export interface operations {
         };
         responses: {
             /** @description Updated reaction state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionToggleResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    toggleMessageReactionLegacy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description One emoji from the existing client picker whitelist below (the alternatives in pattern). Raw input is limited to 64 UTF-8 bytes. Surrounding Unicode White_Space is trimmed, NFC is applied, and one optional trailing text/emoji presentation selector is replaced by the picker presentation (heart becomes ❤️). Stored and returned values use that canonical form. Text, multiple emoji, skin tones, flags and ZWJ sequences outside this whitelist return 400. */
+                    emoji: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated reaction state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionToggleResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    setMyMessageReaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description One emoji from the existing client picker whitelist below (the alternatives in pattern). Raw input is limited to 64 UTF-8 bytes. Surrounding Unicode White_Space is trimmed, NFC is applied, and one optional trailing text/emoji presentation selector is replaced by the picker presentation (heart becomes ❤️). Stored and returned values use that canonical form. Text, multiple emoji, skin tones, flags and ZWJ sequences outside this whitelist return 400. */
+                    emoji: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Desired reaction state */
             200: {
                 headers: {
                     [name: string]: unknown;

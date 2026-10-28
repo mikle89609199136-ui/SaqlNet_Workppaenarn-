@@ -143,8 +143,16 @@ func classifyMessageRoute(method, path string) routeGroup {
 		}
 	}
 
+	if len(parts) == 3 && parts[0] != "" && parts[1] == "reactions" && parts[2] == "me" && method == http.MethodPut {
+		return routeGroupMessageWrite
+	}
+
 	if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
 		switch parts[1] {
+		case "react":
+			if method == http.MethodPost {
+				return routeGroupMessageWrite
+			}
 		case "reactions":
 			switch method {
 			case http.MethodGet:
