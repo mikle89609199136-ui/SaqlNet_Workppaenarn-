@@ -11,11 +11,11 @@ import { renderChatThread } from '@/test/harness/renderChatThread';
 interface IReactionRequest {
   url: string;
   method: string;
-  body: unknown;
+  body: { emoji: string | null };
 }
 
 describe('реакции на чужое сообщение', () => {
-  it('should post the chosen emoji and render the reactions returned by the server', async () => {
+  it('отправляет выбранный emoji через PUT и показывает ответ сервера', async () => {
     const currentUser = makeUser({ id: 'user-1' });
     const chat = makeChat({ id: 'chat-reactions' });
     // Сообщение чужое: у своего в меню действий другой набор кнопок,
@@ -34,11 +34,11 @@ describe('реакции на чужое сообщение', () => {
       http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
       http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
       http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
-      http.post(api('/messages/:messageId/reactions'), async ({ request }) => {
+      http.put(api('/messages/:messageId/reactions/me'), async ({ request }) => {
         requests.push({
           url: new URL(request.url).pathname,
           method: request.method,
-          body: await request.json(),
+          body: (await request.json()) as { emoji: string | null },
         });
 
         // Сервер возвращает полный список реакций сообщения, а не только новую.
@@ -64,8 +64,8 @@ describe('реакции на чужое сообщение', () => {
     await userEvent.click(thumbsUp);
 
     await waitFor(() => expect(requests).toHaveLength(1));
-    expect(requests[0].method).toBe('POST');
-    expect(requests[0].url).toBe(`/api/v2/messages/${message.id}/reactions`);
+    expect(requests[0].method).toBe('PUT');
+    expect(requests[0].url).toBe(`/api/v2/messages/${message.id}/reactions/me`);
     expect(requests[0].body).toEqual({ emoji: '👍' });
 
     // Реакции в разметке — ровно те, что прислал сервер, включая ту,
@@ -119,11 +119,11 @@ describe('реакции на чужое сообщение', () => {
       http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
       http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
       http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
-      http.post(api('/messages/:messageId/reactions'), async ({ request }) => {
+      http.put(api('/messages/:messageId/reactions/me'), async ({ request }) => {
         requests.push({
           url: new URL(request.url).pathname,
           method: request.method,
-          body: await request.json(),
+          body: (await request.json()) as { emoji: string | null },
         });
         return HttpResponse.json({ reactions: [{ emoji: '👍', count: 1, myReaction: true }] });
       })
@@ -137,18 +137,12 @@ describe('реакции на чужое сообщение', () => {
     const thumbsUp = await screen.findByRole('menuitem', { name: 'Нравится' });
     await userEvent.click(thumbsUp);
 
-    /* Без подписки реакция одна, поэтому прежняя снимается и ставится
-       новая. Отдельной операции «замени» у сервера нет — он умеет только
-       переключать конкретный эмодзи, — отсюда два запроса; заведено
-       в #566.
-
-       Показывается замена сразу, не дожидаясь ответа: реакция — жест
-       мгновенный. */
+    // Замена выполняется одним PUT и показывается до ответа сервера.
     await waitFor(() => expect(screen.getByRole('button', { name: '👍 1' })).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: '❤️ 1' })).toBeNull();
 
-    await waitFor(() => expect(requests).toHaveLength(2));
-    expect(requests.map((request) => request.body.emoji)).toEqual(['❤️', '👍']);
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests.map((request) => request.body.emoji)).toEqual(['👍']);
   });
   it('не возвращает первый эмодзи, если ответ по нему опоздал', async () => {
     /* Два быстрых нажатия подряд: ответ на первое приходит после второго.
@@ -167,8 +161,8 @@ describe('реакции на чужое сообщение', () => {
       http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
       http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
       http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
-      http.post(api('/messages/:messageId/reactions'), async ({ request }) => {
-        const body = (await request.json()) as { emoji: string };
+      http.put(api('/messages/:messageId/reactions/me'), async ({ request }) => {
+        const body = (await request.json()) as { emoji: string | null };
         call += 1;
 
         // Первый ответ намеренно отстаёт от второго.
@@ -197,9 +191,7 @@ describe('реакции на чужое сообщение', () => {
     expect(screen.queryByRole('button', { name: '👍 1' })).toBeNull();
   });
   it('не показывает промежуточное состояние, пока идёт своя замена', async () => {
-    /* Замена — два запроса, и между ними сервер рассылает всем «реакции
-       нет». Применив эту весть, интерфейс мигал пустотой вместо только
-       что выбранного эмодзи. */
+    // Запоздавшее событие не должно затирать оптимистическую замену.
     const currentUser = makeUser({ id: 'user-1' });
     const chat = makeChat({ id: 'chat-reactions-echo' });
     const message = makeMessage({
@@ -213,8 +205,8 @@ describe('реакции на чужое сообщение', () => {
       http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
       http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
       http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
-      http.post(api('/messages/:messageId/reactions'), async ({ request }) => {
-        const body = (await request.json()) as { emoji: string };
+      http.put(api('/messages/:messageId/reactions/me'), async ({ request }) => {
+        const body = (await request.json()) as { emoji: string | null };
 
         // Пока запрос в пути, сервер успевает рассказать о снятии прежней.
         fakeSocket.emit('reaction_updated', {
@@ -255,26 +247,26 @@ describe('реакции на чужое сообщение', () => {
 
     /* Собираем только запросы по своему сообщению: соседние тесты
        оставляют незавершённые обращения, и они долетают сюда. */
-    const отправленные: string[] = [];
+    const sent: (string | null)[] = [];
     server.use(
       http.get(api(`/chats/${chat.id}`), () => HttpResponse.json({ chat })),
       http.get(api(`/messages/${chat.id}`), () => HttpResponse.json({ messages: [message] })),
       http.get(api(`/chats/${chat.id}/pins`), () => HttpResponse.json({ pins: [] })),
-      http.post(api('/messages/:messageId/reactions'), async ({ params, request }) => {
-        const body = (await request.json()) as { emoji: string };
-        if (params.messageId === message.id) отправленные.push(body.emoji);
+      http.put(api('/messages/:messageId/reactions/me'), async ({ params, request }) => {
+        const body = (await request.json()) as { emoji: string | null };
+        if (params.messageId === message.id) sent.push(body.emoji);
         return HttpResponse.json({ reactions: [] });
       })
     );
 
     renderChatThread({ chat, messages: [message], currentUser });
 
-    const кнопка = await screen.findByRole('button', { name: '👍 1' });
-    expect(кнопка).toHaveAttribute('aria-pressed', 'true');
+    const button = await screen.findByRole('button', { name: '👍 1' });
+    expect(button).toHaveAttribute('aria-pressed', 'true');
 
-    await userEvent.click(кнопка);
+    await userEvent.click(button);
 
-    await waitFor(() => expect(отправленные).toEqual(['👍']));
+    await waitFor(() => expect(sent).toEqual([null]));
     expect(screen.queryByRole('button', { name: '👍 1' })).toBeNull();
     // Меню действий при этом не открывается: нажатие до него не доходит.
     expect(screen.queryByRole('menu')).toBeNull();
@@ -367,11 +359,11 @@ describe('своя реакция после события reaction_updated', (
       reactions: [{ emoji: '👍', count: 1, myReaction: true }],
     });
     serveChat(chat, message);
-    const sent: string[] = [];
+    const sent: (string | null)[] = [];
     let respond!: () => void;
     server.use(
-      http.post(api('/messages/:messageId/reactions'), async ({ params, request }) => {
-        const body = (await request.json()) as { emoji: string };
+      http.put(api('/messages/:messageId/reactions/me'), async ({ params, request }) => {
+        const body = (await request.json()) as { emoji: string | null };
         if (params.messageId === message.id) sent.push(body.emoji);
         await new Promise<void>((resolve) => {
           respond = resolve;
@@ -400,7 +392,7 @@ describe('своя реакция после события reaction_updated', (
     // Снята сразу, до ответа сервера, и «👍 2» не появлялось.
     await waitFor(() => expect(screen.queryByRole('button', { name: /^👍/ })).toBeNull());
     expect(screen.queryByRole('button', { name: '👍 2' })).toBeNull();
-    await waitFor(() => expect(sent).toEqual(['👍']));
+    await waitFor(() => expect(sent).toEqual([null]));
     respond();
   });
 });

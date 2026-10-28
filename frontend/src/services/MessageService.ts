@@ -962,9 +962,9 @@ export class MessageService {
     return response.data;
   }
 
-  async reactToMessage(messageId: string, emoji: string): Promise<IReactionsResponse> {
+  async reactToMessage(messageId: string, emoji: string | null): Promise<IReactionsResponse> {
     return this.apiClient
-      .post<IReactionsResponse>(API_ENDPOINTS.MESSAGE_REACT(messageId), { emoji })
+      .put<IReactionsResponse>(API_ENDPOINTS.MESSAGE_REACT(messageId), { emoji })
       .then((response) => response.data);
   }
 }
