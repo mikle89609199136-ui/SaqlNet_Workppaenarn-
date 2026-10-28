@@ -85,3 +85,7 @@ claude.bat
 
 # Local dev accounts (passwords, never commit)
 dev-accounts.local.md
+
+run-queue.sh
+.codex-tasks/
+queue_runner.py
