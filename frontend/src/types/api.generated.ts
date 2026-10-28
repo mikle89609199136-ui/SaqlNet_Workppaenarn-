@@ -8377,6 +8377,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description One emoji from the existing client picker whitelist below (the alternatives in pattern). Raw input is limited to 64 UTF-8 bytes. Surrounding Unicode White_Space is trimmed, NFC is applied, and one optional trailing text/emoji presentation selector is replaced by the picker presentation (heart becomes ❤️). Stored and returned values use that canonical form. Text, multiple emoji, skin tones, flags and ZWJ sequences outside this whitelist return 400. */
                     emoji: string;
                 };
             };

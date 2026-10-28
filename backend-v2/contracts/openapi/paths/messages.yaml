@@ -217,7 +217,20 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
             type: object
             required: [emoji]
             properties:
-              emoji: { type: string, minLength: 1 }
+              emoji:
+                type: string
+                minLength: 1
+                maxLength: 64
+                x-maxUtf8Bytes: 64
+                description: >-
+                  One emoji from the existing client picker whitelist below (the
+                  alternatives in pattern). Raw input is limited to 64 UTF-8 bytes.
+                  Surrounding Unicode White_Space is trimmed, NFC is applied, and
+                  one optional trailing text/emoji presentation selector is replaced
+                  by the picker presentation (heart becomes ❤️). Stored and returned
+                  values use that canonical form. Text, multiple emoji, skin tones,
+                  flags and ZWJ sequences outside this whitelist return 400.
+                pattern: "^[\\t-\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?:😀|😃|😄|😁|😆|😅|😂|🤣|🙂|🙃|😉|😊|😇|🥰|😍|🤩|😘|😋|😜|🤪|🤔|🤨|😐|🙄|😏|😴|😌|🥲|😭|😤|😡|🤯|😱|🥶|😳|🤗|🤫|😎|👍|👎|👌|✌|🤞|🤝|👏|🙌|👐|🙏|💪|👀|👋|🤙|☝|👆|👇|👉|👈|✍|🫶|🤘|🖐|✊|❤|🧡|💛|💚|💙|💜|🖤|🤍|🤎|💔|❣|💕|💞|💓|💗|💖|💘|💝|🎉|🎊|🎁|🏆|⚽|🎮|🎧|🎵|☕|🍕|🍰|🍺|💻|📱|📷|🔑|💡|📌|✅|❌|⚡|🔥|⭐|🚀)[︎️]?[\\t-\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*$"
     responses:
       '200':
         description: Updated reaction state
