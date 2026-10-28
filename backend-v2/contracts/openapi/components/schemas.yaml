@@ -521,6 +521,13 @@ LastMessagePreview:
     type: { type: string }
     senderId: { type: string, format: uuid }
     senderName: { type: string }
+    updatedAt:
+      type: string
+      format: date-time
+      description: Canonical Message.updatedAt of the referenced message. Included in reply previews; optional for older clients and other preview projections. Never null when present.
+    isEdited:
+      type: boolean
+      description: Edit flag of the referenced message, included with updatedAt in reply previews. Optional for backward compatibility.
     reactions:
       type: array
       description: Always an array; empty reactions are [], never null.
@@ -592,8 +599,17 @@ Message:
     isChatPinned: { type: boolean, description: Shared pin visible to the chat. }
     isPersonalPinned: { type: boolean, description: Personal pin of the authenticated viewer. Never copied from another user in chat broadcasts. }
     isEdited: { type: boolean }
-    createdAt: { type: string }
-    updatedAt: { type: string }
+    createdAt: { type: string, format: date-time }
+    updatedAt:
+      type: string
+      format: date-time
+      description: >-
+        Canonical content/entities edit timestamp in UTC RFC3339, preserving database
+        microsecond precision across edit response, history, pins, favorites, reply
+        previews and message_edited WebSocket events. Required and never null.
+        For an unedited message isEdited is false and updatedAt equals createdAt;
+        service-only changes do not advance it. Existing field retained for backward
+        compatibility; no separate nullable editedAt is introduced.
     deletedAt: { type: string, nullable: true }
     deliveredAt:
       type: string
@@ -607,6 +623,19 @@ Message:
         Only on the caller's own messages (#657): when another member's read
         boundary first passed the message. Absent — not read yet. In group chats
         — the first member.
+MessageEditedEvent:
+  type: object
+  description: WebSocket message_edited event. updatedAt and isEdited have the same values as the edit response and subsequent REST reload. A no-op edit preserves both values.
+  required: [type, chatId, messageId, content, entities, updatedAt, isEdited]
+  properties:
+    type: { type: string, enum: [message_edited] }
+    chatId: { type: string, format: uuid }
+    messageId: { type: string, format: uuid }
+    content: { type: string }
+    entities: { $ref: '#/MessageEntities' }
+    updatedAt: { type: string, format: date-time, description: Canonical non-null UTC content/entities edit timestamp with database microsecond precision. }
+    isEdited: { type: boolean }
+
 ReceiptEvent:
   type: object
   description: >-

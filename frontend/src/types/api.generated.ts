@@ -2797,7 +2797,12 @@ export interface components {
             /** @description Personal pin of the authenticated viewer. Never copied from another user in chat broadcasts. */
             isPersonalPinned: boolean;
             isEdited: boolean;
+            /** Format: date-time */
             createdAt: string;
+            /**
+             * Format: date-time
+             * @description Canonical content/entities edit timestamp in UTC RFC3339, preserving database microsecond precision across edit response, history, pins, favorites, reply previews and message_edited WebSocket events. Required and never null. For an unedited message isEdited is false and updatedAt equals createdAt; service-only changes do not advance it. Existing field retained for backward compatibility; no separate nullable editedAt is introduced.
+             */
             updatedAt: string;
             deletedAt?: string | null;
             /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
@@ -2841,12 +2846,36 @@ export interface components {
             /** Format: uuid */
             senderId?: string;
             senderName: string;
+            /**
+             * Format: date-time
+             * @description Canonical Message.updatedAt of the referenced message. Included in reply previews; optional for older clients and other preview projections. Never null when present.
+             */
+            updatedAt?: string;
+            /** @description Edit flag of the referenced message, included with updatedAt in reply previews. Optional for backward compatibility. */
+            isEdited?: boolean;
             /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
             deliveredAt?: string;
             /** @description Only on the caller's own messages (#657): when another member's read boundary first passed the message. Absent — not read yet. In group chats — the first member. */
             readAt?: string;
+        };
+        /** @description WebSocket message_edited event. updatedAt and isEdited have the same values as the edit response and subsequent REST reload. A no-op edit preserves both values. */
+        MessageEditedEvent: {
+            /** @enum {string} */
+            type: "message_edited";
+            /** Format: uuid */
+            chatId: string;
+            /** Format: uuid */
+            messageId: string;
+            content: string;
+            entities: components["schemas"]["MessageEntities"];
+            /**
+             * Format: date-time
+             * @description Canonical non-null UTC content/entities edit timestamp with database microsecond precision.
+             */
+            updatedAt: string;
+            isEdited: boolean;
         };
         /** @description WebSocket event {"type":"receipts"} (#657), sent to the other members of a private chat when a member's boundary moves: the member's messages up to upTo inclusive are delivered or read, first at "at". Boundaries only move forward; delivered — the message went to the member's open socket or the member loaded the chat list or the thread; read implies delivered. After a reconnect the same state comes from Message.deliveredAt and readAt. */
         ReceiptEvent: {

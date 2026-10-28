@@ -177,5 +177,6 @@ components:
     MessageEntity: { $ref: './components/schemas.yaml#/MessageEntity' }
     MessageEntities: { $ref: './components/schemas.yaml#/MessageEntities' }
     LastMessagePreview: { $ref: './components/schemas.yaml#/LastMessagePreview' }
+    MessageEditedEvent: { $ref: './components/schemas.yaml#/MessageEditedEvent' }
     ReceiptEvent: { $ref: './components/schemas.yaml#/ReceiptEvent' }
     PushNotificationPayload: { $ref: './components/schemas.yaml#/PushNotificationPayload' }

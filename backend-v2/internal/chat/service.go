@@ -79,6 +79,8 @@ type Chat struct {
 }
 
 type LastMessagePreview struct {
+	UpdatedAt  string           `json:"updatedAt,omitempty"`
+	IsEdited   *bool            `json:"isEdited,omitempty"`
 	ID         string           `json:"id"`
 	Content    string           `json:"content"`
 	Entities   MessageEntities  `json:"entities"`
@@ -287,24 +289,26 @@ func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service
 // hydrateMessageFields дополняет сообщение для зрителя viewerID: цитата
 // ответа на скрытое им сообщение показывается как на удалённое (#840).
 func (s *Service) hydrateMessageFields(ctx context.Context, viewerID string, msg *Message) error {
+	normalizeMessageTimes(msg)
 	msg.SenderFirstName = msg.SenderName
 	if msg.ReplyTo != nil {
 		msg.ReplyToMessageID = msg.ReplyTo
 		var preview LastMessagePreview
 		err := s.db.QueryRowContext(ctx, `
-				SELECT COALESCE(up.first_name, au.first_name, au.username, ''), m.id::text, m.content, m.entities, m.type, COALESCE(m.sender_id::text, '')
+				SELECT COALESCE(up.first_name, au.first_name, au.username, ''), m.id::text, m.content, m.entities, m.type, COALESCE(m.sender_id::text, ''), GREATEST(m.updated_at,m.created_at)::text, m.updated_at > m.created_at
 				FROM messages.messages m
 				LEFT JOIN auth.users au ON au.id = m.sender_id
 				LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 				WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
 				  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $3)
-			`, *msg.ReplyTo, msg.ChatID, viewerID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
+			`, *msg.ReplyTo, msg.ChatID, viewerID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID, &preview.UpdatedAt, &preview.IsEdited)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		msg.ReplySenderName = preview.SenderName
 		msg.ReplyToSenderName = preview.SenderName
 		if err == nil {
+			preview.UpdatedAt = canonicalMessageTime(preview.UpdatedAt)
 			preview.Reactions = []Reaction{}
 			msg.ReplyPreview = &preview
 		}
@@ -2394,8 +2398,8 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 
 		err = tx.QueryRowContext(ctx, `
 		WITH inserted AS (
-			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata, created_at, entities)
-			VALUES ($1, $2, $3, $4, $5, $6, NOW() + $7::int * interval '1 microsecond', $8)
+			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata, created_at, entities, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, NOW() + $7::int * interval '1 microsecond', $8, NOW() + $7::int * interval '1 microsecond')
 			RETURNING *
 		)
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
@@ -2533,7 +2537,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	err = s.db.QueryRowContext(ctx, `
 		WITH updated AS (
 			UPDATE messages.messages AS m
-			SET content = $1, entities = $4, updated_at = NOW()
+			SET content = $1, entities = $4, updated_at = GREATEST(clock_timestamp(), m.created_at + interval '1 microsecond', m.updated_at + interval '1 microsecond')
 			FROM chats.members AS cm
 			WHERE m.id = $2 AND m.sender_id = $3 AND m.deleted_at IS NULL
 			  AND cm.chat_id = m.chat_id AND cm.user_id = $3
@@ -2585,6 +2589,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	if s.ws != nil {
 		payload, _ := json.Marshal(map[string]any{
 			"type":      "message_edited",
+			"isEdited":  msg.IsEdited,
 			"chatId":    msg.ChatID,
 			"messageId": msg.ID,
 			"content":   msg.Content,
@@ -2735,22 +2740,24 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 }
 
 func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, msg *Message, hiddenFor string) error {
+	normalizeMessageTimes(msg)
 	if msg.ReplyTo != nil {
 		var preview LastMessagePreview
 		err := tx.QueryRowContext(ctx, `
-			SELECT COALESCE(up.first_name, au.first_name, au.username, ''), m.id::text, m.content, m.entities, m.type, COALESCE(m.sender_id::text, '')
+			SELECT COALESCE(up.first_name, au.first_name, au.username, ''), m.id::text, m.content, m.entities, m.type, COALESCE(m.sender_id::text, ''), GREATEST(m.updated_at,m.created_at)::text, m.updated_at > m.created_at
 			FROM messages.messages m
 			LEFT JOIN auth.users au ON au.id = m.sender_id
 			LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 			WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
 			  AND ($3::uuid IS NULL OR NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $3))
-		`, *msg.ReplyTo, msg.ChatID, nullableUUID(hiddenFor)).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
+		`, *msg.ReplyTo, msg.ChatID, nullableUUID(hiddenFor)).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID, &preview.UpdatedAt, &preview.IsEdited)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		msg.ReplySenderName = preview.SenderName
 		msg.ReplyToSenderName = preview.SenderName
 		if err == nil {
+			preview.UpdatedAt = canonicalMessageTime(preview.UpdatedAt)
 			preview.Reactions = []Reaction{}
 			msg.ReplyPreview = &preview
 		}
