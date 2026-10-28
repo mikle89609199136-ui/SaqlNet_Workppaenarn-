@@ -214,3 +214,58 @@ describe('ReactionAuthorsModal (#998)', () => {
     });
   });
 });
+
+describe('пагинация всех реакций и ошибки', () => {
+  beforeEach(() => {
+    useChatUiStore.getState().resetChatState();
+    vi.restoreAllMocks();
+  });
+  it('догружает cursor для каждого emoji во вкладке Все', async () => {
+    const request = vi
+      .spyOn(services.messageService, 'listReactionAuthors')
+      .mockImplementation(async (_id, emoji, cursor) => ({
+        emoji,
+        total: 2,
+        users: [
+          {
+            id: cursor ? 'second' : 'first',
+            firstName: cursor ? 'Борис' : 'Анна',
+            lastName: emoji,
+            username: 'author',
+          },
+        ],
+        nextCursor: !cursor ? 'next-page' : undefined,
+      }));
+    useChatUiStore.getState().setReactionAuthorsModal({
+      messageId: 'msg-pages',
+      initialEmoji: 'all',
+      reactions: [
+        { emoji: '👍', count: 2, myReaction: false },
+        { emoji: '❤️', count: 2, myReaction: false },
+      ],
+    });
+    renderWithProviders(<ReactionAuthorsModal />);
+    await screen.findByText('Анна 👍');
+    fireEvent.click(await screen.findByRole('button', { name: 'Загрузить ещё 👍' }));
+    expect(await screen.findByText('Борис 👍')).toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith('msg-pages', '👍', 'next-page', 50);
+    expect(screen.getByRole('button', { name: 'Загрузить ещё ❤️' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '❤️ 2' }));
+    expect(screen.queryByText('Борис 👍')).not.toBeInTheDocument();
+    expect(screen.getByText('Анна ❤️')).toBeInTheDocument();
+  });
+  it.each(['all', '👍'])('показывает ошибку и retry во вкладке %s', async (initialEmoji) => {
+    vi.spyOn(services.messageService, 'listReactionAuthors')
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue({ emoji: '👍', total: 0, users: [] });
+    useChatUiStore.getState().setReactionAuthorsModal({
+      messageId: 'msg-error',
+      initialEmoji,
+      reactions: [{ emoji: '👍', count: 1, myReaction: false }],
+    });
+    renderWithProviders(<ReactionAuthorsModal />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить авторов');
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+    expect(await screen.findByText('Никто ещё не поставил эту реакцию')).toBeInTheDocument();
+  });
+});

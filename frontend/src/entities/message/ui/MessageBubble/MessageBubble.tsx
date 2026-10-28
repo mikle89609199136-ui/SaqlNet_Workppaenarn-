@@ -180,7 +180,7 @@ function ReactionPill({
   const isOnlyMine = count === 1 && mine;
   const isQueryEnabled = shouldFetch && !isOnlyMine && Boolean(messageId);
 
-  const { authors, isLoading } = useReactionAuthors({
+  const { authors, isLoading, isError } = useReactionAuthors({
     messageId,
     emoji,
     enabled: isQueryEnabled,
@@ -193,6 +193,7 @@ function ReactionPill({
     if (!shouldFetch && !authors.length) {
       return '';
     }
+    if (isError) return t('reactions.loadError', 'Не удалось загрузить авторов');
     if (isLoading && !authors.length) {
       return t('loading', 'Загрузка...');
     }
@@ -203,7 +204,7 @@ function ReactionPill({
       currentUserId,
       t,
     });
-  }, [isOnlyMine, shouldFetch, authors, isLoading, count, mine, currentUserId, t]);
+  }, [isOnlyMine, shouldFetch, authors, isLoading, isError, count, mine, currentUserId, t]);
 
   const handleOpenAuthors = () => {
     if (onOpenAuthors) {

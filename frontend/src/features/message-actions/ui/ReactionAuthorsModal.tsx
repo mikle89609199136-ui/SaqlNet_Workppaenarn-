@@ -1,9 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQueries } from '@tanstack/react-query';
 import { useChatUiStore, type IReactionAuthorsModalState } from '@/entities/chat';
 import {
-  reactionAuthorsSummaryQuery,
   useReactionAuthors,
   formatAuthorDisplayName,
   type IReaction,
@@ -30,6 +28,56 @@ interface ContentProps {
   onSelectUser?: (userId: string) => void;
 }
 
+// Каждый emoji во вкладке «Все» имеет собственный серверный cursor.
+function AllAuthorsGroup({
+  messageId,
+  emoji,
+  renderRow,
+}: {
+  messageId: string;
+  emoji: string;
+  renderRow: (author: IReactionAuthor, emoji: string) => ReactNode;
+}) {
+  const { t } = useTranslation();
+  const query = useReactionAuthors({ messageId, emoji });
+  return (
+    <section aria-label={emoji} className="flex flex-col gap-1">
+      {query.isLoading && <Skeleton className="h-12 rounded-field" />}
+      {query.isError && (
+        <div role="alert">
+          {t('reactions.loadError', 'Не удалось загрузить авторов')}
+          <button
+            type="button"
+            className="p-2 text-brand"
+            onClick={() => {
+              void query.refetch();
+            }}
+          >
+            {t('reactions.retry', 'Повторить')}
+          </button>
+        </div>
+      )}
+      {!query.isLoading && !query.isError && query.authors.length === 0 && (
+        <p>{t('reactions.noReactions', 'Никто ещё не поставил эту реакцию')}</p>
+      )}
+      {!query.isError && query.authors.map((author) => renderRow(author, emoji))}
+      {query.hasNextPage && (
+        <button
+          type="button"
+          aria-label={`${t('loadMore', 'Загрузить ещё')} ${emoji}`}
+          className="p-2 text-brand"
+          disabled={query.isFetchingNextPage}
+          onClick={() => {
+            void query.fetchNextPage();
+          }}
+        >
+          {t('loadMore', 'Загрузить ещё')} {emoji}
+        </button>
+      )}
+    </section>
+  );
+}
+
 function ReactionAuthorsModalContent({
   currentUserId,
   modalState,
@@ -50,7 +98,10 @@ function ReactionAuthorsModalContent({
   const initialTab =
     modalState.initialEmoji || (reactions.length > 1 ? 'all' : (reactions[0]?.emoji ?? 'all'));
 
-  const [activeTab, setActiveTab] = useState<string>(initialTab);
+  const [selectedTab, setActiveTab] = useState<string>(initialTab);
+  const activeTab = reactions.some((reaction) => reaction.emoji === selectedTab)
+    ? selectedTab
+    : 'all';
 
   const isSpecificTab = activeTab !== 'all';
 
@@ -60,34 +111,7 @@ function ReactionAuthorsModalContent({
     enabled: isSpecificTab,
   });
 
-  const allQueries = useQueries({
-    queries: reactions.map((r) => ({
-      ...reactionAuthorsSummaryQuery(messageId, r.emoji),
-      enabled: !isSpecificTab,
-    })),
-  });
-
-  const allTabAuthors = useMemo(() => {
-    if (isSpecificTab) return [];
-    const list: { author: IReactionAuthor; emoji: string }[] = [];
-    const seen = new Set<string>();
-
-    allQueries.forEach((q, idx) => {
-      const emoji = reactions[idx]?.emoji ?? '';
-      for (const user of q.data?.users ?? []) {
-        const key = `${user.id}-${emoji}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          list.push({ author: user, emoji });
-        }
-      }
-    });
-    return list;
-  }, [allQueries, isSpecificTab, reactions]);
-
-  const isLoading = isSpecificTab
-    ? singleQuery.isLoading
-    : allQueries.some((q) => q.isLoading && !q.data);
+  const isLoading = isSpecificTab && singleQuery.isLoading;
 
   const handleUserClick = (userId: string) => {
     if (onSelectUser) {
@@ -145,10 +169,11 @@ function ReactionAuthorsModalContent({
 
   return (
     <div className="flex flex-col gap-3">
-      {reactions.length > 1 && (
+      {reactions.length > 0 && (
         <div className="flex items-center gap-1.5 border-b border-divider pb-2.5 overflow-x-auto scrollbar-none">
           <button
             type="button"
+            aria-pressed={activeTab === 'all'}
             onClick={() => setActiveTab('all')}
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 rounded-pill text-caption font-semibold transition-colors cursor-pointer',
@@ -166,6 +191,8 @@ function ReactionAuthorsModalContent({
             <button
               key={r.emoji}
               type="button"
+              aria-label={`${r.emoji} ${r.count}`}
+              aria-pressed={activeTab === r.emoji}
               onClick={() => setActiveTab(r.emoji)}
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-pill text-caption font-semibold transition-colors cursor-pointer',
@@ -201,25 +228,45 @@ function ReactionAuthorsModalContent({
           </div>
         )}
 
-        {!isLoading && isSpecificTab && singleQuery.authors.length === 0 && (
-          <div className="flex flex-1 items-center justify-center py-8 text-center text-caption text-ink-3">
-            {t('reactions.noReactions', 'Никто ещё не поставил эту реакцию')}
-          </div>
-        )}
-
-        {!isLoading && !isSpecificTab && allTabAuthors.length === 0 && (
-          <div className="flex flex-1 items-center justify-center py-8 text-center text-caption text-ink-3">
-            {t('reactions.noReactions', 'Никто ещё не поставил эту реакцию')}
-          </div>
-        )}
-
         {!isLoading &&
           isSpecificTab &&
-          singleQuery.authors.map((author) => renderAuthorRow(author, activeTab))}
+          !singleQuery.isError &&
+          singleQuery.authors.length === 0 && (
+            <div className="flex flex-1 items-center justify-center py-8 text-center text-caption text-ink-3">
+              {t('reactions.noReactions', 'Никто ещё не поставил эту реакцию')}
+            </div>
+          )}
 
+        {isSpecificTab && singleQuery.isError && (
+          <div role="alert">
+            {t('reactions.loadError', 'Не удалось загрузить авторов')}
+            <button
+              type="button"
+              className="p-2 text-brand"
+              onClick={() => {
+                void singleQuery.refetch();
+              }}
+            >
+              {t('reactions.retry', 'Повторить')}
+            </button>
+          </div>
+        )}
         {!isLoading &&
-          !isSpecificTab &&
-          allTabAuthors.map(({ author, emoji }) => renderAuthorRow(author, emoji))}
+          isSpecificTab &&
+          !singleQuery.isError &&
+          singleQuery.authors.map((author) => renderAuthorRow(author, activeTab))}
+        {!isSpecificTab && reactions.length === 0 && (
+          <p>{t('reactions.noReactions', 'Никто ещё не поставил эту реакцию')}</p>
+        )}
+        {!isSpecificTab &&
+          reactions.map((reaction) => (
+            <AllAuthorsGroup
+              key={reaction.emoji}
+              messageId={messageId}
+              emoji={reaction.emoji}
+              renderRow={renderAuthorRow}
+            />
+          ))}
 
         {isSpecificTab && singleQuery.hasNextPage && (
           <button

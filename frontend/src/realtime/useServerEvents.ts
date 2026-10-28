@@ -4,6 +4,7 @@ import { WS_EVENTS } from '@/shared/config';
 import type { IWsEventMap } from '@/types';
 import { useRealtimeSocket } from '@/shared/api';
 import {
+  messageKeys,
   applyThreadReactionEvent,
   dropPinnedMessage,
   dropThreadMessages,
@@ -12,7 +13,7 @@ import {
   putThreadMessage,
   putThreadReceipt,
 } from '@/entities/message';
-import { putChatListReceipt, useTypingStore } from '@/entities/chat';
+import { putChatListReceipt, useTypingStore, useChatUiStore } from '@/entities/chat';
 import { useProfileStore, refreshSettings, isSettingsInvalidation } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { createPresenceBuffer, refreshPresence } from './applyPresence';
@@ -120,6 +121,19 @@ export function useServerEvents(enabled: boolean): void {
           payload?.chatId &&
           payload?.messageId
         ) {
+          void queryClient.invalidateQueries({
+            queryKey: messageKeys.reactionAuthorsPrefix(payload.messageId),
+          });
+          const modal = useChatUiStore.getState().reactionAuthorsModal;
+          if (modal?.messageId === payload.messageId && Array.isArray(payload.reactions)) {
+            useChatUiStore.getState().setReactionAuthorsModal({
+              ...modal,
+              reactions: payload.reactions.map((reaction) => ({
+                ...reaction,
+                myReaction: false,
+              })),
+            });
+          }
           // Своя же операция ещё идёт — её промежуточные состояния
           // показывать нельзя, окончательное принесёт наш ответ.
           if (!isReactionChangePending(payload.messageId)) {
