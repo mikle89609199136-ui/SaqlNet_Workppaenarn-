@@ -1,7 +1,3 @@
-export interface IGif {
-  id: string;
-  name: string;
-  url: string;
-  userName: string;
-  createdAt: string;
-}
+import type { components } from '@/types/api.generated';
+
+export type IGif = components['schemas']['MediaGif'];

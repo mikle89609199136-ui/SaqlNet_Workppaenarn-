@@ -58,7 +58,7 @@ func (a forwardMetadataArg) Match(value driver.Value) bool {
 // expectForwardSource — сообщение от автора forwardAuthorID в чате, где
 // пересылающий состоит.
 func expectForwardSource(mock sqlmock.Sqlmock, metadata string) {
-	mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID).
+	mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID, messageValidationUserID).
 		WillReturnRows(sqlmock.NewRows(forwardSourceColumns).AddRow(forwardSourceChatID, "Anna", forwardAuthorID, []byte(metadata)))
 	mock.ExpectQuery(forwardMembershipStmt).WithArgs(messageValidationUserID, forwardSourceChatID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
@@ -148,7 +148,7 @@ func TestForwardOriginWithoutRuleQuery(t *testing.T) {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
 		defer db.Close()
-		mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID).
+		mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID, messageValidationUserID).
 			WillReturnRows(sqlmock.NewRows(forwardSourceColumns).AddRow(forwardSourceChatID, "Me", messageValidationUserID, []byte(`{}`)))
 		mock.ExpectQuery(forwardMembershipStmt).WithArgs(messageValidationUserID, forwardSourceChatID).
 			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
@@ -215,7 +215,7 @@ func TestForwardOriginRejectsUnavailableMessage(t *testing.T) {
 			name:      "missing or deleted message",
 			messageID: messageValidationMessageID,
 			setup: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID).
+				mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID, messageValidationUserID).
 					WillReturnError(sql.ErrNoRows)
 			},
 			wantErr: ErrNotFound,
@@ -224,7 +224,7 @@ func TestForwardOriginRejectsUnavailableMessage(t *testing.T) {
 			name:      "message from a chat the requester is not in",
 			messageID: messageValidationMessageID,
 			setup: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID).
+				mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID, messageValidationUserID).
 					WillReturnRows(sqlmock.NewRows(forwardSourceColumns).AddRow(forwardSourceChatID, "Anna", forwardAuthorID, []byte(`{}`)))
 				mock.ExpectQuery(forwardMembershipStmt).WithArgs(messageValidationUserID, forwardSourceChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
@@ -359,7 +359,7 @@ func TestSendMessageRejectsUnavailableForwardedFromWithoutInsert(t *testing.T) {
 			name:          "missing or deleted message",
 			forwardedFrom: messageValidationMessageID,
 			setup: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID).
+				mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID, messageValidationUserID).
 					WillReturnError(sql.ErrNoRows)
 			},
 		},
@@ -367,7 +367,7 @@ func TestSendMessageRejectsUnavailableForwardedFromWithoutInsert(t *testing.T) {
 			name:          "message from a chat the requester is not in",
 			forwardedFrom: messageValidationMessageID,
 			setup: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID).
+				mock.ExpectQuery(forwardSourceQuery).WithArgs(messageValidationMessageID, messageValidationUserID).
 					WillReturnRows(sqlmock.NewRows(forwardSourceColumns).AddRow(forwardSourceChatID, "Anna", forwardAuthorID, []byte(`{}`)))
 				mock.ExpectQuery(forwardMembershipStmt).WithArgs(messageValidationUserID, forwardSourceChatID).
 					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))

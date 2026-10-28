@@ -20,7 +20,7 @@ const (
 	listReactionsMessageID = "00000000-0000-0000-0000-000000000013"
 )
 
-const listReactionsMessageQuery = `SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`
+const listReactionsMessageQuery = `SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`
 const listReactionsMembershipQuery = `SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`
 const listReactionsAggregateQuery = `
 		SELECT emoji, COUNT(*) AS cnt, bool_or(user_id = $2) AS my_reaction
@@ -59,7 +59,7 @@ func TestListReactions_MissingOrDeletedMessageReturns404(t *testing.T) {
 			t.Cleanup(func() { _ = db.Close() })
 
 			mock.ExpectQuery(regexp.QuoteMeta(listReactionsMessageQuery)).
-				WithArgs(listReactionsMessageID).
+				WithArgs(listReactionsMessageID, listReactionsUserID).
 				WillReturnError(sql.ErrNoRows)
 
 			recorder := listReactionsRequest(NewService(db, nil, nil), listReactionsMessageID)
@@ -76,7 +76,7 @@ func TestListReactions_OutsiderReturns403WithoutReadingAggregates(t *testing.T) 
 	t.Cleanup(func() { _ = db.Close() })
 
 	mock.ExpectQuery(regexp.QuoteMeta(listReactionsMessageQuery)).
-		WithArgs(listReactionsMessageID).
+		WithArgs(listReactionsMessageID, listReactionsUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(listReactionsChatID))
 	mock.ExpectQuery(regexp.QuoteMeta(listReactionsMembershipQuery)).
 		WithArgs(listReactionsUserID, listReactionsChatID).
@@ -94,7 +94,7 @@ func TestListReactions_MemberWithNoReactionsReturnsEmptyArray(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	mock.ExpectQuery(regexp.QuoteMeta(listReactionsMessageQuery)).
-		WithArgs(listReactionsMessageID).
+		WithArgs(listReactionsMessageID, listReactionsUserID).
 		WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(listReactionsChatID))
 	mock.ExpectQuery(regexp.QuoteMeta(listReactionsMembershipQuery)).
 		WithArgs(listReactionsUserID, listReactionsChatID).

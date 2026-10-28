@@ -1,0 +1,18 @@
+{
+  "maxFileSizeBytes": 104857600,
+  "encryptionOverheadBytes": 16,
+  "maxVoiceCiphertextBytes": 8388608,
+  "plainMimeTypes": [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "audio/mpeg",
+    "audio/ogg",
+    "audio/webm",
+    "application/pdf",
+    "text/plain"
+  ]
+}

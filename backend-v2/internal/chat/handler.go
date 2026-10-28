@@ -908,18 +908,29 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
-	case suffix == "/reactions" && r.Method == http.MethodPost:
+	case (suffix == "/reactions" || suffix == "/react") && r.Method == http.MethodPost,
+		suffix == "/reactions/me" && r.Method == http.MethodPut:
 		var input struct {
-			Emoji string `json:"emoji"`
+			Emoji json.RawMessage `json:"emoji"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
 
-		// The service implements the toggle semantics itself and returns
-		// the resulting state: operation status, the user's current emoji,
-		// and the aggregated reaction list.
-		status, currentEmoji, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
+		var emoji *string
+		if len(input.Emoji) == 0 || json.Unmarshal(input.Emoji, &emoji) != nil || (r.Method == http.MethodPost && emoji == nil) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "emoji must be a string, or null for PUT")
+			return
+		}
+		var status ReactionStatus
+		var currentEmoji string
+		var reactions []Reaction
+		var err error
+		if r.Method == http.MethodPut {
+			status, currentEmoji, reactions, err = h.service.SetReaction(r.Context(), current.ID, targetID, emoji)
+		} else {
+			status, currentEmoji, reactions, err = h.service.ToggleReaction(r.Context(), current.ID, targetID, *emoji)
+		}
 		if err != nil {
 			switch {
 			case errors.Is(err, ErrNotFound):

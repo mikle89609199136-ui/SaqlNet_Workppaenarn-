@@ -185,6 +185,13 @@ func TestClassifyRouteOperationSpecificMessage(t *testing.T) {
 			want:   routeGroupMessageRead,
 		},
 		{
+			name:   "set my reaction",
+			method: http.MethodPut,
+			path:   "/api/v2/messages/message-id/reactions/me",
+			want:   routeGroupMessageWrite,
+		},
+
+		{
 			name:   "message location for saved messages (#1076)",
 			method: http.MethodGet,
 			path:   "/api/v2/messages/message-id/location",

@@ -94,6 +94,8 @@ type WSServer struct {
 	typingClock         func() time.Time  // подмена часов в тестах; nil — time.Now
 
 	push pushNotifier // push о звонках (#717); nil — выключен
+
+	disconnectGrace time.Duration // ожидание call_join после обрыва; 0 → callDisconnectGrace
 }
 
 // NewWSServer создаёт и запускает новый экземпляр WSServer.
@@ -508,10 +510,22 @@ func (ws *WSServer) handleCallLeave(client *Client, msg map[string]interface{}) 
 const (
 	peerLeftByLeave      = "left"
 	peerLeftByDisconnect = "disconnected"
+	callDisconnectGrace  = 25 * time.Second
 )
 
 func (ws *WSServer) doLeaveRoom(client *Client, roomID, reason string) {
-	lr := ws.callRooms.LeaveRoom(roomID, client.UserID)
+	var lr LeaveResult
+	if reason == peerLeftByDisconnect {
+		grace := ws.disconnectGrace
+		if grace <= 0 {
+			grace = callDisconnectGrace
+		}
+		lr = ws.callRooms.DisconnectRoom(roomID, client.UserID, grace, func(snap *RoomSnapshot) {
+			ws.callRoomClosed(roomID, snap)
+		})
+	} else {
+		lr = ws.callRooms.LeaveRoom(roomID, client.UserID)
+	}
 	// Не участник (не входил, уже вышел, комната закрыта) — сообщать
 	// некому и не о чем: иначе любой, кто знает id комнаты, «выходил» бы
 	// из чужого звонка, и собеседники его завершали бы.

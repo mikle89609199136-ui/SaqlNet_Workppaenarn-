@@ -1344,10 +1344,15 @@ func (s *Service) MarkMessagesRead(ctx context.Context, userID, chatID string, m
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id::text, COALESCE(sender_id::text, ''), deleted_at IS NOT NULL, created_at
-		FROM messages.messages
-		WHERE chat_id = $1 AND id = ANY($2::uuid[])
-	`, chatID, pq.Array(ids))
+		SELECT m.id::text, COALESCE(m.sender_id::text, ''), m.deleted_at IS NOT NULL,
+		       EXISTS (
+		           SELECT 1 FROM messages.hidden_messages hm
+		           WHERE hm.message_id = m.id AND hm.user_id = $3
+		       ),
+		       m.created_at
+		FROM messages.messages m
+		WHERE m.chat_id = $1 AND m.id = ANY($2::uuid[])
+	`, chatID, pq.Array(ids), userID)
 	if err != nil {
 		return ReadMark{}, err
 	}
@@ -1357,13 +1362,13 @@ func (s *Service) MarkMessagesRead(ctx context.Context, userID, chatID string, m
 	var newest time.Time
 	for rows.Next() {
 		var id, senderID string
-		var deleted bool
+		var deleted, hidden bool
 		var createdAt time.Time
-		if err := rows.Scan(&id, &senderID, &deleted, &createdAt); err != nil {
+		if err := rows.Scan(&id, &senderID, &deleted, &hidden, &createdAt); err != nil {
 			return ReadMark{}, err
 		}
 		found++
-		if deleted || senderID == userID {
+		if deleted || hidden || senderID == userID {
 			continue
 		}
 		readIDs = append(readIDs, id)
@@ -2718,13 +2723,13 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 		return nil, err
 	}
 	msg.SenderFirstName = msg.SenderName
-	if err := s.hydrateDeleteMessageFields(ctx, tx, &msg); err != nil {
+	if err := s.hydrateDeleteMessageFields(ctx, tx, &msg, hiddenFor); err != nil {
 		return nil, err
 	}
 	return &msg, nil
 }
 
-func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, msg *Message) error {
+func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, msg *Message, hiddenFor string) error {
 	if msg.ReplyTo != nil {
 		var preview LastMessagePreview
 		err := tx.QueryRowContext(ctx, `
@@ -2733,7 +2738,8 @@ func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, ms
 			LEFT JOIN auth.users au ON au.id = m.sender_id
 			LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 			WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
-		`, *msg.ReplyTo, msg.ChatID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
+			  AND ($3::uuid IS NULL OR NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $3))
+		`, *msg.ReplyTo, msg.ChatID, nullableUUID(hiddenFor)).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
@@ -2839,7 +2845,8 @@ func (s *Service) ForwardOrigin(ctx context.Context, userID, messageID string) (
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		WHERE m.id = $1 AND m.deleted_at IS NULL
-	`, messageID).Scan(&chatID, &senderName, &senderID, &metadataBytes)
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)
+	`, messageID, userID).Scan(&chatID, &senderName, &senderID, &metadataBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ForwardSource{}, ErrNotFound
 	}
@@ -2948,8 +2955,8 @@ func (s *Service) ListReactions(ctx context.Context, userID, messageID string) (
 	}
 
 	err := s.db.QueryRowContext(ctx,
-		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-		messageID,
+		`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+		messageID, userID,
 	).Scan(&chatID)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -3082,29 +3089,23 @@ func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, ch
 // transaction under an advisory lock on the (message_id, user_id) pair, so
 // that concurrent toggles by the same user cannot race.
 func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (ReactionStatus, string, []Reaction, error) {
-	const method = "ToggleReaction"
+	return s.writeReaction(ctx, userID, messageID, &emoji, true)
+}
 
-	if emoji == "" {
-		slog.WarnContext(ctx, "empty emoji rejected",
-			"layer", "service",
-			"method", method,
-			"user_id", userID,
-			"message_id", messageID,
-		)
-		return "", "", nil, ErrInvalidInput
-	}
-	// Length limit and rejection of characters that would break rendering
-	// or downstream consumers (HTML/JSON). UTF-8 is measured in bytes: 64
-	// bytes comfortably covers any single emoji with modifiers.
-	if len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
-		slog.WarnContext(ctx, "invalid emoji rejected",
-			"layer", "service",
-			"method", method,
-			"user_id", userID,
-			"message_id", messageID,
-			"emoji_len", len(emoji),
-		)
-		return "", "", nil, ErrInvalidInput
+// SetReaction sets the desired state. Nil removes the reaction idempotently.
+func (s *Service) SetReaction(ctx context.Context, userID, messageID string, emoji *string) (ReactionStatus, string, []Reaction, error) {
+	return s.writeReaction(ctx, userID, messageID, emoji, false)
+}
+
+func (s *Service) writeReaction(ctx context.Context, userID, messageID string, desired *string, toggle bool) (ReactionStatus, string, []Reaction, error) {
+	const method = "writeReaction"
+	emoji := ""
+	if desired != nil {
+		canonical, err := canonicalReactionEmoji(*desired)
+		if err != nil {
+			return "", "", nil, err
+		}
+		emoji = canonical
 	}
 
 	// READ COMMITTED is enough here: serialization of concurrent toggles
@@ -3130,8 +3131,8 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	// drift away from the subsequent locking.
 	var chatID string
 	err = tx.QueryRowContext(ctx,
-		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-		messageID,
+		`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+		messageID, userID,
 	).Scan(&chatID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", nil, ErrNotFound
@@ -3210,7 +3211,14 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	}
 
 	var status ReactionStatus
+	changed := true
 	switch {
+	case !toggle && !hasCurrent && emoji == "":
+		status = StatusRemoved
+		changed = false
+	case !toggle && hasCurrent && currentEmoji == emoji:
+		status = StatusAdded
+		changed = false
 	case !hasCurrent:
 		result, execErr := tx.ExecContext(ctx,
 			`INSERT INTO messages.reactions (message_id, user_id, emoji)
@@ -3233,7 +3241,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		currentEmoji = emoji
 		status = StatusAdded
 
-	case currentEmoji == emoji:
+	case emoji == "" || (toggle && currentEmoji == emoji):
 		result, execErr := tx.ExecContext(ctx,
 			`DELETE FROM messages.reactions
 			 WHERE message_id = $1 AND user_id = $2`,
@@ -3295,7 +3303,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 
 	// The WS notification is sent after the commit: if the broadcast
 	// fails, the transaction still remains consistent.
-	if s.ws != nil {
+	if changed && s.ws != nil {
 		change := ChangeResponse{Action: string(status)}
 		switch status {
 		case StatusAdded:
@@ -3458,7 +3466,7 @@ func (s *Service) ListReactionAuthors(
 	if validate.Var(viewerID, "required,uuid") != nil {
 		return ReactionAuthorsPage{}, ErrInvalidInput
 	}
-	// Same rules as in ToggleReaction: empty, too long, or markup-breaking
+	// Author queries may address legacy reactions: empty, too long, or markup-breaking
 	// characters → ErrInvalidInput.
 	if emoji == "" || len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
 		return ReactionAuthorsPage{}, ErrInvalidInput

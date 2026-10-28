@@ -21,8 +21,8 @@ const (
 func expectToggleReactionPrelude(mock sqlmock.Sqlmock, currentEmoji *string) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-	)).WithArgs(toggleTestMessageID).WillReturnRows(
+		`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+	)).WithArgs(toggleTestMessageID, toggleTestUserID).WillReturnRows(
 		sqlmock.NewRows([]string{"chat_id"}).AddRow(toggleTestChatID),
 	)
 	mock.ExpectQuery(regexp.QuoteMeta(

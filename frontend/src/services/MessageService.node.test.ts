@@ -1155,3 +1155,19 @@ describe('MessageService: listReactionAuthors (#998)', () => {
     expect(result?.nextCursor).toBe('cur-123');
   });
 });
+
+describe('MessageService: желаемое состояние реакции', () => {
+  it('отправляет одну замену или снятие через PUT', async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.put(api('/messages/message-1/reactions/me'), async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ reactions: [] });
+      })
+    );
+    const service = createService();
+    await service.reactToMessage('message-1', '❤️');
+    await service.reactToMessage('message-1', null);
+    expect(bodies).toEqual([{ emoji: '❤️' }, { emoji: null }]);
+  });
+});

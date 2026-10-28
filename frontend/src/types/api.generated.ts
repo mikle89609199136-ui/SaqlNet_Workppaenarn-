@@ -1837,7 +1837,7 @@ export interface paths {
         put?: never;
         /**
          * Delete messages for everyone or only for me
-         * @description Up to 100 messages of one chat, all or nothing (#840). forEveryone — only the caller's own messages; the members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only (any message of the chat); the caller's devices get messages_hidden. Hidden messages are not returned to the caller anywhere and are not counted as unread.
+         * @description Up to 100 messages of one chat, all or nothing (#840). forEveryone deletes messages the caller sent, or any message when the caller is owner or an admin with can_delete_messages; members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only; the caller's devices get messages_hidden. A repeat that changes nothing is a success and sends no event. Hidden messages are not returned to the caller anywhere and are not counted as unread.
          */
         post: operations["deleteMessages"];
         delete?: never;
@@ -2000,7 +2000,7 @@ export interface paths {
         /**
          * Delete a message for everyone
          * @deprecated
-         * @description Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+         * @description Legacy single-message delete. Use POST /chats/{chatId}/messages/delete for idempotent deletion.
          */
         delete: operations["deleteMessage"];
         options?: never;
@@ -2022,6 +2022,50 @@ export interface paths {
         put?: never;
         /** Toggle a reaction */
         post: operations["toggleMessageReaction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/messages/{messageId}/react": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Legacy reaction toggle alias
+         * @deprecated
+         */
+        post: operations["toggleMessageReactionLegacy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/messages/{messageId}/reactions/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set my reaction state idempotently
+         * @description Sets the user's single reaction atomically, or removes it for emoji null. Repeating the same desired state does not toggle or broadcast a change. Responses use added for an already-present desired reaction and removed for an already-absent reaction. Legacy POST reactions and react remain toggles.
+         */
+        put: operations["setMyMessageReaction"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2292,7 +2336,7 @@ export interface paths {
         put?: never;
         /**
          * Upload media
-         * @description MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB). Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies must allow at least 140 MiB with the default file limit. Oversized uploads return a flat 413 file_too_large error with message and requestId. Voice uploads have a separate 8 MiB ciphertext limit.
+         * @description MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB). Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies must allow at least 140 MiB with the default file limit. Oversized uploads return a flat 413 file_too_large error with message and requestId. Voice uploads have a separate 8 MiB ciphertext limit. GET /docs/media-policy.json publishes the default byte limits and the plain-upload MIME allowlist shared with the client. Encrypted message uploads may carry any MIME type.
          */
         post: operations["uploadMedia"];
         delete?: never;
@@ -2312,7 +2356,7 @@ export interface paths {
         };
         /**
          * Download media
-         * @description uploadId is not a capability: knowing the identifier does not grant access. Downloads require authentication and access through a live attachment, or ownership of a never-attached upload. Range is not supported for the encrypted JSON envelope; its successful response is always 200. Streams an upload, managed sticker, or sticker-pack icon by UUID through the media service. Catalog imageUrl and iconUrl use this relative path; no redirect or direct storage URL is returned. Legacy catalog objects without a verified storage identity are unavailable (#973).
+         * @description uploadId is not a capability: knowing the identifier does not grant access. Downloads require authentication and access through a live attachment, or ownership of a never-attached upload. Range is not supported for the encrypted JSON envelope; its successful response is always 200. Streams an upload, managed sticker, or sticker-pack icon by UUID through the media service. Catalog imageUrl and iconUrl use this relative path; no redirect or direct storage URL is returned. Legacy catalog objects without a verified storage identity are unavailable (#973). Plain streams preserve the stored MIME type when safe; unsafe/unknown types use application/octet-stream with attachment disposition.
          */
         get: operations["getMedia"];
         put?: never;
@@ -2438,7 +2482,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List stickers in a pack */
+        /**
+         * List stickers in a pack
+         * @description An absent pack currently returns an empty stickers array; invalid UUID input may return 500 db_error.
+         */
         get: operations["listStickers"];
         put?: never;
         /**
@@ -2446,7 +2493,10 @@ export interface paths {
          * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB; the decoded image is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, missing_image, invalid_path, upload_error; 404 not_found (pack missing or owned by another user); 413 request_too_large, file_too_large; 500 db_error.
          */
         post: operations["addSticker"];
-        /** Delete a sticker pack */
+        /**
+         * Delete a sticker pack
+         * @description Idempotent success, including an absent pack or one owned by another user.
+         */
         delete: operations["deleteStickerPack"];
         options?: never;
         head?: never;
@@ -3900,7 +3950,7 @@ export interface components {
         MarkMessagesReadRequest: {
             /** Format: uuid */
             chatId: string;
-            /** @description Messages of this chat seen by the reader (duplicates are ignored). All must belong to the chat, otherwise 400 invalid_message_ids. Own and deleted messages are skipped. */
+            /** @description Messages of this chat seen by the reader (duplicates are ignored). All must belong to the chat, otherwise 400 invalid_message_ids. Own, deleted, and hidden messages are skipped and do not move the read boundary. */
             messageIds: string[];
         };
         ReadMark: {
@@ -4079,6 +4129,11 @@ export interface components {
             hasMore: boolean;
         };
         /**
+         * @description Complete data URL with base64-encoded bytes, e.g. data:image/png;base64,YQ==. This is not a bare base64 string. Decoded size is checked at runtime; plain uploads also validate MIME. Sticker handlers currently also accept a data URL without the ;base64 marker and do not apply the plain-upload MIME allowlist.
+         * @example data:image/png;base64,YQ==
+         */
+        MediaDataUrl: string;
+        /**
          * @description Encrypted media envelope v2. Unknown fields are ignored for server-first
          *     format rollouts. Missing required fields return validation_failed.
          *     Invalid sizeBytes returns invalid_size; invalid ciphertext returns
@@ -4114,15 +4169,103 @@ export interface components {
                 fileName?: string;
             };
         };
+        /** @description Relative authenticated download URL; the UUID alone grants no access. */
+        MediaUrl: string;
         UploadResponse: {
-            success: boolean;
-            url: string;
-            encrypted?: boolean;
-            encryption?: unknown;
-            fileName?: string;
+            /** @enum {boolean} */
+            success: true;
+            url: components["schemas"]["MediaUrl"];
+            /**
+             * @description Present for encrypted uploads only.
+             * @enum {boolean}
+             */
+            encrypted?: true;
+            /** @description JSON-encoded encryption metadata */
+            encryption?: string;
+            fileName: string;
+            /**
+             * Format: int64
+             * @description Plaintext size for encrypted uploads; file byte size otherwise.
+             */
+            sizeBytes: number;
+            contentType: string;
+        };
+        /** @description Complete encrypted envelope; version/algorithm/iv/keyEpoch may be absent in legacy uploads. */
+        MediaEncryptedDownload: {
+            /** @enum {boolean} */
+            encrypted: true;
+            mimeType: string;
             /** Format: int64 */
-            sizeBytes?: number;
-            contentType?: string;
+            sizeBytes: number;
+            /** Format: byte */
+            ciphertext: string;
+            version?: number;
+            algorithm?: string;
+            iv?: string;
+            keyEpoch?: number;
+            fileName?: string;
+        };
+        MediaEmoji: {
+            /** @description Emoji shortcode */
+            code: string;
+            /** @description Unicode emoji text; not an image URL. */
+            img: string;
+        };
+        MediaEmojisResponse: {
+            emojis: components["schemas"]["MediaEmoji"][];
+        };
+        /** @description Non-null timestamp. Current catalog handlers return PostgreSQL timestamptz text (created_at::text), with a space and UTC offset such as +00. RFC 3339 date-time is also accepted for compatibility; no timestamp rewrite is required. */
+        MediaTimestamp: string;
+        MediaGif: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description New records use a relative MediaUrl; legacy records may retain external URLs. */
+            url: string;
+            /** @description Username in list responses; currently empty in the create response (#608). */
+            userName: string;
+            createdAt: components["schemas"]["MediaTimestamp"];
+        };
+        MediaGifsResponse: {
+            gifs: components["schemas"]["MediaGif"][];
+        };
+        MediaGifResponse: {
+            /** @enum {boolean} */
+            success: true;
+            gif: components["schemas"]["MediaGif"];
+        };
+        MediaStickerPack: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            /** @description Relative MediaUrl when managed; empty when no verified icon is available. */
+            iconUrl: string;
+            stickerCount: number;
+            createdAt: components["schemas"]["MediaTimestamp"];
+        };
+        MediaStickerPacksResponse: {
+            packs: components["schemas"]["MediaStickerPack"][];
+        };
+        MediaStickerPackResponse: {
+            /** @enum {boolean} */
+            success: true;
+            pack: components["schemas"]["MediaStickerPack"];
+        };
+        MediaSticker: {
+            /** Format: uuid */
+            id: string;
+            /** @description Relative MediaUrl when managed; empty for legacy objects without verified storage coordinates. */
+            imageUrl: string;
+            createdAt: components["schemas"]["MediaTimestamp"];
+        };
+        MediaStickersResponse: {
+            stickers: components["schemas"]["MediaSticker"][];
+        };
+        MediaStickerResponse: {
+            /** @enum {boolean} */
+            success: true;
+            sticker: components["schemas"]["MediaSticker"];
         };
     };
     responses: {
@@ -7862,8 +8005,15 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description A message is not in this chat or already deleted */
+            /** @description A message is not in this chat */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Database error (internal_error) */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8271,12 +8421,79 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description One emoji from the existing client picker whitelist below (the alternatives in pattern). Raw input is limited to 64 UTF-8 bytes. Surrounding Unicode White_Space is trimmed, NFC is applied, and one optional trailing text/emoji presentation selector is replaced by the picker presentation (heart becomes ❤️). Stored and returned values use that canonical form. Text, multiple emoji, skin tones, flags and ZWJ sequences outside this whitelist return 400. */
                     emoji: string;
                 };
             };
         };
         responses: {
             /** @description Updated reaction state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionToggleResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    toggleMessageReactionLegacy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description One emoji from the existing client picker whitelist below (the alternatives in pattern). Raw input is limited to 64 UTF-8 bytes. Surrounding Unicode White_Space is trimmed, NFC is applied, and one optional trailing text/emoji presentation selector is replaced by the picker presentation (heart becomes ❤️). Stored and returned values use that canonical form. Text, multiple emoji, skin tones, flags and ZWJ sequences outside this whitelist return 400. */
+                    emoji: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated reaction state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionToggleResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    setMyMessageReaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description One emoji from the existing client picker whitelist below (the alternatives in pattern). Raw input is limited to 64 UTF-8 bytes. Surrounding Unicode White_Space is trimmed, NFC is applied, and one optional trailing text/emoji presentation selector is replaced by the picker presentation (heart becomes ❤️). Stored and returned values use that canonical form. Text, multiple emoji, skin tones, flags and ZWJ sequences outside this whitelist return 400. */
+                    emoji: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Desired reaction state */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8738,11 +8955,15 @@ export interface operations {
                 "multipart/form-data": {
                     /** Format: binary */
                     file: string;
+                    /** @description Stored purpose: message/avatar/gif/sticker; missing or unknown values normalize to unknown. */
+                    purpose?: string;
                 };
                 "application/json": {
-                    /** @description Data URL */
-                    file: string;
-                    fileName?: string;
+                    file: components["schemas"]["MediaDataUrl"];
+                    /** @description Optional filename; limit is 255 UTF-8 bytes. */
+                    fileName?: string | null;
+                    /** @description message selects the encrypted-envelope request instead; other unknown strings normalize to unknown. */
+                    purpose?: string | null;
                 } | components["schemas"]["EncryptedMediaUploadRequest"];
             };
         };
@@ -8757,8 +8978,14 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
             413: components["responses"]["FileTooLarge"];
             415: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     getMedia: {
@@ -8777,39 +9004,60 @@ export interface operations {
             /** @description Media stream, or encrypted media metadata and ciphertext */
             200: {
                 headers: {
-                    "Accept-Ranges"?: string;
                     "Content-Length"?: number;
+                    "Accept-Ranges"?: string;
+                    "Content-Range"?: string;
+                    /** @description private, no-cache; access is checked again for reuse. */
+                    "Cache-Control"?: string;
+                    /** @description Authorization, Cookie; Bearer is not accepted. */
+                    Vary?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/octet-stream": string;
-                    "application/json": components["schemas"]["Object"];
+                    "application/json": components["schemas"]["MediaEncryptedDownload"];
+                    "*/*": string;
                 };
             };
             /** @description Partial media stream */
             206: {
                 headers: {
+                    "Content-Length"?: number;
+                    "Accept-Ranges"?: string;
+                    "Content-Range"?: string;
+                    /** @description private, no-cache; access is checked again for reuse. */
+                    "Cache-Control"?: string;
+                    /** @description Authorization, Cookie; Bearer is not accepted. */
+                    Vary?: string;
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "*/*": string;
+                };
             };
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
-            /** @description Requested range is not satisfiable */
+            405: components["responses"]["Error"];
+            /** @description Unsatisfiable Range; empty body, Content-Range may specify the object size. */
             416: {
                 headers: {
+                    "Content-Range"?: string;
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
             502: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     headMedia: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Range?: string;
+            };
             path: {
                 uploadId: string;
             };
@@ -8820,6 +9068,13 @@ export interface operations {
             /** @description Media headers */
             200: {
                 headers: {
+                    "Content-Length"?: number;
+                    "Accept-Ranges"?: string;
+                    "Content-Range"?: string;
+                    /** @description private, no-cache; access is checked again for reuse. */
+                    "Cache-Control"?: string;
+                    /** @description Authorization, Cookie; Bearer is not accepted. */
+                    Vary?: string;
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -8827,21 +9082,81 @@ export interface operations {
             /** @description Partial media headers */
             206: {
                 headers: {
+                    "Content-Length"?: number;
+                    "Accept-Ranges"?: string;
+                    "Content-Range"?: string;
+                    /** @description private, no-cache; access is checked again for reuse. */
+                    "Cache-Control"?: string;
+                    /** @description Authorization, Cookie; Bearer is not accepted. */
+                    Vary?: string;
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            401: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            /** @description Requested range is not satisfiable */
-            416: {
+            /** @description Same 401 status as GET; HEAD has no response body. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            502: components["responses"]["Error"];
+            /** @description Same 403 status as GET; HEAD has no response body. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 404 status as GET; HEAD has no response body. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 405 status as GET; HEAD has no response body. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unsatisfiable Range; empty body, Content-Range may specify the object size. */
+            416: {
+                headers: {
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 429 status as GET; HEAD has no response body. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 500 status as GET; HEAD has no response body. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 502 status as GET; HEAD has no response body. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 503 status as GET; HEAD has no response body. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listEmojis: {
@@ -8858,8 +9173,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaEmojisResponse"];
+                };
             };
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
         };
     };
     listGifs: {
@@ -8876,8 +9195,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaGifsResponse"];
+                };
             };
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     createGif: {
@@ -8891,7 +9217,7 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @description Optional name, trimmed before saving; empty is allowed. At most 255 Unicode code points after trimming, without control characters. */
-                    name?: string;
+                    name?: string | null;
                     url: string;
                 };
             };
@@ -8902,12 +9228,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaGifResponse"];
+                };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            405: components["responses"]["Error"];
             413: components["responses"]["RequestTooLarge"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listFavoriteGifs: {
@@ -8924,8 +9257,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaGifsResponse"];
+                };
             };
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     favoriteGif: {
@@ -8944,18 +9284,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
             /** @description Added to favorites */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     unfavoriteGif: {
@@ -8974,11 +9323,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listStickerPacks: {
@@ -8995,8 +9351,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaStickerPacksResponse"];
+                };
             };
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     createStickerPack: {
@@ -9009,10 +9372,14 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Trimmed nonempty name. */
                     name: string;
-                    description?: string;
-                    /** Format: byte */
-                    icon?: string;
+                    description?: string | null;
+                    /**
+                     * @description Optional complete base64 data URL; absent, null or empty means no icon.
+                     * @example data:image/png;base64,YQ==
+                     */
+                    icon?: string | null;
                 };
             };
         };
@@ -9022,11 +9389,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaStickerPackResponse"];
+                };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
             413: components["responses"]["StickerTooLarge"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listStickers: {
@@ -9045,8 +9419,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaStickersResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     addSticker: {
@@ -9061,8 +9443,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: byte */
-                    image: string;
+                    image: components["schemas"]["MediaDataUrl"];
                 };
             };
         };
@@ -9072,12 +9453,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaStickerResponse"];
+                };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            405: components["responses"]["Error"];
             413: components["responses"]["StickerTooLarge"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     deleteStickerPack: {
@@ -9096,8 +9484,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     deleteSticker: {
@@ -9116,8 +9513,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     adminListUsers: {

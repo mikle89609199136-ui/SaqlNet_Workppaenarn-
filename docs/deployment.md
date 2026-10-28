@@ -26,12 +26,62 @@
 - Root `docker-compose.yml` — a **different** full-stack variant (includes the
   legacy gateway, edge on port 3000, Postgres 15).
 
+## Calls: one chat process per environment (#713)
+
+For MVP, run exactly **one chat process against each environment's database**.
+The combined Amvera image runs one chat process under Supervisor. Do not run
+multiple copies of that image against the same database or scale the standalone
+chat service above one replica.
+
+Postgres stores call rooms, participants, timestamps and outcomes; completed
+history is available through `GET /api/v2/calls/history`. Live rooms, pending
+invitations, held accept responses, reconnect timers and WebSocket connections
+remain in the chat process's memory. Call signaling is delivered to local sockets.
+Shared Postgres, Redis presence, NATS and sticky sessions do not coordinate
+these call states between chat processes.
+
+`infrastructure/kubernetes/v2/foundation.yaml` therefore sets chat to one replica
+with the `Recreate` strategy. A normal Deployment update stops the old pod before
+starting the new one; `replicas: 1` with the default rolling strategy could still
+run two chat processes during an update. Do not attach an HPA to chat. When moving
+from an existing multi-replica deployment, stop the old chat instances during a
+maintenance window before starting the single-instance deployment.
+
+Updates interrupt WebSocket connections and temporarily make chat unavailable.
+After startup, `RecoverCallRooms` loads recent, unfinished answered calls from
+Postgres and allows their participants to rejoin for two minutes. Unanswered
+calls are closed immediately; unanswered or abandoned calls keep their final
+status in history. During normal operation, a socket disconnect has a separate
+25-second grace period (#940). The client also waits 25 seconds for recovery, so
+a long rollout can end the client call even while server recovery is still open.
+This is restart recovery, not a zero-downtime or multi-replica guarantee.
+
+Before raising the replica count, implement shared live-room ownership/state,
+cross-process signaling to participants' sockets, and coordinated invitation,
+timeout and history finalization. This coordination is outside the MVP decision
+for #713.
+
+After deploying, check that only one chat instance is running, make a 1:1 call,
+and verify both users' history and a third user's lack of access. Check a brief
+socket disconnect followed by `call_join`, then restart chat during an answered
+call and reconnect promptly. Confirm that history retains the original answer
+time and has one call entry. Reproducible backend checks against a disposable
+Postgres with all migrations:
+
+```bash
+cd backend-v2
+go test -tags=integration ./internal/chat -run 'TestCall(History|RestoreAfterRestart|PeerLeftReason)OnRealSchema' -count=1
+```
+
 ## Operational scripts
 
 `scripts/` contains: `start.sh`, `smoke-test.sh`, `load-test.sh`,
 `migrate-and-verify.sh`, `seedDatabase.js`.
 
 ## Media upload limits (#897)
+
+The reproducible edge/media/PostgreSQL/MinIO suite, browser download headers
+and published client policy are documented in [Media download contract](media-download-contract.md).
 
 Use `MAX_FILE_SIZE=104857600` in the local `.env` and the hosting environment
 to match the client's 100 MB limit (the UI uses binary megabytes). An explicit
