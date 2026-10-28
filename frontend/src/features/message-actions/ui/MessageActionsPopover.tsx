@@ -123,6 +123,7 @@ export const MessageActionsPopover = ({
   const selectionMode = useChatUiStore((state) => state.selectionMode);
   const actionMenu = useChatUiStore((state) => state.actionMenu);
   const setActionMenu = useChatUiStore((state) => state.setActionMenu);
+  const setReactionAuthorsModal = useChatUiStore((state) => state.setReactionAuthorsModal);
   // Закреплённые живут в кеше запросов: меню должно знать, закреплено ли
   // сообщение, чтобы показать «Закрепить» или «Открепить».
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
@@ -177,6 +178,18 @@ export const MessageActionsPopover = ({
         key: 'reply',
         def: t('messageActions.reply', 'Ответить'),
         action: () => actions.startReply(message),
+      },
+      {
+        show: available.has('viewReactions') && !selectionMode,
+        icon: 'heart',
+        key: 'viewReactions',
+        def: t('messageActions.whoReacted', 'Кто отреагировал'),
+        action: () =>
+          setReactionAuthorsModal({
+            messageId: message.id,
+            chatId: message.chatId,
+            reactions: message.reactions,
+          }),
       },
       {
         // В режиме выбора копируются все отмеченные — пункт есть всегда.
@@ -266,6 +279,7 @@ export const MessageActionsPopover = ({
       message,
       onSelection,
       selectionMode,
+      setReactionAuthorsModal,
       t,
     ]
   );

@@ -1129,6 +1129,33 @@ describe('MessageService: обработка последнего сообщен
   });
 });
 
+describe('MessageService: listReactionAuthors (#998)', () => {
+  it('вызывает эндпоинт с messageId, emoji, cursor и limit', async () => {
+    const mockApiClient = {
+      get: vi.fn().mockResolvedValue({
+        data: {
+          emoji: '👍',
+          total: 2,
+          users: [{ id: 'u-1', firstName: 'Алексей', lastName: 'Иванов', username: 'alex' }],
+          nextCursor: 'cur-123',
+        },
+      }),
+    } as unknown as ApiClient;
+
+    const service = new MessageService(mockApiClient, {} as CryptoService);
+    const result = await service.listReactionAuthors('msg-100', '👍', 'cur-prev', 20);
+
+    expect(mockApiClient.get).toHaveBeenCalledWith('/messages/msg-100/reactions/users', {
+      emoji: '👍',
+      cursor: 'cur-prev',
+      limit: 20,
+    });
+    expect(result?.total).toBe(2);
+    expect(result?.users).toHaveLength(1);
+    expect(result?.nextCursor).toBe('cur-123');
+  });
+});
+
 describe('MessageService: желаемое состояние реакции', () => {
   it('отправляет одну замену или снятие через PUT', async () => {
     const bodies: unknown[] = [];

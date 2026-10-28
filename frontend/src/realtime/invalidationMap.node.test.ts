@@ -75,6 +75,9 @@ describe('что устаревает при событии', () => {
     expect(resolveInvalidations(WS_EVENTS.REACTIONS.REACTION_UPDATED, { chatId })).toEqual([
       chatKeys.messages(chatId),
     ]);
+    expect(
+      resolveInvalidations(WS_EVENTS.REACTIONS.REACTION_UPDATED, { chatId, messageId: 'msg-1' })
+    ).toEqual([chatKeys.messages(chatId), ['message', 'msg-1', 'reactions', 'users']]);
   });
 
   it('should touch only pins on pin and unpin', () => {

@@ -1,9 +1,9 @@
-import { Avatar, Icon, NotoEmoji } from '@/shared/ui';
+import { Avatar, Icon, NotoEmoji, Tooltip } from '@/shared/ui';
 import { useMessageLongPress } from '../../model/useMessageLongPress';
 import { getLastMessageText, useChatUiStore } from '@/entities/chat';
 import { menuPointNear } from '../../model/messageMenu';
 import { useMessageMenuKeys } from '../../model/useMessageMenuKeys';
-import type { IMediaItem, IMessageDto } from '../../model/types';
+import type { IMediaItem, IMessageDto, IReaction } from '../../model/types';
 import { cn, receiptState } from '@/shared/lib';
 import {
   formatEditedAt,
@@ -11,7 +11,17 @@ import {
   forwardedOriginId,
   hasMessageMedia,
 } from '../../model/messageUtils';
-import { memo, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { useReactionAuthors } from '../../model/useReactionAuthors';
+import { formatReactionAuthorsSummary } from '../../model/reactionAuthorsSummary';
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { CallMessageContent } from './CallMessageContent';
 import { MessageCheckbox } from './MessageCheckbox';
@@ -97,10 +107,15 @@ function authorInk(senderId: string) {
 const REACTION_PLAY_MS = 2500;
 
 interface IReactionPillProps {
+  messageId?: string;
+  chatId?: string;
+  reactions?: IReaction[];
   emoji: string;
   count: number;
   mine: boolean;
+  currentUserId?: string;
   onToggle: () => void;
+  onOpenAuthors?: () => void;
 }
 
 /**
@@ -108,10 +123,25 @@ interface IReactionPillProps {
  * на мягкой подложке акцента с обводкой. Когда своя реакция появляется
  * (нажатием здесь или из меню сообщения), отметка «хлопает» и эмодзи
  * проигрывает анимацию.
+ * Тултип отображает авторов при наведении (задержка 500 мс) (#998).
  */
-function ReactionPill({ emoji, count, mine, onToggle }: IReactionPillProps) {
+function ReactionPill({
+  messageId = '',
+  chatId,
+  reactions,
+  emoji,
+  count,
+  mine,
+  currentUserId,
+  onToggle,
+  onOpenAuthors,
+}: IReactionPillProps) {
   const [wasMine, setWasMine] = useState(mine);
   const [playing, setPlaying] = useState(false);
+  const [shouldFetch, setShouldFetch] = useState(false);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { t } = useTranslation();
+  const setReactionAuthorsModal = useChatUiStore((state) => state.setReactionAuthorsModal);
 
   // Появление своей реакции ловится при отрисовке: так анимация стартует
   // в том же кадре, что и смена подложки.
@@ -126,7 +156,70 @@ function ReactionPill({ emoji, count, mine, onToggle }: IReactionPillProps) {
     return () => clearTimeout(timer);
   }, [playing]);
 
-  return (
+  const startHoverTimer = () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    // Задержка 500 мс для защиты от hover thrashing при скролле
+    hoverTimerRef.current = setTimeout(() => {
+      setShouldFetch(true);
+    }, 500);
+  };
+
+  const cancelHoverTimer = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    };
+  }, []);
+
+  const isOnlyMine = count === 1 && mine;
+  const isQueryEnabled = shouldFetch && !isOnlyMine && Boolean(messageId);
+
+  const { authors, isLoading, isError } = useReactionAuthors({
+    messageId,
+    emoji,
+    enabled: isQueryEnabled,
+  });
+
+  const tooltipText = useMemo(() => {
+    if (isOnlyMine) {
+      return t('reactions.you', 'Вы');
+    }
+    if (!shouldFetch && !authors.length) {
+      return '';
+    }
+    if (isError) return t('reactions.loadError', 'Не удалось загрузить авторов');
+    if (isLoading && !authors.length) {
+      return t('loading', 'Загрузка...');
+    }
+    return formatReactionAuthorsSummary({
+      authors,
+      total: count,
+      mine,
+      currentUserId,
+      t,
+    });
+  }, [isOnlyMine, shouldFetch, authors, isLoading, isError, count, mine, currentUserId, t]);
+
+  const handleOpenAuthors = () => {
+    if (onOpenAuthors) {
+      onOpenAuthors();
+    } else if (messageId) {
+      setReactionAuthorsModal({
+        messageId,
+        chatId,
+        initialEmoji: emoji,
+        reactions,
+      });
+    }
+  };
+
+  const pill = (
     <button
       aria-label={`${emoji} ${count}`}
       aria-pressed={mine}
@@ -143,6 +236,15 @@ function ReactionPill({ emoji, count, mine, onToggle }: IReactionPillProps) {
         event.stopPropagation();
         onToggle();
       }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        handleOpenAuthors();
+      }}
+      onMouseEnter={startHoverTimer}
+      onMouseLeave={cancelHoverTimer}
+      onFocus={startHoverTimer}
+      onBlur={cancelHoverTimer}
       type="button"
     >
       <NotoEmoji
@@ -155,6 +257,16 @@ function ReactionPill({ emoji, count, mine, onToggle }: IReactionPillProps) {
       />
       {count}
     </button>
+  );
+
+  if (!tooltipText) {
+    return pill;
+  }
+
+  return (
+    <Tooltip content={tooltipText} position="top">
+      {pill}
+    </Tooltip>
   );
 }
 
@@ -625,11 +737,15 @@ export const MessageBubble = memo(
           >
             {message.reactions.map((reaction) => (
               <ReactionPill
+                chatId={message.chatId}
                 count={reaction.count}
+                currentUserId={currentUserId}
                 emoji={reaction.emoji}
                 key={reaction.emoji}
+                messageId={message.id}
                 mine={reaction.myReaction}
                 onToggle={() => onReact(message, reaction.emoji)}
+                reactions={message.reactions}
               />
             ))}
           </div>

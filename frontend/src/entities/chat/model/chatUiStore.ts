@@ -1,10 +1,17 @@
-import type { IMessageDto, TMessagesList } from '@/types';
+import type { IMessageDto, IReaction, TMessagesList } from '@/types';
 import { create } from 'zustand';
 
 export interface IActionMenu {
   messageId: string;
   x: number;
   y: number;
+}
+
+export interface IReactionAuthorsModalState {
+  messageId: string;
+  chatId?: string;
+  initialEmoji?: string;
+  reactions?: IReaction[];
 }
 
 type TTranslations = Record<string, string>;
@@ -45,6 +52,8 @@ interface IChatState {
   profileRequest: { chatId: string; userId: string } | null;
   /** Что удалить — открытый диалог «Удалить сообщение?» (#840). */
   deleteTargets: TMessagesList | null;
+  /** Просмотр списка авторов реакций (#998). */
+  reactionAuthorsModal: IReactionAuthorsModalState | null;
 }
 
 type Updater<T> = (updater: T | ((prev: T) => T)) => void;
@@ -61,6 +70,7 @@ interface IChatActions {
   setJumpRequest: (request: { chatId: string; messageId: string } | null) => void;
   setProfileRequest: (request: { chatId: string; userId: string } | null) => void;
   setDeleteTargets: (targets: TMessagesList | null) => void;
+  setReactionAuthorsModal: (modal: IReactionAuthorsModalState | null) => void;
   resetChatState: (keepJumpForChatId?: string) => void;
 }
 
@@ -76,6 +86,7 @@ const initialChatState: IChatState = {
   jumpRequest: null,
   profileRequest: null,
   deleteTargets: null,
+  reactionAuthorsModal: null,
 };
 
 type InitialState = IChatState & IChatActions;
@@ -107,6 +118,7 @@ export const useChatUiStore = create<InitialState>((set) => {
     setJumpRequest: (jumpRequest) => set({ jumpRequest }),
     setProfileRequest: (profileRequest) => set({ profileRequest }),
     setDeleteTargets: (deleteTargets) => set({ deleteTargets }),
+    setReactionAuthorsModal: (reactionAuthorsModal) => set({ reactionAuthorsModal }),
     // Запрос перехода, адресованный новому чату, переживает смену чата: его
     // ставят перед переходом, а выполняет лента нового чата (#1076).
     resetChatState: (keepJumpForChatId) =>
