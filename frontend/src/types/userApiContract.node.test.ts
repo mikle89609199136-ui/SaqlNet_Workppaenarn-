@@ -278,12 +278,13 @@ describe('Исполнимый контракт User API (#453)', () => {
     expect(accepts('PrivacySettingsPatch', { callsFrom: 'all' })).toBe(false);
   });
 
-  it('сохраняет реальную nullable-семантику списков и обязательные поля профиля', () => {
+  it('возвращает коллекции массивами и сохраняет обязательные поля профиля', () => {
     expect(accepts('ProfileResponse', { user: profile })).toBe(true);
+    expect(accepts('ProfileResponse', { user: { ...profile, badges: null } })).toBe(false);
     expect(accepts('ProfileResponse', { user: { id: profile.id } })).toBe(false);
     for (const name of ['UserSearchResponse', 'UserBlockedResponse']) {
       const key = name === 'UserSearchResponse' ? 'users' : 'blocked';
-      expect(accepts(name, { [key]: null })).toBe(true);
+      expect(accepts(name, { [key]: null })).toBe(false);
       expect(accepts(name, { [key]: [] })).toBe(true);
       expect(accepts(name, {})).toBe(false);
     }
@@ -304,7 +305,8 @@ describe('Исполнимый контракт User API (#453)', () => {
     expect(accepts('UserExport', { ...exported, exportedAt: '2026-10-16 18:00:00+00' })).toBe(
       false
     );
-    expect(accepts('UserExport', { ...exported, chats: null })).toBe(true);
+    expect(accepts('UserExport', { ...exported, chats: null })).toBe(false);
+    expect(accepts('UserExport', { ...exported, chats: [] })).toBe(true);
   });
 
   it('фиксирует timeout=0 и обязательность endpoint/keys без изменения Go', () => {
