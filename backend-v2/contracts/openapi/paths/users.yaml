@@ -170,8 +170,8 @@
     description: >-
       Case-insensitive literal substring search across username, first/last name and bio; trims whitespace and
       an optional leading @. Percent/underscore are literal. Excludes caller and disabled users, sorted by
-      username, at most 50 results, no pagination. Empty query returns []; current unmatched nonempty query
-      may return null (#435).
+      username, at most 50 results, no pagination. Empty query and no matches both return users as [], never
+      null.
     x-error-codes:
       '401': [missing_token, invalid_token, token_revoked]
       '405': [method_not_allowed]
