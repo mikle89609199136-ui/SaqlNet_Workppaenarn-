@@ -29,6 +29,7 @@ import (
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 	"craneapp/backend-v2/internal/platform/db/dbtest"
 	"craneapp/backend-v2/internal/platform/httpx"
+	"craneapp/backend-v2/internal/platform/mediarefs"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -57,7 +58,7 @@ func TestMediaStorageContract(t *testing.T) {
 	minioRequest := testcontainers.ContainerRequest{
 		Env: map[string]string{"MINIO_ROOT_USER": "media-test", "MINIO_ROOT_PASSWORD": "media-test-local-only"},
 		Cmd: []string{"server", "/data"}, ExposedPorts: []string{"9000/tcp"},
-		WaitingFor: wait.ForHTTP("/minio/health/live").WithPort("9000/tcp").WithStartupTimeout(time.Minute),
+		WaitingFor: wait.ForHTTP("/minio/health/ready").WithPort("9000/tcp").WithStartupTimeout(time.Minute),
 	}
 	if image := os.Getenv("MINIO_TEST_IMAGE"); image != "" {
 		// CI loads a cached image before testing. Its content-hashed tag also
@@ -297,6 +298,35 @@ func TestMediaStorageContract(t *testing.T) {
 			response, _ = request(t, http.MethodGet, path, owner, "", nil, nil)
 			require.Equal(t, http.StatusNotFound, response.StatusCode)
 		}
+	})
+
+	t.Run("cleanup and orphan dry-run", func(t *testing.T) {
+		path := upload(t, "cleanup.txt", "text/plain", []byte("cleanup content"), false)
+		id := strings.TrimPrefix(path, mediarefs.URLPrefix)
+		var key string
+		require.NoError(t, db.QueryRow(`SELECT object_key FROM media.uploads WHERE id=$1`, id).Scan(&key))
+		require.NoError(t, store.Put(ctx, bucket, "historical-orphan", strings.NewReader("orphan"), 6, "text/plain"))
+		var inventory bytes.Buffer
+		require.NoError(t, media.AuditOrphans(ctx, db, store, bucket, &inventory))
+		require.Contains(t, inventory.String(), `"objectKey":"historical-orphan"`)
+		require.Contains(t, inventory.String(), `"status":"untracked_candidate"`)
+		// Inventory must not mutate either storage or the job queue.
+		object, err := store.Get(ctx, bucket, "historical-orphan", media.GetOptions{})
+		require.NoError(t, err)
+		require.NoError(t, object.Body.Close())
+		_, err = db.Exec(`UPDATE media.uploads SET created_at=NOW()-INTERVAL '8 days' WHERE id=$1`, id)
+		require.NoError(t, err)
+		_, err = db.Exec(`UPDATE media.object_cleanup_jobs SET next_attempt_at=NOW() WHERE bucket=$1 AND object_key=$2`, bucket, key)
+		require.NoError(t, err)
+		processed, err := media.NewCleanupWorker(db, store).ProcessNext(ctx)
+		require.NoError(t, err)
+		require.True(t, processed)
+		object, err = store.Get(ctx, bucket, key, media.GetOptions{})
+		require.NoError(t, err)
+		require.NoError(t, object.Body.Close())
+		require.Equal(t, http.StatusNotFound, object.StatusCode)
+		response, _ := request(t, http.MethodGet, path, owner, "", nil, nil)
+		require.Equal(t, http.StatusNotFound, response.StatusCode)
 	})
 
 	block, err := aes.NewCipher(make([]byte, 32))

@@ -77,6 +77,17 @@ func (worker *CleanupWorker) ProcessNext(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
+	var ready bool
+	if err := worker.db.QueryRowContext(ctx, `SELECT media.prepare_object_cleanup($1,$2)`, job.Bucket, job.ObjectKey).Scan(&ready); err != nil {
+		return true, err
+	}
+	if !ready {
+		_, err := worker.db.ExecContext(ctx, `
+			UPDATE media.object_cleanup_jobs
+			SET next_attempt_at = NOW() + INTERVAL '5 minutes', claimed_at = NULL, claim_token = NULL
+			WHERE id = $1 AND claim_token = $2 AND completed_at IS NULL`, job.ID, job.ClaimToken)
+		return true, err
+	}
 	if err := worker.store.Delete(ctx, job.Bucket, job.ObjectKey); err != nil {
 		if ctx.Err() != nil {
 			return true, ctx.Err()
@@ -98,13 +109,16 @@ func (worker *CleanupWorker) ProcessNext(ctx context.Context) (bool, error) {
 	}
 
 	_, err = worker.db.ExecContext(ctx, `
+		WITH removed AS (
+			DELETE FROM media.uploads WHERE bucket=$3 AND object_key=$4
+		)
 		UPDATE media.object_cleanup_jobs
 		SET completed_at = NOW(),
 		    last_error = NULL,
 		    claimed_at = NULL,
 		    claim_token = NULL
 		WHERE id = $1 AND claim_token = $2 AND completed_at IS NULL
-	`, job.ID, job.ClaimToken)
+	`, job.ID, job.ClaimToken, job.Bucket, job.ObjectKey)
 	return true, err
 }
 

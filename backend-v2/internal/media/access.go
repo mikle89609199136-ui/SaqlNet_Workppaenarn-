@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Service) CanDownload(ctx context.Context, viewerID, uploadID string) error {
-	var uploaderID string
+	var uploaderID sql.NullString
 	var attachedAt sql.NullTime
 	err := s.db.QueryRowContext(ctx, `SELECT uploader_id::text, first_attached_at FROM media.uploads WHERE id = $1`, uploadID).Scan(&uploaderID, &attachedAt)
 	var pqErr *pq.Error
@@ -56,7 +56,7 @@ func (s *Service) CanDownload(ctx context.Context, viewerID, uploadID string) er
 	if hasLive && viewerAllowed {
 		return nil
 	}
-	if !hasLive && !attachedAt.Valid && viewerID == uploaderID {
+	if !hasLive && !attachedAt.Valid && uploaderID.Valid && viewerID == uploaderID.String {
 		return nil
 	}
 	return ErrForbidden
