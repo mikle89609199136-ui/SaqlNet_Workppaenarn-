@@ -1242,13 +1242,17 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, chatID, memberID st
 		return ErrForbidden
 	}
 
-	// Удаление и пометка «нужна смена ключа» — одним запросом: исключённый
+	// Участника и личные настройки удаляем атомарно с пометкой смены ключа (#462): исключённый
 	// не должен читать то, что напишут после него (#806).
 	result, err := s.db.ExecContext(ctx, `
 		WITH removed AS (
 			DELETE FROM chats.members
 			WHERE chat_id = $1 AND user_id = $2 AND role = $3
-			RETURNING chat_id
+			RETURNING chat_id, user_id
+		), cleaned AS (
+			DELETE FROM chats.user_chat_settings cs
+			USING removed r
+			WHERE cs.chat_id = r.chat_id AND cs.user_id = r.user_id
 		)
 		UPDATE chats.chats SET key_rotation_needed = TRUE
 		WHERE id IN (SELECT chat_id FROM removed)
@@ -1746,6 +1750,9 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 		memberRemoved = affected == 1
 	}
 	if memberRemoved {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`, userID, chatID); err != nil {
+			return err
+		}
 		if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
 			return err
 		}
