@@ -160,3 +160,30 @@ MINIO_TEST_IMAGE=craneapp-media-minio-test:2025-10-15 \
 
 Кеш образа сохраняется до тестов; Backend job имеет бюджет 20 минут, чтобы
 первичная сборка и сохранение Go-кеша успевали завершиться на холодном runner.
+
+## WebSocket через dev proxy (#499)
+
+Vite сохраняет браузерный `Origin` в `/ws`; `changeOrigin` меняет `Host`, но не
+должен подменять `Origin`. Edge и Chat получают один `ALLOWED_ORIGINS` со списком
+адресов фронтенда. Добавлять адрес proxy target (`:8080`) ради обхода 403 не нужно.
+
+Проверка настоящего Chromium → Vite → Edge → Chat:
+
+```bash
+ALLOWED_ORIGINS=http://127.0.0.1:3000 \
+  docker compose -f infrastructure/docker/docker-compose.v2.yml up -d --build
+(cd frontend && npx playwright test --config=playwright.ws-proxy.config.ts)
+```
+
+Нужны установленный Chromium (`cd frontend && npx playwright install chromium`) и
+свободный порт 3000: тест сам запускает Vite с `strictPort`, без переиспользования
+чужого процесса. Target — `http://127.0.0.1:8080`. Существующий стек нужно запускать
+с тем же allowlist; production allowlist и cookie-параметры тест не меняет.
+
+Тест создаёт отдельную тестовую учётную запись, получает HttpOnly-cookie, проверяет
+101 от разрешённого browser origin, 403 от запрещённого origin с той же cookie
+через отдельный HTTP Upgrade и повторный browser 101. В браузере Origin/Cookie
+не подменяются; его handshake считывается через Chromium DevTools. Отрицательный
+Upgrade использует обычный HTTP-клиент, чтобы SameSite/third-party policy браузера
+не маскировала серверную проверку Origin отсутствием cookie. Это отдельный локальный прогон против стека,
+в обычный Vitest/обязательный PR workflow он не входит.
