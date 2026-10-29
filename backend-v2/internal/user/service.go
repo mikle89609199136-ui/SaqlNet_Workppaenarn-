@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"craneapp/backend-v2/internal/auth"
 	"craneapp/backend-v2/internal/platform/authctx"
@@ -136,6 +137,13 @@ func (s *Service) Me(ctx context.Context, userID string) (Profile, error) {
 }
 
 func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, lastName, bio, avatarURL *string) (Profile, error) {
+	// PostgreSQL VARCHAR(64) считает кодовые точки Unicode, а не байты UTF-8.
+	for _, name := range []*string{firstName, lastName} {
+		if name != nil && utf8.RuneCountInString(*name) > 64 {
+			return Profile{}, ErrInvalidInput
+		}
+	}
+
 	if err := s.ensureProfile(ctx, userID); err != nil {
 		return Profile{}, err
 	}

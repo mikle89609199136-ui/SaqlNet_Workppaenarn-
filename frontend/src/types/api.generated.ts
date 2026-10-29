@@ -3109,7 +3109,7 @@ export interface components {
             /** @enum {string} */
             code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
         };
-        /** @description Partial update. Omitted/null string leaves preserve the value. Empty firstName is ignored; empty lastName/bio/avatarUrl clears it. No enforced field length limits or avatar URL validator exist in this handler. Unknown keys are currently ignored; this is not the strict settings patch contract. */
+        /** @description Partial update. Omitted/null string leaves preserve the value. Empty firstName is ignored; empty lastName/bio/avatarUrl clears it. Names are limited to 64 Unicode code points before normalization. No avatar URL validator exists in this handler. Unknown keys are currently ignored; this is not the strict settings patch contract. */
         UpdateProfileRequest: {
             firstName?: string | null;
             lastName?: string | null;
