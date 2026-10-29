@@ -54,18 +54,25 @@ func TestMediaStorageContract(t *testing.T) {
 	dbtest.User(t, db, owner, "storage_owner")
 	const stranger = "bbbbbbbb-0718-4718-8718-222222222222"
 	dbtest.User(t, db, stranger, "storage_stranger")
+	minioRequest := testcontainers.ContainerRequest{
+		Env: map[string]string{"MINIO_ROOT_USER": "media-test", "MINIO_ROOT_PASSWORD": "media-test-local-only"},
+		Cmd: []string{"server", "/data"}, ExposedPorts: []string{"9000/tcp"},
+		WaitingFor: wait.ForHTTP("/minio/health/live").WithPort("9000/tcp").WithStartupTimeout(time.Minute),
+	}
+	if image := os.Getenv("MINIO_TEST_IMAGE"); image != "" {
+		// CI loads a cached image before testing. Its content-hashed tag also
+		// invalidates Go's test cache when the Dockerfile changes.
+		minioRequest.Image = image
+	} else {
+		// Local runs keep building the same MinIO release as Dockerfile.prod;
+		// no public prebuilt image is required.
+		minioRequest.FromDockerfile = testcontainers.FromDockerfile{
+			Context: "testdata", Dockerfile: "minio.Dockerfile",
+			Repo: "craneapp-media-minio-test", Tag: "2025-10-15", KeepImage: true,
+		}
+	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			// Build the same MinIO release as Dockerfile.prod; prebuilt images
-			// are no longer available from Docker Hub/Quay.
-			FromDockerfile: testcontainers.FromDockerfile{
-				Context: "testdata", Dockerfile: "minio.Dockerfile",
-				Repo: "craneapp-media-minio-test", Tag: "2025-10-15", KeepImage: true,
-			},
-			Env: map[string]string{"MINIO_ROOT_USER": "media-test", "MINIO_ROOT_PASSWORD": "media-test-local-only"},
-			Cmd: []string{"server", "/data"}, ExposedPorts: []string{"9000/tcp"},
-			WaitingFor: wait.ForHTTP("/minio/health/live").WithPort("9000/tcp").WithStartupTimeout(time.Minute),
-		}, Started: true,
+		ContainerRequest: minioRequest, Started: true,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, container.Terminate(ctx)) })
