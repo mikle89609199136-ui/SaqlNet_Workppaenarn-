@@ -3989,6 +3989,8 @@ export interface components {
             myReaction: boolean;
         };
         Chat: {
+            /** @description Viewer-specific 1:1 call availability including recipient calls privacy, exceptions and blocks in both directions. False for group/self chats. Optional for old servers/caches; clients preserve previous controls when absent. Never replaces server authorization when starting a call. */
+            canCall?: boolean;
             /** Format: uuid */
             id: string;
             /**

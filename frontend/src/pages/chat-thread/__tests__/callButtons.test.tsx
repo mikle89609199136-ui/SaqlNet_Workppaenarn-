@@ -23,3 +23,23 @@ describe('кнопки звонка в шапке чата', () => {
     expect(screen.queryByRole('button', { name: 'Видеозвонок' })).not.toBeInTheDocument();
   });
 });
+
+describe('доступность звонков из ChatDTO (#1056)', () => {
+  it.each([true, undefined])('сохраняет кнопки при canCall=%s', async (canCall) => {
+    const chat = makeChat({ type: 'private', title: 'Собеседник', canCall });
+    renderChatThread({ chat, messages: [] });
+    expect(await screen.findByRole('button', { name: 'Позвонить' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Видеозвонок' })).toBeInTheDocument();
+  });
+  it('при false скрывает оба звонка, сохраняя переписку', async () => {
+    const chat = makeChat({ type: 'private', title: 'Собеседник', canCall: false });
+    renderChatThread({
+      chat,
+      messages: [makeMessage({ chatId: chat.id, content: 'Переписка доступна' })],
+    });
+    await screen.findByText('Собеседник');
+    expect(screen.queryByRole('button', { name: 'Позвонить' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Видеозвонок' })).not.toBeInTheDocument();
+    expect(screen.getByText('Переписка доступна')).toBeInTheDocument();
+  });
+});

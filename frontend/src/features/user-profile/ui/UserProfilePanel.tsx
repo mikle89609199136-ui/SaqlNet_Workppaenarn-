@@ -11,7 +11,7 @@ import {
 } from '@/entities/user';
 import { useQuery } from '@tanstack/react-query';
 import { formatLastSeen, formatLastSeenApprox, useNow } from '@/shared/lib';
-import { getChatSubtitle, useChatUiStore } from '@/entities/chat';
+import { chatQuery, getChatSubtitle, useChatUiStore } from '@/entities/chat';
 import { REACT_ROUTES, ROUTES } from '@/shared/config';
 import { memo, useCallback, useMemo, type ReactNode } from 'react';
 import { useMatch, useNavigate } from 'react-router-dom';
@@ -85,10 +85,15 @@ export const UserProfilePanel = memo(
      Профиль открывается и по имени автора пересланного сообщения (#785):
      тогда открытый чат чужой, и его статус, общие медиа и звонок
      относились бы к другому собеседнику. */
-    const chat =
+    const sourceChat =
       profileState.chat?.type === 'private' && profileState.chat.peerId === profileState.userId
         ? profileState.chat
         : null;
+    const { data: currentChat } = useQuery({
+      ...chatQuery(sourceChat?.id ?? ''),
+      initialData: sourceChat ?? undefined,
+    });
+    const chat = sourceChat ? (currentChat ?? sourceChat) : null;
     const { data: profileUser, isLoading, isError } = useQuery(userProfileQuery(targetUserId));
     const isMyProfile = Boolean(
       currentUser?.id && (currentUser.id === targetUserId || currentUser.id === profileUser?.id)
@@ -187,7 +192,7 @@ export const UserProfilePanel = memo(
           isMyProfile={isMyProfile}
           isPeerOnline={isPeerOnline}
           onCall={
-            startCall
+            startCall && chat?.canCall !== false
               ? (kind) =>
                   chat &&
                   startCall({
