@@ -46,6 +46,8 @@ export interface IChatDto {
   isBlockedByPeer?: boolean;
   /** Вы заблокировали собеседника. */
   isPeerBlocked?: boolean;
+  /** Viewer-specific; отсутствие в старом DTO сохраняет прежние кнопки. */
+  canCall?: boolean;
   ownerId: string;
   role: TChatRole;
   isPinned: boolean;

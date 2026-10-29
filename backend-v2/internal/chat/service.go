@@ -43,6 +43,7 @@ var (
 )
 
 type Chat struct {
+	CanCall       bool   `json:"canCall"`
 	ID            string `json:"id"`
 	Type          string `json:"type"`
 	Title         string `json:"title"`
@@ -2099,6 +2100,7 @@ func (s *Service) peerPublicKey(ctx context.Context, userID, chatID string) (str
 // зрителя (#463, #783, #784): статус и время активности, фото. Время —
 // взаимно и с приблизительным вместо скрытого (#791); фото — нет.
 func applyPeerPrivacy(chat *Chat, pair privacy.Pair, now time.Time) {
+	chat.CanCall = chat.Type == "private" && chat.PeerID != "" && !pair.ViewerToOwner.Blocked && privacy.Decide(pair.Owner, pair.OwnerToViewer, privacy.Calls)
 	if view := pair.LastSeen(privacy.ParseLastSeen(chat.PeerLastSeen), now); !view.Exact {
 		chat.PeerIsOnline = false
 		chat.PeerLastSeen = ""

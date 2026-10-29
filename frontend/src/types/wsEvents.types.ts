@@ -90,7 +90,7 @@ export interface IMessagesReadEvent {
 export interface IChatUpdatedEvent {
   type: string;
   chatId: string;
-  chat: IChatDto;
+  chat?: IChatDto;
 }
 
 export interface IChatAddMemberEvent {
