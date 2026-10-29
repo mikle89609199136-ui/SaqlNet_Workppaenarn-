@@ -34,7 +34,8 @@ export function usePhotoEditor({
     (file: File) => {
       setPendingAttachments((current) =>
         current.map((attachment) =>
-          // Снимок из редактора уже сжат (WebP) — второй раз не пересжимаем.
+          // Редактор уже оптимизировал размер, включая PNG fallback; повторное
+          // пересжатие при отправке могло бы потерять альфу.
           attachment.file === photoEditorFile
             ? { ...attachment, file, type: 'image', optimizeImage: false }
             : attachment

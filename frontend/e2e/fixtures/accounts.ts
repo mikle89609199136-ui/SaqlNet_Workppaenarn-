@@ -33,7 +33,7 @@ function requirePassword(): string {
 
 export const ACCOUNT_A: IAccount = {
   role: 'A',
-  username: process.env.E2E_USER_A ?? 'e2e_alice_test',
+  username: process.env.E2E_USER_A || 'e2e_alice_test',
   get password() {
     return requirePassword();
   },
@@ -41,7 +41,7 @@ export const ACCOUNT_A: IAccount = {
 
 export const ACCOUNT_B: IAccount = {
   role: 'B',
-  username: process.env.E2E_USER_B ?? 'e2e_boris_test',
+  username: process.env.E2E_USER_B || 'e2e_boris_test',
   get password() {
     return requirePassword();
   },
