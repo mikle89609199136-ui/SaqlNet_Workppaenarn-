@@ -140,13 +140,14 @@ export async function disablePush(deps: IPushDeps = browserPushDeps): Promise<vo
     const registration = await deps.registration();
     const subscription = await registration.pushManager.getSubscription();
     if (subscription) {
-      await deps.deleteSubscription(subscription.endpoint).catch(() => undefined);
+      await deps.deleteSubscription(subscription.endpoint);
       await subscription.unsubscribe();
     }
+    setStatus(baseStatus(deps) ?? 'off', null);
   } catch (error) {
     console.warn('Push не выключился', error);
+    usePushStore.setState({ busy: false });
   }
-  setStatus(baseStatus(deps) ?? 'off', null);
 }
 
 /**

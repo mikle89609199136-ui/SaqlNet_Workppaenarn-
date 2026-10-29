@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { I18nextProvider } from 'react-i18next';
@@ -27,10 +28,13 @@ describe('Settings Navigation UX — широкая зона клика шапк
     vi.restoreAllMocks();
   });
 
-  it('SettingsSidebar: заголовок «Настройки» и стрелка назад находятся внутри единой ссылки к чатам', () => {
+  it('SettingsSidebar: заголовок «Настройки» и стрелка назад находятся внутри единой ссылки к чатам', async () => {
     renderWithProviders(
       <MemoryRouter initialEntries={[ROUTES.SETTINGS]}>
-        <SettingsSidebar />
+        <Routes>
+          <Route path={ROUTES.SETTINGS} element={<SettingsSidebar />} />
+          <Route path={ROUTES.CHATS} element={<div>Список чатов</div>} />
+        </Routes>
       </MemoryRouter>
     );
 
@@ -41,13 +45,16 @@ describe('Settings Navigation UX — широкая зона клика шапк
     expect(link).toHaveAttribute('href', ROUTES.CHATS);
     expect(link).toHaveAttribute('aria-label', 'Назад к чатам');
     expect(link).toHaveClass('w-full');
+    await userEvent.click(heading);
+    expect(screen.getByText('Список чатов')).toBeInTheDocument();
   });
 
-  it('SettingsPage: заголовок подраздела и стрелка назад объединены в единую ссылку возврата', () => {
+  it('SettingsPage: заголовок подраздела и стрелка назад объединены в единую ссылку возврата', async () => {
     renderWithProviders(
       <MemoryRouter initialEntries={['/settings/account/profile']}>
         <Routes>
           <Route path="/settings/:section/:subsection?" element={<SettingsPage />} />
+          <Route path="/settings/account" element={<div>Раздел аккаунта</div>} />
         </Routes>
       </MemoryRouter>
     );
@@ -59,5 +66,7 @@ describe('Settings Navigation UX — широкая зона клика шапк
     expect(link).toHaveAttribute('href', '/settings/account');
     expect(link).toHaveAttribute('aria-label', 'Назад: Аккаунт');
     expect(link).toHaveClass('w-full');
+    await userEvent.click(heading);
+    expect(screen.getByText('Раздел аккаунта')).toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
 import { ToastStack } from '@/shared/ui';
 import { testI18n } from '@/test/harness/i18n';
-import { usePushStore } from '../model/pushNotifications';
+import { browserPushDeps, disablePush, usePushStore } from '../model/pushNotifications';
 import { PushSettingItem } from './PushSettingItem';
 
 function renderPushSettingItem(props: Parameters<typeof PushSettingItem>[0] = {}) {
@@ -119,5 +119,24 @@ describe('PushSettingItem UX & optimistic toggle (#1083)', () => {
 
     await waitFor(() => expect(screen.getByText('Настройки сохранены')).toBeInTheDocument());
     expect(toggle).not.toBeChecked();
+  });
+  it('возвращает включённый свитч и ошибку при реальном сбое отключения', async () => {
+    usePushStore.setState({ status: 'on', subscriptionId: 'sub-1', busy: false });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    renderPushSettingItem({
+      disable: () =>
+        disablePush({
+          ...browserPushDeps,
+          registration: vi.fn().mockRejectedValue(new Error('service worker failed')),
+        }),
+    });
+    const toggle = screen.getByRole('switch', { name: 'На этом устройстве' });
+    await userEvent.click(toggle);
+    await waitFor(() =>
+      expect(screen.getByText('Не удалось сохранить настройки')).toBeInTheDocument()
+    );
+    expect(toggle).toBeChecked();
+    expect(toggle).toBeEnabled();
+    expect(screen.queryByText('Настройки сохранены')).not.toBeInTheDocument();
   });
 });
