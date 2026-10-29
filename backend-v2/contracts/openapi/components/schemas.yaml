@@ -186,6 +186,7 @@ User:
         exceptions) hides the photo from the caller. The caller always sees
         their own.
 Password:
+  pattern: "^(?=[\\s\\S]*[0-9])(?=[\\s\\S]*[!@#$%\\^&*()_+\\-=\\[\\]{}|;:'\",.<>/?`~])(?![\\s\\S]*[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000])[\\s\\S]*$"
   # Требования задаёт internal/auth/password_validator.go и применяет во
   # всех трёх местах, где пароль задаётся: регистрация, смена, включение
   # второго пароля. Нарушение любого из них возвращает 400 weak_password.
@@ -200,15 +201,18 @@ Password:
   example: parolproba1!
 RegisterRequest:
   type: object
-  required: [username, password, firstName]
+  required:
+    - username
+    - password
+    - firstName
   properties:
-    username: { $ref: '#/Username' }
-    password: { $ref: '#/Password' }
-    firstName: { type: string, minLength: 1, maxLength: 64 }
-    lastName: { type: string, maxLength: 64 }
-    language: { type: string }
-    deviceName: { type: string, maxLength: 64 }
-    deviceType: { type: string, enum: [desktop, mobile, tablet] }
+    username: {$ref: '#/Username'}
+    password: {$ref: '#/Password'}
+    firstName: {type: string, minLength: 1, maxLength: 64, pattern: \S}
+    lastName: {type: string, maxLength: 64}
+    language: {type: string}
+    deviceName: {type: string, maxLength: 64}
+    deviceType: {type: string, enum: [desktop, mobile, tablet]}
 LoginRequest:
   type: object
   required: [username, password]
@@ -220,9 +224,11 @@ LoginRequest:
     deviceType: { type: string, enum: [desktop, mobile, tablet] }
 AuthResponse:
   type: object
-  required: [user]
+  required:
+    - user
   properties:
-    user: { $ref: '#/User' }
+    user: {$ref: '#/AuthUser'}
+  additionalProperties: false
 AuthSession:
   type: object
   required: [id, deviceName, deviceType, ipAddress, location, userAgent, lastActive, createdAt, isCurrent]
@@ -1228,11 +1234,15 @@ QrTokenRequest:
     secret: { type: string, description: Secret of the replaced code. }
 QrTokenResponse:
   type: object
-  required: [qrToken, secret, expiresAt]
+  required:
+    - qrToken
+    - secret
+    - expiresAt
   properties:
-    qrToken: { type: string }
-    secret: { type: string, description: Kept by the device showing the code and never drawn into it. }
-    expiresAt: { type: integer, format: int64, description: Unix milliseconds. }
+    qrToken: {type: string}
+    secret: {type: string, description: Kept by the device showing the code and never drawn into it.}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+  additionalProperties: false
 QrSecretRequest:
   type: object
   required: [secret]
@@ -1240,21 +1250,30 @@ QrSecretRequest:
     secret: { type: string }
 QrLoginRequest:
   type: object
-  required: [publicKey, deviceName, userAgent, createdAt, expiresAt]
+  required:
+    - publicKey
+    - deviceName
+    - userAgent
+    - createdAt
+    - expiresAt
   properties:
-    publicKey: { type: string }
-    deviceName: { type: string }
-    userAgent: { type: string }
-    createdAt: { type: integer, format: int64 }
-    expiresAt: { type: integer, format: int64 }
+    publicKey: {type: string}
+    deviceName: {type: string}
+    userAgent: {type: string}
+    createdAt: {type: integer, format: int64, description: Unix milliseconds.}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+  additionalProperties: false
 QrKeyPayload:
   type: object
   description: The key backup master key encrypted to the new device's publicKey. Opaque to the server.
-  required: [senderPublicKey, iv, ct]
+  required:
+    - senderPublicKey
+    - iv
+    - ct
   properties:
-    senderPublicKey: { type: string }
-    iv: { type: string }
-    ct: { type: string }
+    senderPublicKey: {type: string, minLength: 1}
+    iv: {type: string, minLength: 1}
+    ct: {type: string, minLength: 1}
 QrConfirmRequest:
   type: object
   required: [qrToken, payload]
@@ -1267,26 +1286,41 @@ QrOfferRequest:
     replaces: { type: string, description: Token of the code shown so far; it stops working at once. }
 QrOfferResponse:
   type: object
-  required: [offerToken, expiresAt]
+  required:
+    - offerToken
+    - expiresAt
   properties:
-    offerToken: { type: string }
-    expiresAt: { type: integer, format: int64, description: Unix milliseconds. }
+    offerToken: {type: string}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+  additionalProperties: false
 QrOfferClaim:
   type: object
-  required: [publicKey, mac, deviceName, userAgent, claimedAt]
+  required:
+    - publicKey
+    - mac
+    - deviceName
+    - userAgent
+    - claimedAt
   properties:
-    publicKey: { type: string }
-    mac: { type: string }
-    deviceName: { type: string }
-    userAgent: { type: string }
-    claimedAt: { type: integer, format: int64 }
+    publicKey: {type: string}
+    mac: {type: string}
+    deviceName: {type: string}
+    userAgent: {type: string}
+    claimedAt: {type: integer, format: int64, description: Unix milliseconds.}
+  additionalProperties: false
 QrOfferState:
   type: object
-  required: [status]
+  required:
+    - status
   properties:
-    status: { type: string, enum: [pending, claimed, confirmed, expired] }
-    expiresAt: { type: integer, format: int64 }
-    claim: { $ref: '#/QrOfferClaim' }
+    status: {type: string, enum: [pending, claimed, confirmed, expired]}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+    claim: {$ref: '#/QrOfferClaim'}
+  additionalProperties: false
+  oneOf:
+    - {properties: {status: {enum: [pending]}}, required: [expiresAt], not: {required: [claim]}}
+    - {properties: {status: {enum: [claimed]}}, required: [expiresAt, claim]}
+    - {properties: {status: {enum: [confirmed, expired]}}, not: {anyOf: [{required: [expiresAt]}, {required: [claim]}]}}
 QrOfferClaimRequest:
   type: object
   required: [publicKey, mac]
@@ -1296,17 +1330,26 @@ QrOfferClaimRequest:
     deviceName: { type: string, maxLength: 64 }
 QrOfferClaimResponse:
   type: object
-  required: [claimSecret, expiresAt]
+  required:
+    - claimSecret
+    - expiresAt
   properties:
-    claimSecret: { type: string }
-    expiresAt: { type: integer, format: int64 }
+    claimSecret: {type: string}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+  additionalProperties: false
 QrOfferStatusResponse:
   type: object
-  required: [status]
+  required:
+    - status
   properties:
-    status: { type: string, enum: [pending, confirmed, expired] }
-    expiresAt: { type: integer, format: int64 }
-    payload: { $ref: '#/QrKeyPayload' }
+    status: {type: string, enum: [pending, confirmed, expired]}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+    payload: {$ref: '#/QrKeyPayload'}
+  additionalProperties: false
+  oneOf:
+    - {properties: {status: {enum: [pending]}}, required: [expiresAt], not: {required: [payload]}}
+    - {properties: {status: {enum: [confirmed]}}, required: [payload], not: {required: [expiresAt]}}
+    - {properties: {status: {enum: [expired]}}, not: {anyOf: [{required: [expiresAt]}, {required: [payload]}]}}
 QrOfferConfirmRequest:
   type: object
   required: [payload]
@@ -1314,12 +1357,17 @@ QrOfferConfirmRequest:
     payload: { $ref: '#/QrKeyPayload' }
 QrStatusResponse:
   type: object
-  required: [status]
+  required:
+    - status
   properties:
-    status: { type: string, enum: [pending, scanned, confirmed, expired] }
-    expiresAt: { type: integer, format: int64 }
-    payload: { $ref: '#/QrKeyPayload' }
-
+    status: {type: string, enum: [pending, scanned, confirmed, expired]}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+    payload: {$ref: '#/QrKeyPayload'}
+  additionalProperties: false
+  oneOf:
+    - {properties: {status: {enum: [pending, scanned]}}, required: [expiresAt], not: {required: [payload]}}
+    - {properties: {status: {enum: [confirmed]}}, required: [payload], not: {required: [expiresAt]}}
+    - {properties: {status: {enum: [expired]}}, not: {anyOf: [{required: [expiresAt]}, {required: [payload]}]}}
 LegacyGeneralSettings:
   type: object
   additionalProperties: false
@@ -2430,3 +2478,32 @@ PersonalPinEvent:
     messageId: { type: string, format: uuid }
     isPersonalPinned: { type: boolean }
     pinnedAt: { type: string, format: date-time, description: Present on message_personal_pinned. }
+
+TwoFactorStatusResponse:
+  type: object
+  required: [enabled]
+  properties:
+    enabled: { type: boolean }
+TwoFactorVerifyResponse:
+  type: object
+  required: [success, required]
+  properties:
+    success: { type: boolean, enum: [true] }
+    required: { type: boolean, description: Whether a secondary password is enabled. }
+AuthUser:
+  type: object
+  required:
+    - id
+    - username
+    - firstName
+    - lastName
+    - bio
+    - avatarUrl
+  properties:
+    id: {type: string, format: uuid}
+    username: {type: string}
+    firstName: {type: string}
+    lastName: {type: string}
+    bio: {type: string}
+    avatarUrl: {type: string}
+  additionalProperties: false
