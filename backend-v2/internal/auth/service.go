@@ -25,6 +25,7 @@ var (
 	ErrInvalidTwoFA           = errors.New("invalid 2fa")
 	ErrInvalidTwoFAState      = errors.New("enabled 2fa has no password hash")
 	ErrUserNotFound           = errors.New("user not found")
+	ErrInvalidPublicKey       = errors.New("public key is required")
 	ErrTokenGenerationChanged = errors.New("token generation kept changing during issuance")
 	ErrAuthorizationRevoked   = errors.New("authorization token was revoked during issuance")
 )
@@ -227,7 +228,7 @@ func (s *Service) Login(ctx context.Context, username, password, twoFAPassword s
 func (s *Service) SavePublicKey(ctx context.Context, userID, publicKey string) error {
 	publicKey = strings.TrimSpace(publicKey)
 	if publicKey == "" {
-		return errors.New("public key is required")
+		return ErrInvalidPublicKey
 	}
 	var userExists bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)`, userID).Scan(&userExists); err != nil {

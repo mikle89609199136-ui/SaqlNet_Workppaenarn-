@@ -40,7 +40,7 @@
     requestBody:
       required: true
       content: { application/json: { schema: { type: object, required: [publicKey], properties: { publicKey: { type: string } } } } }
-    responses: { '200': { description: Saved }, '400': { $ref: '../components/responses.yaml#/Error' }, '401': { $ref: '../components/responses.yaml#/Error' }, '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' } }
+    responses: { '200': { description: Saved }, '400': { $ref: '../components/responses.yaml#/Error' }, '401': { $ref: '../components/responses.yaml#/Error' }, '500': { $ref: '../components/responses.yaml#/Error' }, '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' } }
 /auth/qr-token:
   post:
     tags: [Auth]
