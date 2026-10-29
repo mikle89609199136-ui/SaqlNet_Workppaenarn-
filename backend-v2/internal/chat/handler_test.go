@@ -609,6 +609,8 @@ func TestHandler_BanMember_Body(t *testing.T) {
 					WillReturnError(sql.ErrNoRows)
 				mock.ExpectExec(`DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2`).
 					WithArgs(handlerChatID, handlerTargetID).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`).
+					WithArgs(handlerTargetID, handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
 					WithArgs(handlerChatID).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectExec(banUpsertQuery).
