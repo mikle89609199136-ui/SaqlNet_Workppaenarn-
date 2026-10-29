@@ -1717,9 +1717,8 @@ UserProfile:
       description: Empty when absent or hidden by privacy; a URI format is not guaranteed by the current writer.
     badges:
       type: array
-      nullable: true
       items: {type: string}
-      description: Null is currently possible when empty (#435). Badge names are open server identifiers, not a closed enum.
+      description: Always an array; empty badges are [], never null. Badge names are open server identifiers, not a closed enum.
     isPremium:
       type: boolean
     isBot:
@@ -1769,10 +1768,9 @@ UserSearchResponse:
   properties:
     users:
       type: array
-      nullable: true
       items: {$ref: '#/UserSearchItem'}
       maxItems: 50
-      description: Empty query gives []; a nonempty search without matches may currently give null (#435). Ordered by username.
+      description: Always an array; empty query and no matches both give [], never null. Ordered by username.
 
 UsernameAvailabilityResponse:
   type: object
@@ -1814,8 +1812,8 @@ UserBlockedResponse:
   properties:
     blocked:
       type: array
-      nullable: true
       items: {$ref: '#/UserBlockedItem'}
+      description: Always an array; empty block list is [], never null.
 
 BlockUserRequest:
   type: object
@@ -2043,8 +2041,8 @@ UserExport:
       $ref: '#/UserProfile'
     chats:
       type: array
-      nullable: true
       items: {$ref: '#/UserExportChat'}
+      description: Always an array; no memberships give [], never null.
     settings:
       $ref: '#/LegacyGeneralSettings'
     privacy:
@@ -2055,8 +2053,8 @@ UserExport:
       description: UTC RFC 3339 generation time.
   description: >-
     Current partial export: profile, chat membership metadata, general settings and privacy. Excludes message
-    bodies, attachments, private keys and other account resources. A full archive is separate #447. chats may
-    currently be null when empty (#435).
+    bodies, attachments, private keys and other account resources. A full archive is separate #447. Empty chats
+    are [], never null.
 
 PasscodeState:
   type: object

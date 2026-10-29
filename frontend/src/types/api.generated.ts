@@ -486,7 +486,7 @@ export interface paths {
         };
         /**
          * Search users
-         * @description Case-insensitive literal substring search across username, first/last name and bio; trims whitespace and an optional leading @. Percent/underscore are literal. Excludes caller and disabled users, sorted by username, at most 50 results, no pagination. Empty query returns []; current unmatched nonempty query may return null (#435).
+         * @description Case-insensitive literal substring search across username, first/last name and bio; trims whitespace and an optional leading @. Percent/underscore are literal. Excludes caller and disabled users, sorted by username, at most 50 results, no pagination. Empty query and no matches both return users as [], never null.
          */
         get: operations["searchUsers"];
         put?: never;
@@ -3143,8 +3143,8 @@ export interface components {
             bio: string;
             /** @description Empty when absent or hidden by privacy; a URI format is not guaranteed by the current writer. */
             avatarUrl: string;
-            /** @description Null is currently possible when empty (#435). Badge names are open server identifiers, not a closed enum. */
-            badges: string[] | null;
+            /** @description Always an array; empty badges are [], never null. Badge names are open server identifiers, not a closed enum. */
+            badges: string[];
             isPremium: boolean;
             isBot: boolean;
         };
@@ -3229,8 +3229,8 @@ export interface components {
             avatarUrl: string;
         };
         UserSearchResponse: {
-            /** @description Empty query gives []; a nonempty search without matches may currently give null (#435). Ordered by username. */
-            users: components["schemas"]["UserSearchItem"][] | null;
+            /** @description Always an array; empty query and no matches both give [], never null. Ordered by username. */
+            users: components["schemas"]["UserSearchItem"][];
         };
         ProfileQrResponse: {
             /** @description 256px PNG data URL. Encoded payload is the profile deep link, not a login token. Canonical URL policy and runtime gap are documented in docs/user-api-contract.md (#452). */
@@ -3680,10 +3680,11 @@ export interface components {
             type: "private" | "group" | "channel" | "self";
             createdAt: components["schemas"]["DatabaseTimestamp"];
         };
-        /** @description Current partial export: profile, chat membership metadata, general settings and privacy. Excludes message bodies, attachments, private keys and other account resources. A full archive is separate #447. chats may currently be null when empty (#435). */
+        /** @description Current partial export: profile, chat membership metadata, general settings and privacy. Excludes message bodies, attachments, private keys and other account resources. A full archive is separate #447. Empty chats are [], never null. */
         UserExport: {
             user: components["schemas"]["UserProfile"];
-            chats: components["schemas"]["UserExportChat"][] | null;
+            /** @description Always an array; no memberships give [], never null. */
+            chats: components["schemas"]["UserExportChat"][];
             settings: components["schemas"]["LegacyGeneralSettings"];
             privacy: components["schemas"]["PrivacySettings"];
             /**
@@ -3696,7 +3697,8 @@ export interface components {
             blockedAt: components["schemas"]["DatabaseTimestamp"];
         };
         UserBlockedResponse: {
-            blocked: components["schemas"]["UserBlockedItem"][] | null;
+            /** @description Always an array; empty block list is [], never null. */
+            blocked: components["schemas"]["UserBlockedItem"][];
         };
         BlockUserRequest: {
             /** Format: uuid */
