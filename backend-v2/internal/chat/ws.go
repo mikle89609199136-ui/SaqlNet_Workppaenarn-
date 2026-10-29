@@ -205,6 +205,10 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "crypto token-generation protocol is not ready", http.StatusServiceUnavailable)
 		return
 	}
+	if err != nil && !errors.Is(err, cryptoclient.ErrInvalidToken) {
+		http.Error(w, "session verification is temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	if err != nil || claims.Subject == "" {
 		http.Error(w, "invalid token", http.StatusUnauthorized)
 		return

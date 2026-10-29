@@ -2276,7 +2276,7 @@ UserUnavailableBody:
   allOf:
     - $ref: '#/Error'
     - type: object
-      properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready]}}
+      properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}
 
 LegacyNullSection:
   type: object

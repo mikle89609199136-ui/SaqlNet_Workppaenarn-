@@ -6,11 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
 
 var ErrTokenGenerationProtocol = errors.New("crypto service does not support token generations")
+
+// Only an explicit rejection from token/verify proves the credential is invalid.
+// All transport, server and malformed-response failures leave its validity unknown.
+var ErrInvalidToken = errors.New("token is invalid or expired")
+var ErrUnavailable = errors.New("crypto service is unavailable")
 
 type Client struct {
 	baseURL string
@@ -76,15 +82,24 @@ func (c *Client) HashPassword(ctx context.Context, password string) (string, err
 		Hash string `json:"hash"`
 	}
 	err := c.post(ctx, "/internal/v1/password/hash", map[string]string{"password": password}, &response)
+	if err == nil && response.Hash == "" {
+		err = ErrUnavailable
+	}
 	return response.Hash, err
 }
 
 func (c *Client) VerifyPassword(ctx context.Context, password, hash string) (bool, error) {
 	var response struct {
-		Valid bool `json:"valid"`
+		Valid *bool `json:"valid"`
 	}
 	err := c.post(ctx, "/internal/v1/password/verify", map[string]string{"password": password, "hash": hash}, &response)
-	return response.Valid, err
+	if err != nil {
+		return false, err
+	}
+	if response.Valid == nil {
+		return false, ErrUnavailable
+	}
+	return *response.Valid, nil
 }
 
 func (c *Client) IssueToken(ctx context.Context, subject, username string, tokenGeneration int64) (IssuedToken, error) {
@@ -105,7 +120,7 @@ func (c *Client) IssueToken(ctx context.Context, subject, username string, token
 		return IssuedToken{}, fmt.Errorf("%w: issue response generation mismatch", ErrTokenGenerationProtocol)
 	}
 	if response.Token == "" || response.Expires <= 0 {
-		return IssuedToken{}, errors.New("crypto service returned an incomplete token response")
+		return IssuedToken{}, ErrUnavailable
 	}
 	return IssuedToken{
 		Token:     response.Token,
@@ -127,6 +142,10 @@ func (c *Client) VerifyToken(ctx context.Context, token string) (TokenClaims, er
 	if response.TokenGeneration == nil {
 		return TokenClaims{}, fmt.Errorf("%w: verify response is missing token_generation", ErrTokenGenerationProtocol)
 	}
+	if response.Subject == "" || response.Expires <= 0 {
+		return TokenClaims{}, ErrUnavailable
+	}
+
 	return TokenClaims{
 		Subject:         response.Subject,
 		Username:        response.Username,
@@ -206,20 +225,38 @@ func (c *Client) ValidateSignalRegistration(ctx context.Context, identityKey, si
 func (c *Client) post(ctx context.Context, path string, request, response any) error {
 	body, err := json.Marshal(request)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("crypto service returned %s", res.Status)
+		if path == "/internal/v1/token/verify" && res.StatusCode == http.StatusUnauthorized {
+			var failure struct {
+				Code string `json:"code"`
+			}
+			body, err := io.ReadAll(io.LimitReader(res.Body, 4097))
+			if err == nil && len(body) <= 4096 && json.Unmarshal(body, &failure) == nil &&
+				(failure.Code == "invalid_token" || failure.Code == "token_expired") {
+				return ErrInvalidToken
+			}
+		}
+		return ErrUnavailable
 	}
-	return json.NewDecoder(res.Body).Decode(response)
+	decoder := json.NewDecoder(res.Body)
+	if err := decoder.Decode(response); err != nil {
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return ErrUnavailable
+	}
+	return nil
 }

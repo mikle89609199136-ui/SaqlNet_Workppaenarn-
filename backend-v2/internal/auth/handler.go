@@ -268,6 +268,10 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "wrong_password", "current password is incorrect")
 		return
 	}
+	if errors.Is(err, cryptoclient.ErrUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", "crypto service is temporarily unavailable")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "change password failed")
 		return
@@ -307,6 +311,10 @@ func (h *Handler) TwoFAEnable(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "weak_password", "password does not meet security requirements")
 		return
 	}
+	if errors.Is(err, cryptoclient.ErrUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", "crypto service is temporarily unavailable")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to enable 2fa")
 		return
@@ -336,6 +344,10 @@ func (h *Handler) TwoFADisable(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "wrong_password", "incorrect 2FA password")
 		return
 	}
+	if errors.Is(err, cryptoclient.ErrUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", "crypto service is temporarily unavailable")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to disable 2fa")
 		return
@@ -357,6 +369,10 @@ func (h *Handler) TwoFAVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	required, ok, err := h.service.TwoFAVerify(r.Context(), current.ID, input.Password)
+	if errors.Is(err, cryptoclient.ErrUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", "crypto service is temporarily unavailable")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "verification failed")
 		return
@@ -844,5 +860,5 @@ func (h *Handler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 func tokenIssuanceUnavailable(err error) bool {
-	return errors.Is(err, ErrTokenGenerationChanged) || errors.Is(err, cryptoclient.ErrTokenGenerationProtocol)
+	return errors.Is(err, ErrTokenGenerationChanged) || errors.Is(err, cryptoclient.ErrTokenGenerationProtocol) || errors.Is(err, cryptoclient.ErrUnavailable)
 }

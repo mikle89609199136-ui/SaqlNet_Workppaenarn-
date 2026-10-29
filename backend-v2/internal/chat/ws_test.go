@@ -125,7 +125,7 @@ func TestWSServerRejectsMissingToken(t *testing.T) {
 }
 
 func TestWSServerRejectsInvalidToken(t *testing.T) {
-	ws := NewWSServer(nil, fakeTokenVerifier{err: errors.New("invalid")}, nil)
+	ws := NewWSServer(nil, fakeTokenVerifier{err: cryptoclient.ErrInvalidToken}, nil)
 	t.Cleanup(ws.Close)
 	request := httptest.NewRequest(http.MethodGet, "https://craneapp.example/ws", nil)
 	request.Header.Set("Origin", "https://craneapp.example")
@@ -246,5 +246,18 @@ func TestWSServerRejectsBearerToken(t *testing.T) {
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("bearer token: %d, want 401", response.Code)
+	}
+}
+
+func TestWSServerReportsVerifierFailureAsUnavailable(t *testing.T) {
+	ws := NewWSServer(nil, fakeTokenVerifier{err: cryptoclient.ErrUnavailable}, nil)
+	t.Cleanup(ws.Close)
+	r := httptest.NewRequest(http.MethodGet, "https://craneapp.example/ws", nil)
+	r.Header.Set("Origin", "https://craneapp.example")
+	r.AddCookie(&http.Cookie{Name: "craneapp_session", Value: "valid"})
+	w := httptest.NewRecorder()
+	ws.ServeWS(w, r)
+	if w.Code != http.StatusServiceUnavailable || w.Header().Get("Set-Cookie") != "" {
+		t.Fatalf("unexpected response: %d %s", w.Code, w.Body)
 	}
 }

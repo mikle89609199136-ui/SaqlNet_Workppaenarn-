@@ -2,7 +2,12 @@ openapi: 3.0.3
 info:
   title: CraneApp API v2
   version: 0.3.0
-  description: Public REST API exposed by the CraneApp edge gateway.
+  description: >-
+    Public REST API exposed by the CraneApp edge gateway. Protected operations can
+    return HTTP 503 crypto_unavailable when token verification cannot complete,
+    including a crypto transport failure, 5xx or malformed response. The existing
+    session cookie is preserved. Only a confirmed invalid/expired token is 401;
+    token revocation and missing-session checks remain enforced.
 servers:
   - url: /api/v2
 tags:

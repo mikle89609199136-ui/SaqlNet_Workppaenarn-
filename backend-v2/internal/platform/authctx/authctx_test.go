@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,5 +167,32 @@ func TestMiddlewareRejectsBearerToken(t *testing.T) {
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("expected %d, got %d", http.StatusUnauthorized, response.Code)
+	}
+}
+
+func TestMiddlewareDistinguishesInvalidTokensAndVerifierFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"invalid token", cryptoclient.ErrInvalidToken, 401, "invalid_token"},
+		{"outage", cryptoclient.ErrUnavailable, 503, "crypto_unavailable"},
+		{"unexpected verifier error", errors.New("private infrastructure detail"), 503, "crypto_unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := Middleware(middlewareTokenVerifier{err: tc.err}, middlewareTokenChecker{})(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("protected handler ran") }))
+			r := httptest.NewRequest(http.MethodGet, "/protected", nil)
+			r.AddCookie(&http.Cookie{Name: SessionCookieName(), Value: "credential"})
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != tc.status || !strings.Contains(w.Body.String(), tc.code) {
+				t.Fatalf("unexpected response: %d %s", w.Code, w.Body)
+			}
+			if w.Header().Get("Set-Cookie") != "" || strings.Contains(w.Body.String(), "private infrastructure") {
+				t.Fatal("response leaked details or cleared session")
+			}
+		})
 	}
 }
