@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
@@ -91,8 +92,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Username = usernamepolicy.Normalize(input.Username)
-	if !usernamepolicy.Valid(input.Username) || strings.TrimSpace(input.FirstName) == "" {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username or firstName is invalid")
+	if !usernamepolicy.Valid(input.Username) || strings.TrimSpace(input.FirstName) == "" || utf8.RuneCountInString(input.FirstName) > 64 || utf8.RuneCountInString(input.LastName) > 64 {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username, firstName or lastName is invalid")
 		return
 	}
 	user, token, err := h.service.Register(

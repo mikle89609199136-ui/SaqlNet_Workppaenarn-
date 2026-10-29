@@ -204,8 +204,8 @@ RegisterRequest:
   properties:
     username: { $ref: '#/Username' }
     password: { $ref: '#/Password' }
-    firstName: { type: string, minLength: 1 }
-    lastName: { type: string }
+    firstName: { type: string, minLength: 1, maxLength: 64 }
+    lastName: { type: string, maxLength: 64 }
     language: { type: string }
     deviceName: { type: string, maxLength: 64 }
     deviceType: { type: string, enum: [desktop, mobile, tablet] }
@@ -281,9 +281,11 @@ UpdateProfileRequest:
   properties:
     firstName:
       type: string
+      maxLength: 64
       nullable: true
     lastName:
       type: string
+      maxLength: 64
       nullable: true
     bio:
       type: string
@@ -293,7 +295,7 @@ UpdateProfileRequest:
       nullable: true
   description: >-
     Partial update. Omitted/null string leaves preserve the value. Empty firstName is ignored; empty
-    lastName/bio/avatarUrl clears it. No enforced field length limits or avatar URL validator exist in this
+    lastName/bio/avatarUrl clears it. Names are limited to 64 Unicode code points before normalization. No avatar URL validator exists in this
     handler. Unknown keys are currently ignored; this is not the strict settings patch contract.
 RenameUsernameRequest:
   type: object
