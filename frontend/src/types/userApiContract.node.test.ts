@@ -84,7 +84,7 @@ const profile = {
   lastName: '',
   bio: '',
   avatarUrl: '',
-  badges: null,
+  badges: [],
   isPremium: false,
   isBot: false,
 } satisfies components['schemas']['UserProfile'];
