@@ -3658,10 +3658,6 @@ export interface components {
             storage: components["schemas"]["StorageUsage"];
             settings: components["schemas"]["LegacyStorageSettings"];
         };
-        UserRouteNotFoundBody: components["schemas"]["Error"] & {
-            /** @enum {string} */
-            code?: "route_not_found";
-        };
         StorageSettingsUpdateResponse: {
             /** @enum {boolean} */
             success: true;
@@ -4554,15 +4550,6 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["UserInvalidExceptionBody"];
-            };
-        };
-        /** @description HTTP 404; code is route_not_found. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
-        UserRouteNotFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["UserRouteNotFoundBody"];
             };
         };
         /** @description HTTP 400; code is invalid_json or self_block or validation_failed. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
@@ -8087,7 +8074,16 @@ export interface operations {
                 };
             };
             401: components["responses"]["UserUnauthorized"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "GET";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -8120,7 +8116,16 @@ export interface operations {
             400: components["responses"]["UserInvalidInput"];
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "PUT";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -8147,7 +8152,16 @@ export interface operations {
             };
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "DELETE";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -8174,7 +8188,16 @@ export interface operations {
             };
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "DELETE";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -8319,7 +8342,16 @@ export interface operations {
                 };
             };
             401: components["responses"]["UserUnauthorized"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "GET";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -8352,7 +8384,16 @@ export interface operations {
             400: components["responses"]["UserInvalidInput"];
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "POST";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -8385,7 +8426,16 @@ export interface operations {
             400: components["responses"]["UserPasscodeNotSet"];
             401: components["responses"]["UserPasscodeUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "POST";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -8418,7 +8468,16 @@ export interface operations {
             400: components["responses"]["UserPasscodeNotSet"];
             401: components["responses"]["UserPasscodeUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "POST";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -8451,7 +8510,16 @@ export interface operations {
             400: components["responses"]["UserInvalidInput"];
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "PUT";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
