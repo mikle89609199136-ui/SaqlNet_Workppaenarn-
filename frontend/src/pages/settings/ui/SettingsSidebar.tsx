@@ -31,13 +31,13 @@ export function SettingsSidebar() {
 
   return (
     <>
-      <div className="flex items-center pt-3.5 pr-4 pb-2.5 pl-2">
+      <div className="flex h-16 shrink-0 items-center pr-4 pl-2.5">
         {/* Назад к чатам: прежде туда вела боковая панель, которой больше
             нет (#818). Как в макете — стрелка цветом акцента, вся плашка
             кликабельна на всю ширину (#1083). */}
         <Link
-          aria-label={t('backToChats', 'Назад к чатам')}
-          className="flex h-11 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-button px-2 text-ink hover:layer-hover active:layer-press focus-visible:outline-2 focus-visible:outline-brand"
+          aria-label={`${t('backToChats', 'Назад к чатам')}: ${t('settings.menu.title', 'Настройки')}`}
+          className="flex h-11 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-button text-ink hover:layer-hover active:layer-press focus-visible:outline-2 focus-visible:outline-brand"
           to={ROUTES.CHATS}
         >
           <span className="flex size-10 shrink-0 items-center justify-center rounded-icon text-brand">

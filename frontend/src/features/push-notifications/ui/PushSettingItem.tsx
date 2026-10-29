@@ -43,7 +43,7 @@ export function PushSettingItem({
         const currentStatus = usePushStore.getState().status;
         if (result === 'on' || currentStatus === 'on') {
           showToast('success', t('settingsSaved', 'Настройки сохранены'));
-        } else {
+        } else if (result !== 'denied' && result !== 'off') {
           showToast('error', t('toast.settingsFailed', 'Не удалось сохранить настройки'));
         }
       } else {

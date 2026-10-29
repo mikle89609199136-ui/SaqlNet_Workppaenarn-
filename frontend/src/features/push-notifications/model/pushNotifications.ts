@@ -129,6 +129,7 @@ export async function enablePush(deps: IPushDeps = browserPushDeps): Promise<TPu
   } catch (error) {
     console.warn('Push не включился', error);
     setStatus('off', null);
+    throw error;
   }
   return usePushStore.getState().status;
 }

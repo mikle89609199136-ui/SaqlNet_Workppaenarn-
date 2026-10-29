@@ -44,8 +44,8 @@ export function SettingsPage() {
           <header className="flex h-16 shrink-0 items-center border-b border-divider px-1.5 md:px-4">
             {header.backTo ? (
               <Link
-                aria-label={header.backLabel}
-                className="flex h-11 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-button px-2 text-ink hover:layer-hover active:layer-press focus-visible:outline-2 focus-visible:outline-brand"
+                aria-label={`${header.backLabel}: ${header.title}`}
+                className="flex h-11 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-button text-ink hover:layer-hover active:layer-press focus-visible:outline-2 focus-visible:outline-brand"
                 to={header.backTo}
               >
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-icon text-brand">

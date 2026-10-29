@@ -116,7 +116,7 @@ describe('push на этом устройстве', () => {
       saveSubscription: vi.fn(async () => Promise.reject(new Error('500'))),
     });
 
-    expect(await enablePush(deps)).toBe('off');
+    await expect(enablePush(deps)).rejects.toThrow();
     expect(readPushSubscriptionId()).toBeNull();
     warn.mockRestore();
   });

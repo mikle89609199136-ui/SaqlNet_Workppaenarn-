@@ -16,7 +16,7 @@ function renderPushSettingItem(props: Parameters<typeof PushSettingItem>[0] = {}
   );
 }
 
-describe('PushSettingItem UX & optimistic toggle (#1083)', () => {
+describe('Переключатель push — мгновенная реакция и откат (#1083)', () => {
   beforeEach(() => {
     usePushStore.setState({ status: 'off', subscriptionId: null, busy: false });
     vi.restoreAllMocks();
@@ -38,6 +38,8 @@ describe('PushSettingItem UX & optimistic toggle (#1083)', () => {
 
     // Свитч должен стать checked мгновенно, хотя промис ещё не разрешён
     expect(toggle).toBeChecked();
+    expect(toggle).toBeDisabled();
+    await userEvent.click(toggle);
     expect(enableMock).toHaveBeenCalledTimes(1);
 
     // Завершаем промис и проверяем, что статус зафиксирован
@@ -63,22 +65,21 @@ describe('PushSettingItem UX & optimistic toggle (#1083)', () => {
     expect(toggle).toBeChecked();
   });
 
-  it('откатывает тумблер в unchecked и показывает тост ошибки при отказе в разрешениях', async () => {
-    const enableMock = vi.fn().mockImplementation(async () => {
-      usePushStore.setState({ status: 'denied', subscriptionId: null, busy: false });
-      return 'denied';
-    });
-
-    renderPushSettingItem({ enable: enableMock });
-
-    const toggle = screen.getByRole('switch', { name: 'На этом устройстве' });
-    await userEvent.click(toggle);
-
-    await waitFor(() =>
-      expect(screen.getByText('Не удалось сохранить настройки')).toBeInTheDocument()
-    );
-    expect(toggle).not.toBeChecked();
-  });
+  it.each(['denied', 'off'] as const)(
+    'молча откатывает свитч при отказе или закрытии запроса разрешения (%s)',
+    async (status) => {
+      const enableMock = vi.fn(async () => {
+        usePushStore.setState({ status, subscriptionId: null, busy: false });
+        return status;
+      });
+      renderPushSettingItem({ enable: enableMock });
+      const toggle = screen.getByRole('switch', { name: 'На этом устройстве' });
+      await userEvent.click(toggle);
+      await waitFor(() => expect(toggle).not.toBeChecked());
+      expect(screen.queryByText('Не удалось сохранить настройки')).not.toBeInTheDocument();
+      expect(screen.queryByText('Настройки сохранены')).not.toBeInTheDocument();
+    }
+  );
 
   it('откатывает тумблер и показывает ошибку при сбое в enable', async () => {
     const enableMock = vi.fn().mockRejectedValue(new Error('Network error'));

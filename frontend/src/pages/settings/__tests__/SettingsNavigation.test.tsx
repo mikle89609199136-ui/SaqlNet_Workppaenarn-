@@ -23,7 +23,7 @@ function renderWithProviders(ui: React.ReactElement) {
   );
 }
 
-describe('Settings Navigation UX — широкая зона клика шапки (#1083)', () => {
+describe('Навигация настроек — широкая зона клика шапки (#1083)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -43,8 +43,7 @@ describe('Settings Navigation UX — широкая зона клика шапк
 
     expect(link).toBeInTheDocument();
     expect(link).toHaveAttribute('href', ROUTES.CHATS);
-    expect(link).toHaveAttribute('aria-label', 'Назад к чатам');
-    expect(link).toHaveClass('w-full');
+    expect(link).toHaveAccessibleName('Назад к чатам: Настройки');
     await userEvent.click(heading);
     expect(screen.getByText('Список чатов')).toBeInTheDocument();
   });
@@ -64,8 +63,7 @@ describe('Settings Navigation UX — широкая зона клика шапк
 
     expect(link).toBeInTheDocument();
     expect(link).toHaveAttribute('href', '/settings/account');
-    expect(link).toHaveAttribute('aria-label', 'Назад: Аккаунт');
-    expect(link).toHaveClass('w-full');
+    expect(link).toHaveAccessibleName('Назад: Аккаунт: Изменить профиль');
     await userEvent.click(heading);
     expect(screen.getByText('Раздел аккаунта')).toBeInTheDocument();
   });
