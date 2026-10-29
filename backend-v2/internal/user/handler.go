@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -741,11 +742,20 @@ func isValidUUID(value string) bool {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(value); err != nil {
+	if !decodeSingleJSON(w, r, value, 128<<10) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}
 	return true
+}
+
+func decodeSingleJSON(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
+	if err := dec.Decode(value); err != nil {
+		return false
+	}
+	// После первого значения допустимы только пробелы и конец тела.
+	return errors.Is(dec.Decode(&struct{}{}), io.EOF)
 }
 
 type preferenceRouteSpec struct {

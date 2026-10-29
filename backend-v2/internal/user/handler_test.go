@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -625,6 +626,250 @@ func TestDeleteDeviceRollsBackWhenNotificationFails(t *testing.T) {
 	NewHandler(NewService(db), nil).DeleteDevice(response, newDeleteDeviceRequest(t, "/api/v2/users/devices/"+deleteDeviceSessionID))
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", response.Code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDecodeRejectsTrailingData(t *testing.T) {
+	type payload struct {
+		Theme string `json:"theme"`
+	}
+
+	cases := []struct {
+		name   string
+		body   string
+		wantOK bool
+	}{
+		{name: "empty_object", body: `{}`, wantOK: true},
+		{name: "at_limit", body: `{}` + strings.Repeat(" ", (128<<10)-2), wantOK: true},
+		{name: "whitespace_over_limit", body: `{}` + strings.Repeat(" ", 128<<10), wantOK: false},
+		{name: "valid", body: `{"theme":"dark"}`, wantOK: true},
+		{name: "trailing_whitespace_nl", body: "{\"theme\":\"dark\"}\n", wantOK: true},
+		{name: "trailing_whitespace_crlf", body: "{\"theme\":\"dark\"}\r\n", wantOK: true},
+		{name: "trailing_whitespace_tab", body: "{\"theme\":\"dark\"}\t", wantOK: true},
+		{name: "second_json", body: `{"theme":"dark"} {"ignored":true}`, wantOK: false},
+		{name: "trailing_garbage", body: `{"theme":"dark"} garbage`, wantOK: false},
+		{name: "trailing_null", body: `{"theme":"dark"} null`, wantOK: false},
+		{name: "trailing_number", body: `{"theme":"dark"} 1`, wantOK: false},
+		{name: "trailing_string", body: `{"theme":"dark"} "x"`, wantOK: false},
+		{name: "trailing_array", body: `{"theme":"dark"} []`, wantOK: false},
+		{name: "trailing_true", body: `{"theme":"dark"} true`, wantOK: false},
+		{name: "empty_body", body: ``, wantOK: false},
+		{name: "whitespace_only", body: " \n\t", wantOK: false},
+		{name: "oversized", body: `{"theme":"` + strings.Repeat("a", 129<<10) + `"}`, wantOK: false},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPut, "/api/v2/users/settings", strings.NewReader(tt.body))
+			rr := httptest.NewRecorder()
+			var got payload
+			ok := decode(rr, req, &got)
+			if ok != tt.wantOK {
+				t.Fatalf("decode ok=%v, want %v; status=%d body=%s", ok, tt.wantOK, rr.Code, rr.Body.String())
+			}
+			if !tt.wantOK {
+				if rr.Code != http.StatusBadRequest {
+					t.Fatalf("status=%d, want 400", rr.Code)
+				}
+				code, msg := decodeErrorBody(t, rr)
+				if code != "invalid_json" || msg != "invalid JSON body" {
+					t.Fatalf("code/msg = %q/%q", code, msg)
+				}
+			}
+		})
+	}
+}
+
+func TestDecodeSingleJSONPreservesPushBodyLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		size int
+		want bool
+	}{
+		{"at_limit", maxPushSubscriptionBodyBytes, true},
+		{"over_limit", maxPushSubscriptionBodyBytes + 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v2/users/push/subscriptions", strings.NewReader(`{}`+strings.Repeat(" ", tc.size-2)))
+			var value map[string]any
+			if got := decodeSingleJSON(httptest.NewRecorder(), req, &value, maxPushSubscriptionBodyBytes); got != tc.want {
+				t.Fatalf("decodeSingleJSON = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBodyEndpointsRejectTrailingDataWithoutSideEffect(t *testing.T) {
+	const userID = "11111111-1111-4111-8111-111111111111"
+	const targetID = "22222222-2222-4222-8222-222222222222"
+
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+		call   func(h *Handler, w http.ResponseWriter, r *http.Request)
+	}{
+		{
+			name: "put_me_decode", method: http.MethodPut, path: "/api/v2/users/me",
+			body: `{"firstName":"a"} {"x":1}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Me(w, r) },
+		},
+		{
+			name: "put_settings_decodeSettingsPatch", method: http.MethodPut, path: "/api/v2/users/settings",
+			body: `{"theme":"trailing"} {"ignored":true}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Settings(w, r) },
+		},
+		{
+			name: "put_all_settings_decodeSettingsBulkPatch", method: http.MethodPut, path: "/api/v2/users/all-settings",
+			body: `{"settings":{"theme":"dark"}} {"y":2}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.AllSettings(w, r) },
+		},
+		{
+			name: "post_blocked_decode", method: http.MethodPost, path: "/api/v2/users/blocked",
+			body: `{"userId":"` + targetID + `"} {"z":3}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Blocked(w, r) },
+		},
+		{
+			name: "username", method: http.MethodPut, path: "/api/v2/users/me/username",
+			body: `{"username":"valid_name"} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Username(w, r) },
+		},
+		{
+			name: "avatar", method: http.MethodPut, path: "/api/v2/users/avatar",
+			body: `{"avatarUrl":"https://example.com/avatar.png"} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Avatar(w, r) },
+		},
+		{
+			name: "privacy", method: http.MethodPut, path: "/api/v2/users/privacy",
+			body: `{"calls":"nobody"} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Privacy(w, r) },
+		},
+		{
+			name: "exception", method: http.MethodPut, path: "/api/v2/users/privacy/exceptions/calls/22222222-2222-4222-8222-222222222222",
+			body: `{"mode":"allow"} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.PrivacyExceptions(w, r) },
+		},
+		{
+			name: "notifications", method: http.MethodPut, path: "/api/v2/users/notifications",
+			body: `{"messages":false} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Preference(w, r) },
+		},
+		{
+			name: "sounds", method: http.MethodPut, path: "/api/v2/users/sounds",
+			body: `{"messagesSound":false} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Preference(w, r) },
+		},
+		{
+			name: "advanced", method: http.MethodPut, path: "/api/v2/users/advanced-settings",
+			body: `{"saveDrafts":false} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Preference(w, r) },
+		},
+		{
+			name: "folders", method: http.MethodPut, path: "/api/v2/users/folders",
+			body: `{"folders":[]} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Folders(w, r) },
+		},
+		{
+			name: "storage", method: http.MethodPut, path: "/api/v2/users/storage/settings",
+			body: `{"autoDownloadWifi":false} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Storage(w, r) },
+		},
+		{
+			name: "device", method: http.MethodPost, path: "/api/v2/users/devices/register",
+			body: `{"deviceName":"device"} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.RegisterDevice(w, r) },
+		},
+		{
+			name: "passcode_set", method: http.MethodPost, path: "/api/v2/users/passcode/set",
+			body: `{"passcode":"1234"} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Passcode(w, r) },
+		},
+		{
+			name: "passcode_verify", method: http.MethodPost, path: "/api/v2/users/passcode/verify",
+			body: `{"passcode":"1234"} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Passcode(w, r) },
+		},
+		{
+			name: "passcode_disable", method: http.MethodPost, path: "/api/v2/users/passcode/disable",
+			body: `{"passcode":"1234"} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Passcode(w, r) },
+		},
+		{
+			name: "passcode_timeout", method: http.MethodPut, path: "/api/v2/users/passcode/timeout",
+			body: `{"timeout":30} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.Passcode(w, r) },
+		},
+		{
+			name: "push_save", method: http.MethodPost, path: "/api/v2/users/push/subscriptions",
+			body: `{"endpoint":"https://fcm.googleapis.com/push/test","keys":{"p256dh":"key","auth":"auth"}} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.PushSubscriptions(w, r) },
+		},
+		{
+			name: "push_delete", method: http.MethodDelete, path: "/api/v2/users/push/subscriptions",
+			body: `{"endpoint":"https://fcm.googleapis.com/push/test"} {}`,
+			call: func(h *Handler, w http.ResponseWriter, r *http.Request) { h.PushSubscriptions(w, r) },
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			req = req.WithContext(authctx.WithUser(req.Context(), authctx.User{ID: userID}))
+			rr := httptest.NewRecorder()
+			tt.call(NewHandler(NewService(db), nil), rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d, want 400; body=%s", rr.Code, rr.Body.String())
+			}
+			code, msg := decodeErrorBody(t, rr)
+			wantMessage := "invalid JSON body"
+			if tt.name == "push_delete" {
+				wantMessage = "endpoint is required"
+			}
+			if code != "invalid_json" || msg != wantMessage {
+				t.Fatalf("code/msg = %q/%q", code, msg)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestSettingsUnknownFieldReturnsValidationFailedNotInvalidJSON(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v2/users/settings",
+		strings.NewReader(`{"theme":"dark","unknownField":1}`),
+	)
+	req = req.WithContext(authctx.WithUser(req.Context(), authctx.User{
+		ID: "11111111-1111-4111-8111-111111111111",
+	}))
+	rr := httptest.NewRecorder()
+	NewHandler(NewService(db), nil).Settings(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400; body=%s", rr.Code, rr.Body.String())
+	}
+	code, _ := decodeErrorBody(t, rr)
+	if code != "validation_failed" {
+		t.Fatalf("code=%q, want validation_failed (DisallowUnknownFields must stay off)", code)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

@@ -1,12 +1,13 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { expect } from '@playwright/test';
 import type { APIRequestContext, Browser, BrowserContext, Cookie, Page } from '@playwright/test';
 import type { IAccount } from './accounts';
 
 /**
  * Установка сессии в браузер.
  *
- * `storageState` Playwright сохраняет cookies и localStorage, но не
+ * `storageState` Playwright по умолчанию сохраняет cookies и localStorage, но не
  * IndexedDB — а ключи шифрования лежат именно там. Восстановленная из
  * `storageState` сессия выглядит рабочей ровно до первой расшифровки.
  *
@@ -101,9 +102,10 @@ export async function loginViaApi(
  */
 export async function openContextFor(
   browser: Browser,
-  account: ISignedInAccount
+  account: ISignedInAccount,
+  baseURL?: string
 ): Promise<BrowserContext> {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ baseURL, locale: 'ru-RU' });
   await applySession(context, account);
 
   return context;
@@ -130,65 +132,43 @@ export async function applySession(
   );
 }
 
-/**
- * Открыть приложение и дождаться готовности шифрования.
- *
- * Признак готовности — публикация открытого ключа: она происходит после
- * того, как пара создана или загружена из хранилища, и ровно перед тем,
- * как сервис объявляет себя готовым. Другого сигнала приложение наружу
- * не даёт.
- */
+/** Настроить/открыть облачную копию; дождаться публикации ключа и готового чата. */
 export async function openApp(context: BrowserContext, url: string): Promise<Page> {
   const page = await context.newPage();
-
-  // Ответ ловится любой, а не только успешный: на /auth/* стоит
-  // ограничение частоты, и отклонённая публикация выглядела бы как
-  // «ключи не готовы» — то есть как таймаут без объяснения причины.
-  const published = waitForKeyPublication(page);
-
-  await page.goto(url);
-
-  const status = await published;
-
-  if (status !== 200) {
-    // Приложение публикует ключ заново при каждой полной загрузке,
-    // поэтому одна повторная попытка снимает отказ по частоте.
-    const retried = waitForKeyPublication(page);
-    await page.reload();
-
-    const retryStatus = await retried;
-
-    if (retryStatus !== 200) {
-      throw new Error(
-        `Публикация открытого ключа отклонена (${retryStatus}). ` +
-          'Без неё собеседник не сможет прочитать сообщения.'
-      );
+  const publications: number[] = [];
+  page.on('response', (response) => {
+    if (
+      new URL(response.url()).pathname === '/api/v2/auth/public-key' &&
+      response.request().method() === 'POST'
+    ) {
+      publications.push(response.status());
     }
+  });
+  await page.goto(url);
+  const cloud = page.getByRole('textbox', { name: 'Облачный пароль', exact: true });
+  const readyScreen = page.getByRole('heading', { name: 'Сообщения', exact: true });
+  await expect(cloud.or(readyScreen)).toBeVisible({ timeout: 60_000 });
+  if (await cloud.isVisible()) {
+    const password = process.env.E2E_CLOUD_PASSWORD || process.env.E2E_PASSWORD;
+    if (!password) throw new Error('Не задан E2E_CLOUD_PASSWORD или E2E_PASSWORD');
+    await cloud.fill(password);
+    const repeat = page.getByRole('textbox', { name: 'Повторите облачный пароль', exact: true });
+    if (await repeat.isVisible()) await repeat.fill(password);
+    await page.getByRole('button', { name: /^(Сохранить|Открыть историю|Открыть)$/ }).click();
+    const later = page.getByRole('button', { name: 'Позже', exact: true });
+    await expect(later.or(readyScreen)).toBeVisible({ timeout: 60_000 });
+    if (await later.isVisible()) await later.click();
   }
-
-  // Ключи готовы раньше, чем экран: загрузчики маршрута ходят за чатом и
-  // историей, а вся лента расшифровывается по одному сообщению. Пока это
-  // идёт, на странице висит заглушка загрузки, и любой поиск элемента
-  // упал бы не потому, что элемента нет, а потому, что его ещё не рисуют.
-  await page
-    .locator('.route-loading-fallback')
-    .waitFor({ state: 'detached', timeout: 90_000 })
-    .catch(() => {
-      // Заглушки может не быть вовсе, если данные уже в кеше.
-    });
-
+  await expect(readyScreen).toBeVisible({ timeout: 60_000 });
+  // Отказ публикации не означает готовность. При 429 сообщаем причину,
+  // не маскируем неготовый ключ отправкой или перезагрузкой.
+  await expect
+    .poll(() => publications, {
+      message: 'Ожидается успешная публикация публичного ключа',
+      timeout: 20_000,
+    })
+    .toContain(200);
   return page;
-}
-
-function waitForKeyPublication(page: Page): Promise<number> {
-  return page
-    .waitForResponse(
-      (response) =>
-        response.url().includes('/api/v2/auth/public-key') &&
-        response.request().method() === 'POST',
-      { timeout: 60_000 }
-    )
-    .then((response) => response.status());
 }
 
 /**
@@ -198,5 +178,5 @@ function waitForKeyPublication(page: Page): Promise<number> {
  * поэтому «последний пузырь» ничего не значит — ищем свою метку.
  */
 export function messageWithText(page: Page, text: string) {
-  return page.locator('section.thread-messages .message-content', { hasText: text });
+  return page.getByRole('article').filter({ hasText: text });
 }

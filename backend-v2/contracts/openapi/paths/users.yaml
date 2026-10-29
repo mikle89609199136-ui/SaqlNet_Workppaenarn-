@@ -33,7 +33,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UpdateProfileRequest}}}
     responses:
       '200': {description: Updated profile, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/ProfileResponse}}}}
@@ -70,7 +70,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/RenameUsernameRequest}}}
     responses:
       '200': {description: Updated canonical profile, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/ProfileResponse}}}}
@@ -105,7 +105,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UpdateAvatarRequest}}}
     responses:
       '200': {description: Updated profile, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/ProfileResponse}}}}
@@ -351,7 +351,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacySettingsBulkPatch}}}
     responses:
       '200': {description: Compatibility acknowledgement; does not contain a settings snapshot, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacySettingsBulkUpdateResult}}}}
@@ -418,7 +418,7 @@
       aliases and read normalization are implemented by #1042; browser fallback/ringtone consumers remain #725.
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/MvpSettings}}}
     responses:
       '200': {description: Resulting account settings, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/SettingsUpdateResponse}}}}
@@ -456,7 +456,7 @@
       requests require an allowed Origin.
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PrivacySettingsPatch}}}
     responses:
       '200': {description: Resulting privacy rules, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PrivacyUpdateResponse}}}}
@@ -530,7 +530,7 @@
       self_exception; an unknown or disabled user is 404 user_not_found.
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PrivacyExceptionRequest}}}
     responses:
       '200': {description: Saved exception, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PrivacyExceptionResponse}}}}
@@ -623,7 +623,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyNotificationSettings}}}
     responses:
       '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyNotificationUpdateResponse}}}}
@@ -687,7 +687,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacySoundSettings}}}
     responses:
       '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacySoundUpdateResponse}}}}
@@ -749,7 +749,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyAdvancedSettings}}}
     responses:
       '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyAdvancedUpdateResponse}}}}
@@ -811,7 +811,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyFoldersRequest}}}
     responses:
       '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
@@ -877,7 +877,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/LegacyStorageSettings}}}
     responses:
       '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/StorageSettingsUpdateResponse}}}}
@@ -1018,7 +1018,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/BlockUserRequest}}}
     responses:
       '201': {description: Blocked, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
@@ -1106,7 +1106,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/SetPasscodeRequest}}}
     responses:
       '200': {description: Set, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
@@ -1138,7 +1138,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PasscodeRequest}}}
     responses:
       '200': {description: Verified, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
@@ -1170,7 +1170,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PasscodeRequest}}}
     responses:
       '200': {description: Disabled, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
@@ -1202,7 +1202,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PasscodeTimeoutRequest}}}
     responses:
       '200': {description: Updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
@@ -1269,7 +1269,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: 'At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450.'
+      description: 'At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/DeviceRegistrationRequest}}}
     responses:
       '200': {description: Current session metadata updated, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/DeviceRegistrationResponse}}}}
@@ -1335,7 +1335,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: At most 8 KiB JSON body.
+      description: 'At most 8 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PushSubscriptionRequest}}}
     responses:
       '200': {description: Saved; the id is sent over the socket in client_state so that a visible device gets no push, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PushSubscriptionResponse}}}}
@@ -1365,7 +1365,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: At most 8 KiB JSON body.
+      description: 'At most 8 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/DeletePushSubscriptionRequest}}}
     responses:
       '204': {description: Removed (only the requester's own subscription)}

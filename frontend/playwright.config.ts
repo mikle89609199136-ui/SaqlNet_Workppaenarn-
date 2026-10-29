@@ -39,7 +39,7 @@ export default defineConfig({
   // частоты, а создание чата в каждом сценарии засоряло бы стенд.
   globalSetup: './e2e/global-setup.ts',
   // Один сценарий — это два браузера, обмен сообщениями и ожидание сокета.
-  timeout: 90 * 1000,
+  timeout: 120 * 1000,
   expect: {
     // Сообщение проходит через сервер и возвращается по сокету: ожидание
     // здесь измеряется секундами, а не миллисекундами.
@@ -78,13 +78,15 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'npm run dev',
-    url: BASE_URL,
-    reuseExistingServer: REUSE_RUNNING_SERVER,
-    // Первый запуск Vite собирает зависимости: на холодную это минута.
-    timeout: 120 * 1000,
-    stdout: 'ignore',
-    stderr: 'pipe',
-  },
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        command: 'npm run dev -- --strictPort',
+        url: BASE_URL,
+        reuseExistingServer: REUSE_RUNNING_SERVER,
+        // Первый запуск Vite собирает зависимости: на холодную это минута.
+        timeout: 120 * 1000,
+        stdout: 'ignore',
+        stderr: 'pipe',
+      },
 });

@@ -29,7 +29,7 @@ npm run typecheck        # см. ниже, сейчас падает
 npm run check:cycles     # циклические импорты, dpdm
 npm run format:check     # prettier по src, те же исключения, что у хука
 npm run format           # то же с исправлением
-npm run e2e              # playwright, тестов пока нет (#277)
+npm run e2e              # пять сценариев Playwright, см. frontend/e2e/README.md (#277)
 ```
 
 Стенд целиком:
