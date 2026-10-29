@@ -23,6 +23,7 @@ var (
 	ErrTwoFANotEnabled        = errors.New("2fa not enabled")
 	ErrTwoFARequired          = errors.New("2fa required")
 	ErrInvalidTwoFA           = errors.New("invalid 2fa")
+	ErrInvalidTwoFAState      = errors.New("enabled 2fa has no password hash")
 	ErrUserNotFound           = errors.New("user not found")
 	ErrTokenGenerationChanged = errors.New("token generation kept changing during issuance")
 	ErrAuthorizationRevoked   = errors.New("authorization token was revoked during issuance")
@@ -204,17 +205,18 @@ func (s *Service) Login(ctx context.Context, username, password, twoFAPassword s
 	}
 
 	if twoFAEnabled {
+		if !twoFAHash.Valid || strings.TrimSpace(twoFAHash.String) == "" {
+			return User{}, "", ErrInvalidTwoFAState
+		}
 		if twoFAPassword == "" {
 			return user, "", ErrTwoFARequired
 		}
-		if twoFAHash.Valid {
-			valid2FA, err := s.crypto.VerifyPassword(ctx, twoFAPassword, twoFAHash.String)
-			if err != nil {
-				return User{}, "", err
-			}
-			if !valid2FA {
-				return User{}, "", ErrInvalidTwoFA
-			}
+		valid2FA, err := s.crypto.VerifyPassword(ctx, twoFAPassword, twoFAHash.String)
+		if err != nil {
+			return User{}, "", err
+		}
+		if !valid2FA {
+			return User{}, "", ErrInvalidTwoFA
 		}
 	}
 
