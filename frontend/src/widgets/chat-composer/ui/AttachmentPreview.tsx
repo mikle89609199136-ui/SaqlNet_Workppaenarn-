@@ -1,3 +1,4 @@
+import { isReencodableImage } from '@/shared/lib/utils/encodeImage';
 import { Icon } from '@/shared/ui';
 import { cn, formatFileSize, useObjectUrl } from '@/shared/lib';
 import type { IPendingAttachment } from '@/types';
@@ -33,7 +34,10 @@ interface ItemProps {
 
 function AttachmentTile({ attachment, onRemove, onEdit, onOpenImage }: ItemProps) {
   const { t } = useTranslation();
-  const isImageFile = attachment.file.type.startsWith('image/');
+  const canEdit =
+    isReencodableImage(attachment.file) ||
+    (!attachment.file.type && /\.(png|webp|jpe?g|bmp)$/i.test(attachment.file.name));
+  const isImageFile = attachment.file.type.startsWith('image/') || canEdit;
   const previewUrl = useObjectUrl(isImageFile ? attachment.file : null);
   const isImage = attachment.type === 'image';
   const { name, size } = attachment.file;
@@ -74,7 +78,7 @@ function AttachmentTile({ attachment, onRemove, onEdit, onOpenImage }: ItemProps
         <Icon className="size-2.75 stroke-3" name="cross" />
       </button>
 
-      {isImage && onEdit && (
+      {isImage && canEdit && onEdit && (
         <button
           aria-label={`${t('editAttachment', 'Редактировать фото')}: ${name}`}
           className={cn(cornerButton, '-right-1.5 -bottom-1.5')}

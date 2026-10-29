@@ -114,6 +114,18 @@ describe('состав меню сообщения (#655)', () => {
     expect(got).not.toContain('forward');
     expect(got).not.toContain('copyText');
   });
+
+  it('показывает пункт просмотра реакций только если у сообщения есть реакции (#998)', () => {
+    expect(actions(makeMessage({ content: 'без реакций' }))).not.toContain('viewReactions');
+    expect(
+      actions(
+        makeMessage({
+          content: 'с реакцией',
+          reactions: [{ emoji: '👍', count: 1, myReaction: false }],
+        } as never)
+      )
+    ).toContain('viewReactions');
+  });
 });
 
 /* Пересылать можно только то, что сервер примет (#1061): звонок он от

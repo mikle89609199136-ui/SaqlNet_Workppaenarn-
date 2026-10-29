@@ -1,90 +1,305 @@
-x-secure: &secure [{ sessionCookie: [] }]
+x-secure: &secure
+  - sessionCookie: []
 /media:
   post:
-    tags: [Media]
+    tags:
+      - Media
     summary: Upload media
     description: >-
-      MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB).
-      Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body
-      limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies
-      must allow at least 140 MiB with the default file limit.
-      Oversized uploads return a flat 413 file_too_large error with message and requestId.
-      Voice uploads have a separate 8 MiB ciphertext limit.
+      MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB). Encrypted uploads allow an
+      additional 16-byte AES-GCM tag. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of
+      metadata; reverse proxies must allow at least 140 MiB with the default file limit. Oversized uploads
+      return a flat 413 file_too_large error with message and requestId. Voice uploads have a separate 8 MiB
+      ciphertext limit. GET /docs/media-policy.json publishes the default byte limits and the plain-upload
+      MIME allowlist shared with the client. Encrypted message uploads may carry any MIME type.
     operationId: uploadMedia
     security: *secure
     requestBody:
       required: true
       content:
         multipart/form-data:
-          schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } }
+          schema:
+            type: object
+            required:
+              - file
+            properties:
+              file:
+                type: string
+                format: binary
+              purpose:
+                type: string
+                maxLength: 32
+                description: 'Stored purpose: message/avatar/gif/sticker; missing or unknown values normalize to unknown.'
         application/json:
           schema:
             oneOf:
               - type: object
-                required: [file]
-                properties: { file: { type: string, description: Data URL }, fileName: { type: string } }
-              - $ref: '../components/schemas.yaml#/EncryptedMediaUploadRequest'
-    responses: { '201': { description: Uploaded, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/UploadResponse' } } } }, '400': { $ref: '../components/responses.yaml#/Error' }, '413': { $ref: '../components/responses.yaml#/FileTooLarge' }, '415': { $ref: '../components/responses.yaml#/Error' } }
+                required:
+                  - file
+                properties:
+                  file:
+                    $ref: ../components/schemas.yaml#/MediaDataUrl
+                  fileName:
+                    type: string
+                    nullable: true
+                    maxLength: 255
+                    description: Optional filename; limit is 255 UTF-8 bytes.
+                  purpose:
+                    type: string
+                    nullable: true
+                    maxLength: 32
+                    description: >-
+                      message selects the encrypted-envelope request instead; other unknown strings normalize
+                      to unknown.
+              - $ref: ../components/schemas.yaml#/EncryptedMediaUploadRequest
+    responses:
+      '201':
+        description: Uploaded
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/UploadResponse
+      '400': &error
+        $ref: ../components/responses.yaml#/Error
+      '401': *error
+      '403': *error
+      '405': *error
+      '413':
+        $ref: ../components/responses.yaml#/FileTooLarge
+      '415': *error
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
 /media/{uploadId}:
-  parameters: [{ name: uploadId, in: path, required: true, schema: { type: string, format: uuid } }]
+  parameters:
+    - name: uploadId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   get:
-    tags: [Media]
+    tags:
+      - Media
     summary: Download media
     operationId: getMedia
     security: *secure
     description: >-
-      uploadId is not a capability: knowing the identifier does not grant access.
-      Downloads require authentication and access through a live attachment, or ownership of a never-attached upload.
-      Range is not supported for the encrypted JSON envelope; its successful response is always 200.
-      Streams an upload, managed sticker, or sticker-pack icon by UUID through
-      the media service. Catalog imageUrl and iconUrl use this relative path;
-      no redirect or direct storage URL is returned. Legacy catalog objects
-      without a verified storage identity are unavailable (#973).
-    parameters: [{ name: Range, in: header, required: false, schema: { type: string } }]
+      uploadId is not a capability: knowing the identifier does not grant access. Downloads require
+      authentication and access through a live attachment, or ownership of a never-attached upload. Range is
+      not supported for the encrypted JSON envelope; its successful response is always 200. Streams an upload,
+      managed sticker, or sticker-pack icon by UUID through the media service. Catalog imageUrl and iconUrl
+      use this relative path; no redirect or direct storage URL is returned. Legacy catalog objects without a
+      verified storage identity are unavailable (#973). Plain streams preserve the stored MIME type when safe;
+      unsafe/unknown types use application/octet-stream with attachment disposition.
+    parameters:
+      - name: Range
+        in: header
+        required: false
+        schema:
+          type: string
     responses:
       '200':
         description: Media stream, or encrypted media metadata and ciphertext
         headers:
-          Accept-Ranges: { schema: { type: string } }
-          Content-Length: { schema: { type: integer, format: int64 } }
+          Content-Length:
+            schema:
+              type: integer
+              format: int64
+              minimum: 0
+          Accept-Ranges:
+            schema:
+              type: string
+          Content-Range:
+            schema:
+              type: string
+          Cache-Control:
+            schema:
+              type: string
+            description: private, no-cache; access is checked again for reuse.
+          Vary:
+            schema:
+              type: string
+            description: Authorization, Cookie; Bearer is not accepted.
         content:
-          application/octet-stream: { schema: { type: string, format: binary } }
-          application/json: { schema: { $ref: '../components/schemas.yaml#/Object' } }
-      '206': { description: Partial media stream }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '403': { $ref: '../components/responses.yaml#/Error' }
-      '404': { $ref: '../components/responses.yaml#/Error' }
-      '416': { description: Requested range is not satisfiable }
-      '502': { $ref: '../components/responses.yaml#/Error' }
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/MediaEncryptedDownload
+          '*/*':
+            schema:
+              type: string
+              format: binary
+      '206':
+        description: Partial media stream
+        headers:
+          Content-Length:
+            schema:
+              type: integer
+              format: int64
+              minimum: 0
+          Accept-Ranges:
+            schema:
+              type: string
+          Content-Range:
+            schema:
+              type: string
+          Cache-Control:
+            schema:
+              type: string
+            description: private, no-cache; access is checked again for reuse.
+          Vary:
+            schema:
+              type: string
+            description: Authorization, Cookie; Bearer is not accepted.
+        content:
+          '*/*':
+            schema:
+              type: string
+              format: binary
+      '401': *error
+      '403': *error
+      '404': *error
+      '405': *error
+      '416':
+        description: Unsatisfiable Range; empty body, Content-Range may specify the object size.
+        headers:
+          Content-Range:
+            schema:
+              type: string
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '502': *error
+      '503': *error
   head:
-    tags: [Media]
+    tags:
+      - Media
     summary: Get media headers
     operationId: headMedia
     security: *secure
     description: >-
-      uploadId is not a capability: knowing the identifier does not grant access.
-      Downloads require authentication and access through a live attachment, or ownership of a never-attached upload.
-      Range is not supported for the encrypted JSON envelope; its successful response is always 200.
+      uploadId is not a capability: knowing the identifier does not grant access. Downloads require
+      authentication and access through a live attachment, or ownership of a never-attached upload. Range is
+      not supported for the encrypted JSON envelope; its successful response is always 200.
     responses:
-      '200': { description: Media headers }
-      '206': { description: Partial media headers }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '403': { $ref: '../components/responses.yaml#/Error' }
-      '404': { $ref: '../components/responses.yaml#/Error' }
-      '416': { description: Requested range is not satisfiable }
-      '502': { $ref: '../components/responses.yaml#/Error' }
+      '200':
+        description: Media headers
+        headers:
+          Content-Length:
+            schema:
+              type: integer
+              format: int64
+              minimum: 0
+          Accept-Ranges:
+            schema:
+              type: string
+          Content-Range:
+            schema:
+              type: string
+          Cache-Control:
+            schema:
+              type: string
+            description: private, no-cache; access is checked again for reuse.
+          Vary:
+            schema:
+              type: string
+            description: Authorization, Cookie; Bearer is not accepted.
+      '206':
+        description: Partial media headers
+        headers:
+          Content-Length:
+            schema:
+              type: integer
+              format: int64
+              minimum: 0
+          Accept-Ranges:
+            schema:
+              type: string
+          Content-Range:
+            schema:
+              type: string
+          Cache-Control:
+            schema:
+              type: string
+            description: private, no-cache; access is checked again for reuse.
+          Vary:
+            schema:
+              type: string
+            description: Authorization, Cookie; Bearer is not accepted.
+      '401':
+        description: Same 401 status as GET; HEAD has no response body.
+      '403':
+        description: Same 403 status as GET; HEAD has no response body.
+      '404':
+        description: Same 404 status as GET; HEAD has no response body.
+      '405':
+        description: Same 405 status as GET; HEAD has no response body.
+      '416':
+        description: Unsatisfiable Range; empty body, Content-Range may specify the object size.
+        headers:
+          Content-Range:
+            schema:
+              type: string
+      '429':
+        description: Same 429 status as GET; HEAD has no response body.
+      '500':
+        description: Same 500 status as GET; HEAD has no response body.
+      '502':
+        description: Same 502 status as GET; HEAD has no response body.
+      '503':
+        description: Same 503 status as GET; HEAD has no response body.
+    parameters:
+      - name: Range
+        in: header
+        required: false
+        schema:
+          type: string
 /emojis:
-  get: { tags: [Media], summary: List emoji, operationId: listEmojis, responses: { '200': { description: Emoji assets } } }
+  get:
+    tags:
+      - Media
+    summary: List emoji
+    operationId: listEmojis
+    responses:
+      '200':
+        description: Emoji assets
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/MediaEmojisResponse
+      '405': *error
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+    security: []
 /gifs:
-  get: { tags: [Media], summary: List GIFs, operationId: listGifs, security: *secure, responses: { '200': { description: GIFs } } }
+  get:
+    tags:
+      - Media
+    summary: List GIFs
+    operationId: listGifs
+    security: *secure
+    responses:
+      '200':
+        description: GIFs
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/MediaGifsResponse
+      '401': *error
+      '405': *error
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
   post:
-    tags: [Media]
+    tags:
+      - Media
     summary: Create a GIF
     description: >-
       Accepts an unencrypted image/gif upload owned by the caller. Request bodies are limited to 64 KiB.
-      Errors: 400 invalid_json, missing_url, invalid_url, validation_failed, invalid_gif_source;
-      404 upload_not_found (including uploads owned by another user);
-      413 request_too_large; 500 internal_error.
+      Errors: 400 invalid_json, missing_url, invalid_url, validation_failed, invalid_gif_source; 404
+      upload_not_found (including uploads owned by another user); 413 request_too_large; 500 internal_error.
     operationId: createGif
     security: *secure
     requestBody:
@@ -93,101 +308,313 @@ x-secure: &secure [{ sessionCookie: [] }]
         application/json:
           schema:
             type: object
-            required: [url]
+            required:
+              - url
             properties:
               name:
                 type: string
                 maxLength: 255
-                description: Optional name, trimmed before saving; empty is allowed. At most 255 Unicode code points after trimming, without control characters.
+                description: >-
+                  Optional name, trimmed before saving; empty is allowed. At most 255 Unicode code points
+                  after trimming, without control characters.
+                nullable: true
               url:
                 type: string
                 maxLength: 2048
-                pattern: '^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+                pattern: ^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
     responses:
-      '201': { description: Created GIF }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '404': { $ref: '../components/responses.yaml#/Error' }
-      '413': { $ref: '../components/responses.yaml#/RequestTooLarge' }
-      '500': { $ref: '../components/responses.yaml#/Error' }
+      '201':
+        description: Created GIF
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/MediaGifResponse
+      '400': *error
+      '401': *error
+      '403': *error
+      '404': *error
+      '405': *error
+      '413':
+        $ref: ../components/responses.yaml#/RequestTooLarge
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
 /gifs/favorites:
-  get: { tags: [Media], summary: List favorite GIFs, operationId: listFavoriteGifs, security: *secure, responses: { '200': { description: Favorite GIFs } } }
+  get:
+    tags:
+      - Media
+    summary: List favorite GIFs
+    operationId: listFavoriteGifs
+    security: *secure
+    responses:
+      '200':
+        description: Favorite GIFs
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/MediaGifsResponse
+      '401': *error
+      '405': *error
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
 /gifs/{gifId}/favorite:
-  parameters: [{ name: gifId, in: path, required: true, schema: { type: string, format: uuid } }]
+  parameters:
+    - name: gifId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   post:
-    tags: [Media]
+    tags:
+      - Media
     summary: Favorite a GIF
     description: >-
-      Adds an existing GIF to favorites. Repeated requests return 200 without creating a new record.
-      Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
+      Adds an existing GIF to favorites. Repeated requests return 200 without creating a new record. Errors:
+      400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
     operationId: favoriteGif
     security: *secure
     responses:
-      '201': { description: Added to favorites }
-      '200': { description: Already in favorites }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '404': { $ref: '../components/responses.yaml#/Error' }
-      '500': { $ref: '../components/responses.yaml#/Error' }
+      '200':
+        description: Already in favorites
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/Success
+      '201':
+        description: Added to favorites
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/Success
+      '400': *error
+      '401': *error
+      '403': *error
+      '404': *error
+      '405': *error
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
   delete:
-    tags: [Media]
+    tags:
+      - Media
     summary: Unfavorite a GIF
     description: >-
-      Removes a GIF from favorites. Returns 200 when the GIF exists but was not in favorites.
-      Returns 404 only when the GIF itself does not exist.
-      Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
+      Removes a GIF from favorites. Returns 200 when the GIF exists but was not in favorites. Returns 404 only
+      when the GIF itself does not exist. Errors: 400 invalid_gif_id, 404 gif_not_found, 500 internal_error.
     operationId: unfavoriteGif
     security: *secure
     responses:
-      '200': { description: 'Removed from favorites, idempotent when the GIF is not in favorites' }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '404': { $ref: '../components/responses.yaml#/Error' }
-      '500': { $ref: '../components/responses.yaml#/Error' }
+      '200':
+        description: Removed from favorites, idempotent when the GIF is not in favorites
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/Success
+      '400': *error
+      '401': *error
+      '403': *error
+      '404': *error
+      '405': *error
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
 /stickers/packs:
-  get: { tags: [Media], summary: List sticker packs, operationId: listStickerPacks, security: *secure, responses: { '200': { description: Sticker packs } } }
+  get:
+    tags:
+      - Media
+    summary: List sticker packs
+    operationId: listStickerPacks
+    security: *secure
+    responses:
+      '200':
+        description: Sticker packs
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/MediaStickerPacksResponse
+      '401': *error
+      '405': *error
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
   post:
-    tags: [Media]
+    tags:
+      - Media
     summary: Create a sticker pack
     description: >-
-      Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB;
-      the decoded icon is limited to MAX_FILE_SIZE.
-      Errors: 400 invalid_json, invalid_name, upload_error;
-      413 request_too_large, file_too_large; 500 db_error.
+      Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB; the decoded
+      icon is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, invalid_name, upload_error; 413
+      request_too_large, file_too_large; 500 db_error.
     operationId: createStickerPack
     security: *secure
     requestBody:
       required: true
       content:
         application/json:
-          schema: { type: object, required: [name], properties: { name: { type: string }, description: { type: string }, icon: { type: string, format: byte } } }
+          schema:
+            type: object
+            required:
+              - name
+            properties:
+              name:
+                type: string
+                pattern: \S
+                description: Trimmed nonempty name.
+              description:
+                type: string
+                nullable: true
+              icon:
+                type: string
+                nullable: true
+                pattern: ^(?:$|data:[^,]*,[A-Za-z0-9+/=\r\n]*)$
+                description: Optional complete base64 data URL; absent, null or empty means no icon.
+                example: data:image/png;base64,YQ==
     responses:
-      '201': { description: Created pack }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '413': { $ref: '../components/responses.yaml#/StickerTooLarge' }
-      '500': { $ref: '../components/responses.yaml#/Error' }
+      '201':
+        description: Created pack
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/MediaStickerPackResponse
+      '400': *error
+      '401': *error
+      '403': *error
+      '405': *error
+      '413':
+        $ref: ../components/responses.yaml#/StickerTooLarge
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
 /stickers/packs/{packId}:
-  parameters: [{ name: packId, in: path, required: true, schema: { type: string, format: uuid } }]
-  get: { tags: [Media], summary: List stickers in a pack, operationId: listStickers, security: *secure, responses: { '200': { description: Stickers } } }
+  parameters:
+    - name: packId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  get:
+    tags:
+      - Media
+    summary: List stickers in a pack
+    operationId: listStickers
+    security: *secure
+    responses:
+      '200':
+        description: Stickers
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/MediaStickersResponse
+      '400': *error
+      '401': *error
+      '405': *error
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
+    description: An absent pack currently returns an empty stickers array; invalid UUID input may return 500 db_error.
   post:
-    tags: [Media]
+    tags:
+      - Media
     summary: Add a sticker
     description: >-
-      Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB;
-      the decoded image is limited to MAX_FILE_SIZE.
-      Errors: 400 invalid_json, missing_image, invalid_path, upload_error;
-      404 not_found (pack missing or owned by another user);
-      413 request_too_large, file_too_large; 500 db_error.
+      Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB; the decoded
+      image is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, missing_image, invalid_path, upload_error;
+      404 not_found (pack missing or owned by another user); 413 request_too_large, file_too_large; 500
+      db_error.
     operationId: addSticker
     security: *secure
     requestBody:
       required: true
       content:
         application/json:
-          schema: { type: object, required: [image], properties: { image: { type: string, format: byte } } }
+          schema:
+            type: object
+            required:
+              - image
+            properties:
+              image:
+                $ref: ../components/schemas.yaml#/MediaDataUrl
     responses:
-      '201': { description: Added sticker }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '404': { $ref: '../components/responses.yaml#/Error' }
-      '413': { $ref: '../components/responses.yaml#/StickerTooLarge' }
-      '500': { $ref: '../components/responses.yaml#/Error' }
-  delete: { tags: [Media], summary: Delete a sticker pack, operationId: deleteStickerPack, security: *secure, responses: { '200': { description: Deleted pack } } }
+      '201':
+        description: Added sticker
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/MediaStickerResponse
+      '400': *error
+      '401': *error
+      '403': *error
+      '404': *error
+      '405': *error
+      '413':
+        $ref: ../components/responses.yaml#/StickerTooLarge
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
+  delete:
+    tags:
+      - Media
+    summary: Delete a sticker pack
+    operationId: deleteStickerPack
+    security: *secure
+    responses:
+      '200':
+        description: Deleted pack
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/Success
+      '400': *error
+      '401': *error
+      '403': *error
+      '405': *error
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
+    description: Idempotent success, including an absent pack or one owned by another user.
 /stickers/{stickerId}:
-  delete: { tags: [Media], summary: Delete a sticker, operationId: deleteSticker, security: *secure, parameters: [{ name: stickerId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Deleted sticker } } }
+  delete:
+    tags:
+      - Media
+    summary: Delete a sticker
+    operationId: deleteSticker
+    security: *secure
+    parameters:
+      - name: stickerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        description: Deleted sticker
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/Success
+      '400': *error
+      '401': *error
+      '403': *error
+      '404': *error
+      '405': *error
+      '429':
+        $ref: ../components/responses.yaml#/RateLimited
+      '500': *error
+      '503': *error
+x-compatibility-notes: >-
+  Current Media handlers do not emit HTTP 409: duplicate favorites return 200 and pack deletion is idempotent.
+  Errors use the shared Error schema; HEAD never has a body. Sticker upload parsing remains permissive; no new
+  MIME validation is introduced by this contract.

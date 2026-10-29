@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -32,6 +33,16 @@ func TestCallPeerLeftReasonOnRealSchema(t *testing.T) {
 	chats := NewService(db, ws, nil)
 	chatID, _, err := chats.CreatePrivate(ctx, masha, igor)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		// callRoomClosed сохраняет сообщение асинхронно: дождаться до закрытия БД.
+		require.Eventually(t, func() bool {
+			var rooms, messages int
+			err := db.QueryRow(`SELECT
+				(SELECT COUNT(*) FROM calls.rooms WHERE chat_id = $1),
+				(SELECT COUNT(*) FROM messages.messages WHERE chat_id = $1 AND type = 'call')`, chatID).Scan(&rooms, &messages)
+			return err == nil && rooms == messages
+		}, 3*time.Second, 10*time.Millisecond)
+	})
 
 	connect := func(user string) *Client {
 		client := &Client{UserID: user, Send: make(chan []byte, 16)}
@@ -65,6 +76,26 @@ func TestCallPeerLeftReasonOnRealSchema(t *testing.T) {
 		t.Fatal("call_peer_left не пришёл")
 		return nil
 	}
+	nextCallEvent := func(t *testing.T, c *Client) map[string]any {
+		t.Helper()
+		timeout := time.NewTimer(3 * time.Second)
+		defer timeout.Stop()
+		for {
+			select {
+			case payload := <-c.Send:
+				var event map[string]any
+				require.NoError(t, json.Unmarshal(payload, &event))
+				// Сообщение о предыдущем звонке сохраняется и рассылается
+				// асинхронно: оно может опередить call_joined/call_error.
+				if event["type"] != "new_message" {
+					return event
+				}
+			case <-timeout.C:
+				t.Fatal("событие звонка не пришло")
+				return nil
+			}
+		}
+	}
 
 	t.Run("«Завершить» — reason left", func(t *testing.T) {
 		roomID, mashaConn, igorConn := callBetween(t)
@@ -82,7 +113,70 @@ func TestCallPeerLeftReasonOnRealSchema(t *testing.T) {
 
 		event := peerLeft(t, mashaConn)
 		require.Equal(t, "disconnected", event["reason"])
+		require.NotNil(t, ws.callRooms.GetRoomPublic(roomID))
+		returned := connect(igor)
+		// Воспроизводим порядок событий из CI, независимо от планировщика.
+		returned.Send <- []byte(`{"type":"new_message"}`)
+		ws.handleCallJoin(returned, map[string]interface{}{"roomId": roomID})
+		require.Equal(t, roomID, returned.CallRoomID)
+		require.True(t, ws.callRooms.IsParticipant(roomID, masha))
+		require.True(t, ws.callRooms.IsParticipant(roomID, igor))
+		joined := nextCallEvent(t, returned)
+		require.Equal(t, "call_joined", joined["type"])
+		require.Len(t, joined["peers"], 1)
+		ws.handleCallLeave(returned, map[string]interface{}{"roomId": roomID})
 		ws.handleCallLeave(mashaConn, map[string]interface{}{"roomId": roomID})
+	})
+
+	t.Run("оба сокета оборвались — комната ждёт и восстанавливается", func(t *testing.T) {
+		roomID, mashaConn, igorConn := callBetween(t)
+		ws.handleCallDisconnect(igorConn)
+		ws.handleCallDisconnect(mashaConn)
+		room := ws.callRooms.GetRoomPublic(roomID)
+		require.NotNil(t, room)
+		require.Empty(t, room.Participants)
+		mashaConn, igorConn = connect(masha), connect(igor)
+		ws.handleCallJoin(mashaConn, map[string]interface{}{"roomId": roomID})
+		ws.handleCallJoin(igorConn, map[string]interface{}{"roomId": roomID})
+		require.Len(t, ws.callRooms.GetRoomPublic(roomID).Participants, 2)
+		var endedAt *time.Time
+		require.NoError(t, db.QueryRow(`SELECT ended_at FROM calls.rooms WHERE id = $1`, roomID).Scan(&endedAt))
+		require.Nil(t, endedAt)
+		ws.handleCallLeave(igorConn, map[string]interface{}{"roomId": roomID})
+		ws.handleCallLeave(mashaConn, map[string]interface{}{"roomId": roomID})
+	})
+
+	t.Run("без полного восстановления комната закрывается по таймауту", func(t *testing.T) {
+		ws.disconnectGrace = 500 * time.Millisecond
+		defer func() { ws.disconnectGrace = 0 }()
+		for _, scenario := range []string{"один отключился", "оба отключились", "вернулся только один"} {
+			t.Run(scenario, func(t *testing.T) {
+				roomID, mashaConn, igorConn := callBetween(t)
+				ws.handleCallDisconnect(igorConn)
+				peerLeft(t, mashaConn)
+				if scenario != "один отключился" {
+					ws.handleCallDisconnect(mashaConn)
+				}
+				if scenario == "вернулся только один" {
+					ws.handleCallJoin(connect(masha), map[string]interface{}{"roomId": roomID})
+				}
+				require.NotNil(t, ws.callRooms.GetRoomPublic(roomID))
+				require.Eventually(t, func() bool {
+					var endedAt *time.Time
+					err := db.QueryRow(`SELECT ended_at FROM calls.rooms WHERE id = $1`, roomID).Scan(&endedAt)
+					return err == nil && endedAt != nil
+				}, 3*time.Second, 10*time.Millisecond)
+				require.Nil(t, ws.callRooms.GetRoomPublic(roomID))
+				require.Nil(t, ws.callRooms.GetUserRoom(masha))
+				require.Nil(t, ws.callRooms.GetUserRoom(igor))
+				late := connect(igor)
+				ws.handleCallJoin(late, map[string]interface{}{"roomId": roomID})
+				require.Empty(t, late.CallRoomID)
+				event := nextCallEvent(t, late)
+				require.Equal(t, "call_error", event["type"])
+				require.Equal(t, "room_not_found", event["reason"])
+			})
+		}
 	})
 
 	t.Run("вышел не участник — собеседнику ничего, звонок идёт", func(t *testing.T) {

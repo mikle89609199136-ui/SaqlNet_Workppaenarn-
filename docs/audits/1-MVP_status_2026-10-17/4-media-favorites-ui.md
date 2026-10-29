@@ -82,20 +82,14 @@
 
 ## Открытые задачи области
 
-- **#615** (MEDIA-D002, модель доступа к скачиванию) — **можно закрыть.** Решение записано в `docs/security/media-download-access.md`: PR #981 влит в `dev` 12.10, документ уточнён коммитами `f9f080af` и `5b81a6b2`. Реализация вынесена отдельной задачей #986, как требует сама #615.
-- **#614** (MEDIA-D001, схемы OpenAPI) — открыта по делу, для пользователя MVP не блокирует. Осталось:
-  - у `/emojis`, `/gifs`, `/gifs/favorites`, `/stickers/*` 200-ответы описаны только текстом (`backend-v2/contracts/openapi/paths/media.yaml:64, 66, 100, 132, 155, 178, 180`);
-  - `icon`/`image` объявлены как `format: byte`, хотя бэкенд требует data URL (`media.yaml:147, 171`);
-  - фронтовый `IEmojisResponse.reactions` (`frontend/src/types/response.types.ts:63-65`) не совпадает с тем, что приходит на самом деле, — `emojis` с `code`/`img` (`backend-v2/internal/media/emoji.go:10-11, 36`);
-  - 401/403 у GET/HEAD появятся вместе с #986.
-- **#718** (проверка продового контракта скачивания) — открыта, сделана малая часть. Попутно уже есть:
-  - лимиты 100 МиБ и ingress 140m (#897);
-  - смоук шифрованного round-trip и выдачи опасного типа как `attachment` (`scripts/smoke/media.sh:20-55, 296-299`);
-  - глобальный `nosniff` (`backend-v2/internal/platform/httpx/httpx.go:43`).
-
-  Не сделано: прогон против production-like хранилища, CORS и credentials, кодировка имени файла, большие файлы на проде (лимит прокси Amvera), runbook. Нет и синхронизации allowlist с клиентом: у клиента allowlist нет вовсе.
-- **#986** (без метки `mvp-go`, ACL скачивания) — открыта. Нужна для п. 6 «Скачивание» и E2E-метаданных: сейчас `GET /api/v2/media/{id}` без аутентификации (`backend-v2/cmd/media/main.go:100`). Реализация — PR #995, см. ниже.
-- **PR #995** (adal4ik, `feat/media-download-access` → **master**) реализует #986, в описании «Closes #986». Сделано:
+- **#615** (MEDIA-D002, модель доступа к скачиванию) — документационное решение уточнено в `docs/security/media-download-access.md`: cookie-сессия, ACL по действующим связям, 401/403/404, отзыв сессии, удаление пользователя и бэкфилл. #986 / PR #995 уже влиты; обязательная физическая очистка остаётся в #987. По уточнённому объёму #615 закрывается после фиксации модели, без ожидания реализации #987.
+- **#614** (MEDIA-D001, схемы OpenAPI) — выполнена: все 15 операций имеют схемы ответов, ошибки используют общий `Error`, `/emojis` явно public, остальные операции требуют cookie-сессию. Добавлены DTO upload/encrypted download, emoji/GIF/стикеров, data URL и форматы UUID/дат; frontend использует generated types, emoji-каталог отделён от реакций сообщений. Общие примеры в `backend-v2/contracts/openapi/fixtures/media-api.json` проверяются реальными Go-обработчиками и OpenAPI-валидатором (`npm run api:check`).
+  - Совместимость сохранена: даты каталогов пока `created_at::text` PostgreSQL (схема также принимает RFC 3339); HTTP 409 обработчики не возвращают, повторное добавление GIF в избранное даёт 200. `icon/image` — полные data URL, не чистый base64. Проверки MIME стикеров не расширялись; `userName` при создании GIF пока пустой (#608). Проверка продовой доставки остаётся в #718.
+- **#718** (проверка контракта скачивания) — выполнен воспроизводимый `TestMediaStorageContract`: настоящий PostgreSQL/MinIO, HTTP edge → media, JSON/multipart для всех 11 plain MIME, GET/HEAD/Range/416, ACL при условном GET, private bucket, CORS/credentials, `nosniff`, legacy attachment fallback, UTF-8 filenames и AES-GCM round-trip. Полный прогон подтверждает plain и encrypted границу 100 МиБ с настоящим object storage; oversized encrypted файл возвращает 413.
+  - Исправлены CORS preflight/exposed headers и кодирование S3 object keys/SigV4 для кириллицы и спецсимволов в расширении. Default limits и plain allowlist опубликованы в `/docs/media-policy.json`, лимит клиента берётся из этого контракта; Go/TS проверки защищают от расхождений.
+  - Runbook и точные границы проверки: `docs/media-download-contract.md`. Cache validators сейчас не публикуются, условный GET возвращает полное представление после ACL; filename для сохранения Blob берётся из metadata. Hosted ingress конкретного окружения требует проверки после деплоя по `docs/deployment.md`, локальный MinIO не подтверждает настройки Amvera/Railway.
+- **#986** (ACL скачивания) — закрыта, PR #995 влит в `dev` 25.10.2026. GET/HEAD требуют cookie-сессию и проверку прав, миграция — `0044_media_access.sql`. Следующий разбор PR сохраняет исторический срез от 17.10 и не описывает текущее состояние.
+- **PR #995 — исторический разбор на 17.10.2026** (тогда `feat/media-download-access` → **master**): реализует #986, в описании «Closes #986». На момент аудита сделано:
   - сессия на GET/HEAD;
   - `CanDownload` по связям;
   - `media.upload_refs`, `purpose`, `first_attached_at`;

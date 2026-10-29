@@ -908,18 +908,29 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
-	case suffix == "/reactions" && r.Method == http.MethodPost:
+	case (suffix == "/reactions" || suffix == "/react") && r.Method == http.MethodPost,
+		suffix == "/reactions/me" && r.Method == http.MethodPut:
 		var input struct {
-			Emoji string `json:"emoji"`
+			Emoji json.RawMessage `json:"emoji"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
 
-		// The service implements the toggle semantics itself and returns
-		// the resulting state: operation status, the user's current emoji,
-		// and the aggregated reaction list.
-		status, currentEmoji, reactions, err := h.service.ToggleReaction(r.Context(), current.ID, targetID, input.Emoji)
+		var emoji *string
+		if len(input.Emoji) == 0 || json.Unmarshal(input.Emoji, &emoji) != nil || (r.Method == http.MethodPost && emoji == nil) {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "emoji must be a string, or null for PUT")
+			return
+		}
+		var status ReactionStatus
+		var currentEmoji string
+		var reactions []Reaction
+		var err error
+		if r.Method == http.MethodPut {
+			status, currentEmoji, reactions, err = h.service.SetReaction(r.Context(), current.ID, targetID, emoji)
+		} else {
+			status, currentEmoji, reactions, err = h.service.ToggleReaction(r.Context(), current.ID, targetID, *emoji)
+		}
 		if err != nil {
 			switch {
 			case errors.Is(err, ErrNotFound):
@@ -986,6 +997,32 @@ func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	scope := "chat"
+	if values, exists := r.URL.Query()["scope"]; exists {
+		if len(values) != 1 || (values[0] != "chat" && values[0] != "personal") {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid scope")
+			return
+		}
+		scope = values[0]
+	}
+	if scope == "personal" && suffix == "/pins" && r.Method == http.MethodGet {
+		limit := 50
+		if raw := r.URL.Query().Get("limit"); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 || n > 100 {
+				httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "invalid limit")
+				return
+			}
+			limit = n
+		}
+		page, err := h.service.ListPersonalPins(r.Context(), current.ID, chatID, r.URL.Query().Get("cursor"), limit)
+		if err != nil {
+			respondSuccess(w, r, err)
+			return
+		}
+		httpx.JSON(w, http.StatusOK, page)
+		return
+	}
 	if suffix == "/pins" && r.Method == http.MethodGet {
 		pins, err := h.service.ListPins(r.Context(), current.ID, chatID)
 		if errors.Is(err, ErrForbidden) {
@@ -1017,6 +1054,10 @@ func (h *Handler) Pins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if scope == "personal" && (r.Method == http.MethodPost || r.Method == http.MethodDelete) {
+		respondSuccess(w, r, h.service.SetPersonalPin(r.Context(), current.ID, pinsData.ChatID, pinsData.MessageID, r.Method == http.MethodPost))
+		return
+	}
 	switch r.Method {
 	case http.MethodPost:
 		respondSuccess(w, r, h.service.PinMessage(r.Context(), current.ID, pinsData.ChatID, pinsData.MessageID))

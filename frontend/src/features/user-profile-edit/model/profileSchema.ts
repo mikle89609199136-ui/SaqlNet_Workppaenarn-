@@ -19,11 +19,17 @@ export const createProfileFormSchema = (t: TFunction) =>
       .string()
       .trim()
       .min(1, t('validation.firstNameEmpty', 'Имя не может быть пустым'))
-      .max(NAME_MAX, t('validation.firstNameTooLong', 'Слишком длинное имя')),
+      .refine(
+        (value) => [...value].length <= NAME_MAX,
+        t('validation.firstNameTooLong', 'Слишком длинное имя')
+      ),
     lastName: z
       .string()
       .trim()
-      .max(NAME_MAX, t('validation.lastNameTooLong', 'Слишком длинная фамилия')),
+      .refine(
+        (value) => [...value].length <= NAME_MAX,
+        t('validation.lastNameTooLong', 'Слишком длинная фамилия')
+      ),
     username: z
       .string()
       .trim()

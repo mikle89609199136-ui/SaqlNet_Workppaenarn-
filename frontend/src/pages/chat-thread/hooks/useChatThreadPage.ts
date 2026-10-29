@@ -10,6 +10,7 @@ import { chatQuery, useChatReadMark, useChatUiStore } from '@/entities/chat';
 import {
   cancelOutboxMessage,
   pinsQuery,
+  mergePins,
   retryMediaDownload,
   retryOutboxMessage,
 } from '@/entities/message';
@@ -18,6 +19,7 @@ import type { IMessageDto } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useCallback,
+  useMemo,
   useEffect,
   useRef,
   useState,
@@ -78,7 +80,18 @@ export function useChatThreadPage({
   const { data: chat = null } = useQuery(chatQuery(chatId));
   // Отметка прочтения на момент открытия: по ней лента встаёт на новые (#839).
   const readMark = useChatReadMark(chat);
-  const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
+  const { t } = useTranslation();
+  const sharedPins = useQuery(pinsQuery(chatId));
+  const personalPins = useQuery(pinsQuery(chatId, 'personal'));
+  const pinnedMessages = useMemo(
+    () => mergePins(sharedPins.data ?? [], personalPins.data ?? []),
+    [sharedPins.data, personalPins.data]
+  );
+  const pinsLoading = sharedPins.isPending || personalPins.isPending;
+  const pinsError =
+    sharedPins.isError || personalPins.isError
+      ? t('pinDialog.loadError', 'Не удалось загрузить закрепления')
+      : '';
   const {
     messages,
     isLoading,
@@ -127,7 +140,6 @@ export function useChatThreadPage({
     handleReact,
   } = useMessageActions({ draftRef, setIsForwardModalOpen: modals.setIsForwardModalOpen });
 
-  const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   const handleRetryMessage = useCallback(
@@ -206,6 +218,8 @@ export function useChatThreadPage({
     chatId,
     chat,
     pinnedMessages,
+    pinsLoading,
+    pinsError,
     messages,
     isLoading,
     hasOlder,

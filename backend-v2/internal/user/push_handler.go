@@ -1,7 +1,6 @@
 package user
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -36,7 +35,7 @@ func (h *Handler) PushSubscriptions(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
 		var sub push.Subscription
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPushSubscriptionBodyBytes)).Decode(&sub); err != nil {
+		if !decodeSingleJSON(w, r, &sub, maxPushSubscriptionBodyBytes) {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 			return
 		}
@@ -54,7 +53,7 @@ func (h *Handler) PushSubscriptions(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Endpoint string `json:"endpoint"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPushSubscriptionBodyBytes)).Decode(&input); err != nil || input.Endpoint == "" {
+		if !decodeSingleJSON(w, r, &input, maxPushSubscriptionBodyBytes) || input.Endpoint == "" {
 			httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "endpoint is required")
 			return
 		}

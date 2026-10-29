@@ -61,7 +61,7 @@ const (
 	targetRoleByUserQuery    = `SELECT role FROM chats.members WHERE user_id = $1 AND chat_id = $2`
 	memberMuteStateQuery     = `SELECT role, muted_at, muted_until FROM chats.members WHERE user_id = $1 AND chat_id = $2`
 	setMemberRoleUpdateQuery = `UPDATE chats.members SET role = $1 WHERE chat_id = $2 AND user_id = $3 AND role = $4`
-	removeMemberDeleteQuery  = `WITH removed AS ( DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role = $3 RETURNING chat_id ) UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id IN (SELECT chat_id FROM removed)`
+	removeMemberDeleteQuery  = `WITH removed AS ( DELETE FROM chats.members WHERE chat_id = $1 AND user_id = $2 AND role = $3 RETURNING chat_id, user_id ), cleaned AS ( DELETE FROM chats.user_chat_settings cs USING removed r WHERE cs.chat_id = r.chat_id AND cs.user_id = r.user_id ) UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id IN (SELECT chat_id FROM removed)`
 	muteMemberUpdateQuery    = `UPDATE chats.members SET muted_at = NOW(), muted_until = $3 WHERE chat_id = $1 AND user_id = $2 AND (muted_at IS NULL OR muted_until IS DISTINCT FROM $3)`
 	unmuteMemberUpdateQuery  = `UPDATE chats.members SET muted_at = NULL, muted_until = NULL WHERE chat_id = $1 AND user_id = $2 AND muted_at IS NOT NULL`
 	memberExistsQuery        = `SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`
@@ -922,6 +922,9 @@ func TestBanMember_BansExistingMember(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectExec(banMemberDeleteQuery).
 		WithArgs(muteTestChatID, muteTestUserID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`).
+		WithArgs(muteTestUserID, muteTestChatID).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`UPDATE chats.chats SET key_rotation_needed = TRUE WHERE id = $1`).
 		WithArgs(muteTestChatID).

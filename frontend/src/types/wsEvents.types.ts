@@ -47,6 +47,14 @@ export interface IMessagePinEvent {
   messageId: string;
   pin: IPinnedDto;
 }
+export interface IPersonalPinEvent {
+  type: string;
+  chatId: string;
+  messageId: string;
+  scope: 'personal';
+  isPersonalPinned: boolean;
+  pinnedAt?: string;
+}
 export interface IMessageUnpinEvent {
   type: string;
   chatId: string;
@@ -82,7 +90,7 @@ export interface IMessagesReadEvent {
 export interface IChatUpdatedEvent {
   type: string;
   chatId: string;
-  chat: IChatDto;
+  chat?: IChatDto;
 }
 
 export interface IChatAddMemberEvent {
@@ -275,6 +283,8 @@ export interface IWsEventMap {
   [WS_EVENTS.MESSAGE.PINNED]: IMessagePinEvent;
   [WS_EVENTS.MESSAGE.RECEIPTS]: IReceiptsEvent;
   [WS_EVENTS.MESSAGE.UNPINNED]: IMessageUnpinEvent;
+  [WS_EVENTS.MESSAGE.PERSONAL_PINNED]: IPersonalPinEvent;
+  [WS_EVENTS.MESSAGE.PERSONAL_UNPINNED]: IPersonalPinEvent;
 
   [WS_EVENTS.OTHER.PING]: IPingEvent;
   [WS_EVENTS.OTHER.PONG]: IPongEvent;

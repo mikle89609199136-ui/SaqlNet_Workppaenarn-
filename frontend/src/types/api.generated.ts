@@ -66,7 +66,7 @@ export interface paths {
         put?: never;
         /**
          * Start a QR login or replace the code
-         * @description Called by the device that wants to log in. publicKey is a one-time ECDH public key; the signed-in device encrypts the key backup master key to it. The client draws the QR code itself. The code lives 60 seconds; the device replaces it every 30 seconds by passing the previous token and its secret. The secret is never drawn into the QR code. A scanned code cannot be replaced (409 qr_scanned).
+         * @description Called by the device that wants to log in. publicKey is a one-time ECDH public key; the signed-in device encrypts the key backup master key to it. The client draws the QR code itself. The code lives 60 seconds; the device replaces it every 30 seconds by passing the previous token and its secret. The client builds the QR URL as <frontend-origin>/link#t=<qrToken>&k=<publicKey>, with fragment values encoded by URLSearchParams and the one-time public key in base64url SPKI. /link is a frontend landing page outside the session guard, not an API endpoint. It preserves the link in tab sessionStorage while signing in when necessary, then inspects the pending request and requires explicit confirmation. The fragment is removed from the address bar; the secret must never be included in the QR URL. The secret is never drawn into the QR code. A scanned code cannot be replaced (409 qr_scanned).
          */
         post: operations["createQrToken"];
         delete?: never;
@@ -150,7 +150,7 @@ export interface paths {
         put?: never;
         /**
          * Confirm a QR login
-         * @description Only the account that captured the code with GET /auth/qr-request can confirm it (403 not_scanned). A code can be confirmed only once; a second confirmation gets 409 already_confirmed.
+         * @description Only the account that captured the code with GET /auth/qr-request can confirm it (403 not_scanned). A code can be confirmed only once; a second confirmation gets 409 already_confirmed. Called by the signed-in frontend after the person confirms a link opened at /link#t=<qrToken>&k=<publicKey>. Requires a session cookie and a JSON body; it is not a navigable GET URL and does not accept a query token. Opening the QR link must navigate to /link, never to this API operation. The client first inspects /auth/qr-request/{token} and checks its public key against the fragment.
          */
         post: operations["confirmQrLogin"];
         delete?: never;
@@ -486,7 +486,7 @@ export interface paths {
         };
         /**
          * Search users
-         * @description Case-insensitive literal substring search across username, first/last name and bio; trims whitespace and an optional leading @. Percent/underscore are literal. Excludes caller and disabled users, sorted by username, at most 50 results, no pagination. Empty query returns []; current unmatched nonempty query may return null (#435).
+         * @description Case-insensitive literal substring search across username, first/last name and bio; trims whitespace and an optional leading @. Percent/underscore are literal. Excludes caller and disabled users, sorted by username, at most 50 results, no pagination. Empty query and no matches both return users as [], never null.
          */
         get: operations["searchUsers"];
         put?: never;
@@ -1837,7 +1837,7 @@ export interface paths {
         put?: never;
         /**
          * Delete messages for everyone or only for me
-         * @description Up to 100 messages of one chat, all or nothing (#840). forEveryone — only the caller's own messages; the members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only (any message of the chat); the caller's devices get messages_hidden. Hidden messages are not returned to the caller anywhere and are not counted as unread.
+         * @description Up to 100 messages of one chat, all or nothing (#840). forEveryone deletes messages the caller sent, or any message when the caller is owner or an admin with can_delete_messages; members and the caller's other devices get messages_deleted. Otherwise the messages are hidden for the caller only; the caller's devices get messages_hidden. A repeat that changes nothing is a success and sends no event. Hidden messages are not returned to the caller anywhere and are not counted as unread.
          */
         post: operations["deleteMessages"];
         delete?: never;
@@ -1888,12 +1888,17 @@ export interface paths {
     };
     "/chats/{chatId}/pins": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description chat (default) is shared and retains role permissions; personal belongs only to the authenticated user and requires membership, not an admin role. Unknown, empty and duplicate scope values return 400. all is not supported. */
+                scope?: "chat" | "personal";
+            };
             header?: never;
-            path?: never;
+            path: {
+                chatId: string;
+            };
             cookie?: never;
         };
-        /** List pinned messages */
+        /** List shared or personal pinned messages */
         get: operations["listPinnedMessages"];
         put?: never;
         post?: never;
@@ -1905,7 +1910,10 @@ export interface paths {
     };
     "/chats/{chatId}/pins/{messageId}": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description chat (default) is shared and retains role permissions; personal belongs only to the authenticated user and requires membership, not an admin role. Unknown, empty and duplicate scope values return 400. all is not supported. */
+                scope?: "chat" | "personal";
+            };
             header?: never;
             path: {
                 chatId: string;
@@ -1915,9 +1923,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Pin a message */
+        /**
+         * Pin a message
+         * @description Personal adds are idempotent and preserve pinnedAt. The message must belong to the supplied chat and be accessible. Emits PersonalPinEvent only to the owner after commit; common pins retain existing shared WS events.
+         */
         post: operations["pinMessage"];
-        /** Unpin a message */
+        /**
+         * Unpin a message
+         * @description Personal removes are idempotent; only changed state emits PersonalPinEvent to the owner after commit.
+         */
         delete: operations["unpinMessage"];
         options?: never;
         head?: never;
@@ -2000,7 +2014,7 @@ export interface paths {
         /**
          * Delete a message for everyone
          * @deprecated
-         * @description Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+         * @description Legacy single-message delete. Use POST /chats/{chatId}/messages/delete for idempotent deletion.
          */
         delete: operations["deleteMessage"];
         options?: never;
@@ -2022,6 +2036,50 @@ export interface paths {
         put?: never;
         /** Toggle a reaction */
         post: operations["toggleMessageReaction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/messages/{messageId}/react": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Legacy reaction toggle alias
+         * @deprecated
+         */
+        post: operations["toggleMessageReactionLegacy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/messages/{messageId}/reactions/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set my reaction state idempotently
+         * @description Sets the user's single reaction atomically, or removes it for emoji null. Repeating the same desired state does not toggle or broadcast a change. Responses use added for an already-present desired reaction and removed for an already-absent reaction. Legacy POST reactions and react remain toggles.
+         */
+        put: operations["setMyMessageReaction"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2292,7 +2350,7 @@ export interface paths {
         put?: never;
         /**
          * Upload media
-         * @description MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB). Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies must allow at least 140 MiB with the default file limit. Oversized uploads return a flat 413 file_too_large error with message and requestId. Voice uploads have a separate 8 MiB ciphertext limit.
+         * @description MAX_FILE_SIZE limits original file bytes (default 104857600, 100 MiB). Encrypted uploads allow an additional 16-byte AES-GCM tag. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB of metadata; reverse proxies must allow at least 140 MiB with the default file limit. Oversized uploads return a flat 413 file_too_large error with message and requestId. Voice uploads have a separate 8 MiB ciphertext limit. GET /docs/media-policy.json publishes the default byte limits and the plain-upload MIME allowlist shared with the client. Encrypted message uploads may carry any MIME type.
          */
         post: operations["uploadMedia"];
         delete?: never;
@@ -2312,7 +2370,7 @@ export interface paths {
         };
         /**
          * Download media
-         * @description uploadId is not a capability: knowing the identifier does not grant access. Downloads require authentication and access through a live attachment, or ownership of a never-attached upload. Range is not supported for the encrypted JSON envelope; its successful response is always 200. Streams an upload, managed sticker, or sticker-pack icon by UUID through the media service. Catalog imageUrl and iconUrl use this relative path; no redirect or direct storage URL is returned. Legacy catalog objects without a verified storage identity are unavailable (#973).
+         * @description uploadId is not a capability: knowing the identifier does not grant access. Downloads require authentication and access through a live attachment, or ownership of a never-attached upload. Range is not supported for the encrypted JSON envelope; its successful response is always 200. Streams an upload, managed sticker, or sticker-pack icon by UUID through the media service. Catalog imageUrl and iconUrl use this relative path; no redirect or direct storage URL is returned. Legacy catalog objects without a verified storage identity are unavailable (#973). Plain streams preserve the stored MIME type when safe; unsafe/unknown types use application/octet-stream with attachment disposition.
          */
         get: operations["getMedia"];
         put?: never;
@@ -2438,7 +2496,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List stickers in a pack */
+        /**
+         * List stickers in a pack
+         * @description An absent pack currently returns an empty stickers array; invalid UUID input may return 500 db_error.
+         */
         get: operations["listStickers"];
         put?: never;
         /**
@@ -2446,7 +2507,10 @@ export interface paths {
          * @description Accepts a single JSON object. The JSON body limit is base64(MAX_FILE_SIZE + 16) plus 64 KiB; the decoded image is limited to MAX_FILE_SIZE. Errors: 400 invalid_json, missing_image, invalid_path, upload_error; 404 not_found (pack missing or owned by another user); 413 request_too_large, file_too_large; 500 db_error.
          */
         post: operations["addSticker"];
-        /** Delete a sticker pack */
+        /**
+         * Delete a sticker pack
+         * @description Idempotent success, including an absent pack or one owned by another user.
+         */
         delete: operations["deleteStickerPack"];
         options?: never;
         head?: never;
@@ -2723,9 +2787,22 @@ export interface components {
              * @description Original author, to open their profile. Present only when the author's forwards rule allowed the forwarder to link to them; absent together with forwardedFrom when the link is hidden.
              */
             forwardedSenderId?: string;
+            /**
+             * @deprecated
+             * @description Alias of isChatPinned.
+             */
             isPinned: boolean;
+            /** @description Shared pin visible to the chat. */
+            isChatPinned: boolean;
+            /** @description Personal pin of the authenticated viewer. Never copied from another user in chat broadcasts. */
+            isPersonalPinned: boolean;
             isEdited: boolean;
+            /** Format: date-time */
             createdAt: string;
+            /**
+             * Format: date-time
+             * @description Canonical content/entities edit timestamp in UTC RFC3339, preserving database microsecond precision across edit response, history, pins, favorites, reply previews and message_edited WebSocket events. Required and never null. For an unedited message isEdited is false and updatedAt equals createdAt; service-only changes do not advance it. Existing field retained for backward compatibility; no separate nullable editedAt is introduced.
+             */
             updatedAt: string;
             deletedAt?: string | null;
             /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
@@ -2769,12 +2846,36 @@ export interface components {
             /** Format: uuid */
             senderId?: string;
             senderName: string;
+            /**
+             * Format: date-time
+             * @description Canonical Message.updatedAt of the referenced message. Included in reply previews; optional for older clients and other preview projections. Never null when present.
+             */
+            updatedAt?: string;
+            /** @description Edit flag of the referenced message, included with updatedAt in reply previews. Optional for backward compatibility. */
+            isEdited?: boolean;
             /** @description Always an array; empty reactions are [], never null. */
             reactions: components["schemas"]["Reaction"][];
             /** @description Only on the caller's own messages (#657): when another member's delivered boundary first passed the message (UTC, ISO 8601 with milliseconds). Absent — not delivered yet. */
             deliveredAt?: string;
             /** @description Only on the caller's own messages (#657): when another member's read boundary first passed the message. Absent — not read yet. In group chats — the first member. */
             readAt?: string;
+        };
+        /** @description WebSocket message_edited event. updatedAt and isEdited have the same values as the edit response and subsequent REST reload. A no-op edit preserves both values. */
+        MessageEditedEvent: {
+            /** @enum {string} */
+            type: "message_edited";
+            /** Format: uuid */
+            chatId: string;
+            /** Format: uuid */
+            messageId: string;
+            content: string;
+            entities: components["schemas"]["MessageEntities"];
+            /**
+             * Format: date-time
+             * @description Canonical non-null UTC content/entities edit timestamp with database microsecond precision.
+             */
+            updatedAt: string;
+            isEdited: boolean;
         };
         /** @description WebSocket event {"type":"receipts"} (#657), sent to the other members of a private chat when a member's boundary moves: the member's messages up to upTo inclusive are delivered or read, first at "at". Boundaries only move forward; delivered — the message went to the member's open socket or the member loaded the chat list or the thread; read implies delivered. After a reconnect the same state comes from Message.deliveredAt and readAt. */
         ReceiptEvent: {
@@ -2831,8 +2932,17 @@ export interface components {
             /** @enum {string} */
             deviceType?: "desktop" | "mobile" | "tablet";
         };
+        AuthUser: {
+            /** Format: uuid */
+            id: string;
+            username: string;
+            firstName: string;
+            lastName: string;
+            bio: string;
+            avatarUrl: string;
+        };
         AuthResponse: {
-            user: components["schemas"]["User"];
+            user: components["schemas"]["AuthUser"];
         };
         LoginRequest: {
             username: string;
@@ -2843,6 +2953,10 @@ export interface components {
             deviceName?: string;
             /** @enum {string} */
             deviceType?: "desktop" | "mobile" | "tablet";
+        };
+        Success: {
+            /** @enum {boolean} */
+            success: true;
         };
         QrTokenRequest: {
             /** @description One-time ECDH P-256 public key (SPKI) */
@@ -2870,9 +2984,15 @@ export interface components {
             publicKey: string;
             deviceName: string;
             userAgent: string;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
             createdAt: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
             expiresAt: number;
         };
         /** @description The key backup master key encrypted to the new device's publicKey. Opaque to the server. */
@@ -2884,10 +3004,22 @@ export interface components {
         QrStatusResponse: {
             /** @enum {string} */
             status: "pending" | "scanned" | "confirmed" | "expired";
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
             expiresAt?: number;
             payload?: components["schemas"]["QrKeyPayload"];
-        };
+        } & ({
+            /** @enum {unknown} */
+            status?: "pending" | "scanned";
+        } | {
+            /** @enum {unknown} */
+            status?: "confirmed";
+        } | {
+            /** @enum {unknown} */
+            status?: "expired";
+        });
         QrConfirmRequest: {
             qrToken: string;
             payload: components["schemas"]["QrKeyPayload"];
@@ -2909,16 +3041,31 @@ export interface components {
             mac: string;
             deviceName: string;
             userAgent: string;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
             claimedAt: number;
         };
         QrOfferState: {
             /** @enum {string} */
             status: "pending" | "claimed" | "confirmed" | "expired";
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
             expiresAt?: number;
             claim?: components["schemas"]["QrOfferClaim"];
-        };
+        } & ({
+            /** @enum {unknown} */
+            status?: "pending";
+        } | {
+            /** @enum {unknown} */
+            status?: "claimed";
+        } | {
+            /** @enum {unknown} */
+            status?: "confirmed" | "expired";
+        });
         QrOfferClaimRequest: {
             /** @description One-time ECDH P-256 public key (SPKI) of the new device */
             publicKey: string;
@@ -2928,16 +3075,31 @@ export interface components {
         };
         QrOfferClaimResponse: {
             claimSecret: string;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
             expiresAt: number;
         };
         QrOfferStatusResponse: {
             /** @enum {string} */
             status: "pending" | "confirmed" | "expired";
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
             expiresAt?: number;
             payload?: components["schemas"]["QrKeyPayload"];
-        };
+        } & ({
+            /** @enum {unknown} */
+            status?: "pending";
+        } | {
+            /** @enum {unknown} */
+            status?: "confirmed";
+        } | {
+            /** @enum {unknown} */
+            status?: "expired";
+        });
         QrOfferConfirmRequest: {
             payload: components["schemas"]["QrKeyPayload"];
         };
@@ -2962,6 +3124,15 @@ export interface components {
         AuthSessionsResponse: {
             sessions: components["schemas"]["AuthSession"][];
         };
+        TwoFactorStatusResponse: {
+            enabled: boolean;
+        };
+        TwoFactorVerifyResponse: {
+            /** @enum {boolean} */
+            success: true;
+            /** @description Whether a secondary password is enabled. */
+            required: boolean;
+        };
         UserProfile: {
             /** Format: uuid */
             id: string;
@@ -2972,8 +3143,8 @@ export interface components {
             bio: string;
             /** @description Empty when absent or hidden by privacy; a URI format is not guaranteed by the current writer. */
             avatarUrl: string;
-            /** @description Null is currently possible when empty (#435). Badge names are open server identifiers, not a closed enum. */
-            badges: string[] | null;
+            /** @description Always an array; empty badges are [], never null. Badge names are open server identifiers, not a closed enum. */
+            badges: string[];
             isPremium: boolean;
             isBot: boolean;
         };
@@ -3006,9 +3177,9 @@ export interface components {
         };
         UserUnavailableBody: components["schemas"]["Error"] & {
             /** @enum {string} */
-            code?: "auth_check_unavailable" | "crypto_protocol_not_ready";
+            code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
         };
-        /** @description Partial update. Omitted/null string leaves preserve the value. Empty firstName is ignored; empty lastName/bio/avatarUrl clears it. No enforced field length limits or avatar URL validator exist in this handler. Unknown keys are currently ignored; this is not the strict settings patch contract. */
+        /** @description Partial update. Omitted/null string leaves preserve the value. Empty firstName is ignored; empty lastName/bio/avatarUrl clears it. Names are limited to 64 Unicode code points before normalization. No avatar URL validator exists in this handler. Unknown keys are currently ignored; this is not the strict settings patch contract. */
         UpdateProfileRequest: {
             firstName?: string | null;
             lastName?: string | null;
@@ -3058,8 +3229,8 @@ export interface components {
             avatarUrl: string;
         };
         UserSearchResponse: {
-            /** @description Empty query gives []; a nonempty search without matches may currently give null (#435). Ordered by username. */
-            users: components["schemas"]["UserSearchItem"][] | null;
+            /** @description Always an array; empty query and no matches both give [], never null. Ordered by username. */
+            users: components["schemas"]["UserSearchItem"][];
         };
         ProfileQrResponse: {
             /** @description 256px PNG data URL. Encoded payload is the profile deep link, not a login token. Canonical URL policy and runtime gap are documented in docs/user-api-contract.md (#452). */
@@ -3079,10 +3250,6 @@ export interface components {
             /** @description ISO 8601 UTC time of the last activity; empty when unknown or hidden. */
             lastSeen: string;
             lastSeenApprox?: components["schemas"]["LastSeenApprox"];
-        };
-        Success: {
-            /** @enum {boolean} */
-            success: true;
         };
         /** @description Default true when absent during normalization. Master preference for automatic message/call alerts, including their sounds. False masks sounds/callSounds without changing those stored values, subscriptions, chat preferences, receipts or conversation audio. Browser fallback and ringtone enforcement remain in #725. */
         notifications: boolean;
@@ -3491,10 +3658,6 @@ export interface components {
             storage: components["schemas"]["StorageUsage"];
             settings: components["schemas"]["LegacyStorageSettings"];
         };
-        UserRouteNotFoundBody: components["schemas"]["Error"] & {
-            /** @enum {string} */
-            code?: "route_not_found";
-        };
         StorageSettingsUpdateResponse: {
             /** @enum {boolean} */
             success: true;
@@ -3513,10 +3676,11 @@ export interface components {
             type: "private" | "group" | "channel" | "self";
             createdAt: components["schemas"]["DatabaseTimestamp"];
         };
-        /** @description Current partial export: profile, chat membership metadata, general settings and privacy. Excludes message bodies, attachments, private keys and other account resources. A full archive is separate #447. chats may currently be null when empty (#435). */
+        /** @description Current partial export: profile, chat membership metadata, general settings and privacy. Excludes message bodies, attachments, private keys and other account resources. A full archive is separate #447. Empty chats are [], never null. */
         UserExport: {
             user: components["schemas"]["UserProfile"];
-            chats: components["schemas"]["UserExportChat"][] | null;
+            /** @description Always an array; no memberships give [], never null. */
+            chats: components["schemas"]["UserExportChat"][];
             settings: components["schemas"]["LegacyGeneralSettings"];
             privacy: components["schemas"]["PrivacySettings"];
             /**
@@ -3529,7 +3693,8 @@ export interface components {
             blockedAt: components["schemas"]["DatabaseTimestamp"];
         };
         UserBlockedResponse: {
-            blocked: components["schemas"]["UserBlockedItem"][] | null;
+            /** @description Always an array; empty block list is [], never null. */
+            blocked: components["schemas"]["UserBlockedItem"][];
         };
         BlockUserRequest: {
             /** Format: uuid */
@@ -3822,6 +3987,8 @@ export interface components {
             myReaction: boolean;
         };
         Chat: {
+            /** @description Viewer-specific 1:1 call availability including recipient calls privacy, exceptions and blocks in both directions. False for group/self chats. Optional for old servers/caches; clients preserve previous controls when absent. Never replaces server authorization when starting a call. */
+            canCall?: boolean;
             /** Format: uuid */
             id: string;
             /**
@@ -3897,10 +4064,28 @@ export interface components {
              */
             nextCursor?: string;
         };
+        MessagePin: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            messageId: string;
+            /** Format: uuid */
+            chatId: string;
+            /** Format: uuid */
+            pinnedBy: string;
+            /** Format: date-time */
+            pinnedAt: string;
+            message: components["schemas"]["Message"];
+        };
+        MessagePinsPage: {
+            pins: components["schemas"]["MessagePin"][];
+            /** @description Personal scope only. Opaque cursor ordered by pinned_at DESC, message_id DESC; absent on the last page. */
+            nextCursor?: string;
+        };
         MarkMessagesReadRequest: {
             /** Format: uuid */
             chatId: string;
-            /** @description Messages of this chat seen by the reader (duplicates are ignored). All must belong to the chat, otherwise 400 invalid_message_ids. Own and deleted messages are skipped. */
+            /** @description Messages of this chat seen by the reader (duplicates are ignored). All must belong to the chat, otherwise 400 invalid_message_ids. Own, deleted, and hidden messages are skipped and do not move the read boundary. */
             messageIds: string[];
         };
         ReadMark: {
@@ -4079,6 +4264,11 @@ export interface components {
             hasMore: boolean;
         };
         /**
+         * @description Complete data URL with base64-encoded bytes, e.g. data:image/png;base64,YQ==. This is not a bare base64 string. Decoded size is checked at runtime; plain uploads also validate MIME. Sticker handlers currently also accept a data URL without the ;base64 marker and do not apply the plain-upload MIME allowlist.
+         * @example data:image/png;base64,YQ==
+         */
+        MediaDataUrl: string;
+        /**
          * @description Encrypted media envelope v2. Unknown fields are ignored for server-first
          *     format rollouts. Missing required fields return validation_failed.
          *     Invalid sizeBytes returns invalid_size; invalid ciphertext returns
@@ -4114,15 +4304,103 @@ export interface components {
                 fileName?: string;
             };
         };
+        /** @description Relative authenticated download URL; the UUID alone grants no access. */
+        MediaUrl: string;
         UploadResponse: {
-            success: boolean;
-            url: string;
-            encrypted?: boolean;
-            encryption?: unknown;
-            fileName?: string;
+            /** @enum {boolean} */
+            success: true;
+            url: components["schemas"]["MediaUrl"];
+            /**
+             * @description Present for encrypted uploads only.
+             * @enum {boolean}
+             */
+            encrypted?: true;
+            /** @description JSON-encoded encryption metadata */
+            encryption?: string;
+            fileName: string;
+            /**
+             * Format: int64
+             * @description Plaintext size for encrypted uploads; file byte size otherwise.
+             */
+            sizeBytes: number;
+            contentType: string;
+        };
+        /** @description Complete encrypted envelope; version/algorithm/iv/keyEpoch may be absent in legacy uploads. */
+        MediaEncryptedDownload: {
+            /** @enum {boolean} */
+            encrypted: true;
+            mimeType: string;
             /** Format: int64 */
-            sizeBytes?: number;
-            contentType?: string;
+            sizeBytes: number;
+            /** Format: byte */
+            ciphertext: string;
+            version?: number;
+            algorithm?: string;
+            iv?: string;
+            keyEpoch?: number;
+            fileName?: string;
+        };
+        MediaEmoji: {
+            /** @description Emoji shortcode */
+            code: string;
+            /** @description Unicode emoji text; not an image URL. */
+            img: string;
+        };
+        MediaEmojisResponse: {
+            emojis: components["schemas"]["MediaEmoji"][];
+        };
+        /** @description Non-null timestamp. Current catalog handlers return PostgreSQL timestamptz text (created_at::text), with a space and UTC offset such as +00. RFC 3339 date-time is also accepted for compatibility; no timestamp rewrite is required. */
+        MediaTimestamp: string;
+        MediaGif: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description New records use a relative MediaUrl; legacy records may retain external URLs. */
+            url: string;
+            /** @description Username in list responses; currently empty in the create response (#608). */
+            userName: string;
+            createdAt: components["schemas"]["MediaTimestamp"];
+        };
+        MediaGifsResponse: {
+            gifs: components["schemas"]["MediaGif"][];
+        };
+        MediaGifResponse: {
+            /** @enum {boolean} */
+            success: true;
+            gif: components["schemas"]["MediaGif"];
+        };
+        MediaStickerPack: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            /** @description Relative MediaUrl when managed; empty when no verified icon is available. */
+            iconUrl: string;
+            stickerCount: number;
+            createdAt: components["schemas"]["MediaTimestamp"];
+        };
+        MediaStickerPacksResponse: {
+            packs: components["schemas"]["MediaStickerPack"][];
+        };
+        MediaStickerPackResponse: {
+            /** @enum {boolean} */
+            success: true;
+            pack: components["schemas"]["MediaStickerPack"];
+        };
+        MediaSticker: {
+            /** Format: uuid */
+            id: string;
+            /** @description Relative MediaUrl when managed; empty for legacy objects without verified storage coordinates. */
+            imageUrl: string;
+            createdAt: components["schemas"]["MediaTimestamp"];
+        };
+        MediaStickersResponse: {
+            stickers: components["schemas"]["MediaSticker"][];
+        };
+        MediaStickerResponse: {
+            /** @enum {boolean} */
+            success: true;
+            sticker: components["schemas"]["MediaSticker"];
         };
     };
     responses: {
@@ -4191,7 +4469,7 @@ export interface components {
                 "application/json": components["schemas"]["UserBadGatewayBody"];
             };
         };
-        /** @description HTTP 503; code is auth_check_unavailable or crypto_protocol_not_ready. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        /** @description HTTP 503; code is auth_check_unavailable, crypto_protocol_not_ready or crypto_unavailable. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
         UserUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -4272,15 +4550,6 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["UserInvalidExceptionBody"];
-            };
-        };
-        /** @description HTTP 404; code is route_not_found. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
-        UserRouteNotFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["UserRouteNotFoundBody"];
             };
         };
         /** @description HTTP 400; code is invalid_json or self_block or validation_failed. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
@@ -4487,8 +4756,104 @@ export interface operations {
                     "application/json": components["schemas"]["AuthResponse"];
                 };
             };
-            400: components["responses"]["Error"];
-            409: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json" | "validation_failed" | "weak_password";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "username_taken";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "token_issuer_not_ready";
+                    };
+                };
+            };
         };
     };
     login: {
@@ -4504,7 +4869,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Authenticated (session cookie is set) or 2FA challenge */
+            /** @description Authenticated with Set-Cookie, or twoFARequired challenge without a new cookie. No token in JSON. */
             200: {
                 headers: {
                     /** @description Session cookie (sessionCookie) with the issued token, HttpOnly */
@@ -4520,7 +4885,104 @@ export interface operations {
                     };
                 };
             };
-            401: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_2fa" | "invalid_credentials";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "token_issuer_not_ready";
+                    };
+                };
+            };
         };
     };
     saveAuthPublicKey: {
@@ -4543,10 +5005,108 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            400: components["responses"]["Error"];
-            401: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json" | "invalid_public_key";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_session" | "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     createQrToken: {
@@ -4571,9 +5131,92 @@ export interface operations {
                     "application/json": components["schemas"]["QrTokenResponse"];
                 };
             };
-            400: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            409: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json" | "validation_failed";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request" | "invalid_secret";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "qr_scanned";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
         };
     };
     cancelQrToken: {
@@ -4598,8 +5241,68 @@ export interface operations {
                 };
                 content?: never;
             };
-            400: components["responses"]["Error"];
-            403: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request" | "invalid_secret";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
         };
     };
     getQrRequest: {
@@ -4622,8 +5325,80 @@ export interface operations {
                     "application/json": components["schemas"]["QrLoginRequest"];
                 };
             };
-            401: components["responses"]["Error"];
-            404: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "qr_rotated";
+                    };
+                };
+            };
+            /** @description Unsupported method */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     declineQrRequest: {
@@ -4644,7 +5419,80 @@ export interface operations {
                 };
                 content?: never;
             };
-            401: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request";
+                    };
+                };
+            };
+            /** @description Unsupported method */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     getQrStatus: {
@@ -4671,7 +5519,68 @@ export interface operations {
                     "application/json": components["schemas"]["QrStatusResponse"];
                 };
             };
-            403: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_request";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_secret";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
         };
     };
     confirmQrLogin: {
@@ -4692,11 +5601,120 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            400: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            409: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json" | "invalid_request" | "invalid_token" | "validation_failed";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request" | "not_scanned";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "already_confirmed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable" | "token_issuer_not_ready";
+                    };
+                };
+            };
         };
     };
     createQrOffer: {
@@ -4721,10 +5739,116 @@ export interface operations {
                     "application/json": components["schemas"]["QrOfferResponse"];
                 };
             };
-            400: components["responses"]["Error"];
-            401: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            409: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request" | "forbidden";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "qr_scanned";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     getQrOffer: {
@@ -4747,7 +5871,68 @@ export interface operations {
                     "application/json": components["schemas"]["QrOfferState"];
                 };
             };
-            401: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Unsupported method */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     withdrawQrOffer: {
@@ -4768,7 +5953,80 @@ export interface operations {
                 };
                 content?: never;
             };
-            401: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request";
+                    };
+                };
+            };
+            /** @description Unsupported method */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     claimQrOffer: {
@@ -4795,8 +6053,92 @@ export interface operations {
                     "application/json": components["schemas"]["QrOfferClaimResponse"];
                 };
             };
-            400: components["responses"]["Error"];
-            404: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json" | "validation_failed";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "qr_rotated";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
         };
     };
     getQrOfferStatus: {
@@ -4823,7 +6165,56 @@ export interface operations {
                     "application/json": components["schemas"]["QrOfferStatusResponse"];
                 };
             };
-            403: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_secret";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
         };
     };
     confirmQrOffer: {
@@ -4846,12 +6237,132 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            400: components["responses"]["Error"];
-            401: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json" | "validation_failed";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "already_confirmed" | "not_claimed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable" | "token_issuer_not_ready";
+                    };
+                };
+            };
         };
     };
     logout: {
@@ -4866,9 +6377,99 @@ export interface operations {
             /** @description Logged out; the session cookie is cleared */
             200: {
                 headers: {
+                    /** @description Clears the HttpOnly session cookie. */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
             };
         };
     };
@@ -4884,12 +6485,100 @@ export interface operations {
             /** @description All sessions revoked; the session cookie is cleared */
             200: {
                 headers: {
+                    /** @description Clears the HttpOnly session cookie. */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            401: components["responses"]["Error"];
-            503: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable" | "logout_all_unavailable";
+                    };
+                };
+            };
         };
     };
     listAuthSessions: {
@@ -4910,7 +6599,80 @@ export interface operations {
                     "application/json": components["schemas"]["AuthSessionsResponse"];
                 };
             };
-            401: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     changePassword: {
@@ -4935,10 +6697,108 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            400: components["responses"]["Error"];
-            401: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json" | "weak_password";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request" | "wrong_password";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     getTwoFactorStatus: {
@@ -4955,7 +6815,83 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TwoFactorStatusResponse"];
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
             };
         };
     };
@@ -4979,9 +6915,108 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            400: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json" | "weak_password";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     disableTwoFactor: {
@@ -5005,9 +7040,108 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
-            400: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json" | "two_fa_not_enabled";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request" | "wrong_password";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     verifyTwoFactor: {
@@ -5031,9 +7165,108 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TwoFactorVerifyResponse"];
+                };
             };
-            401: components["responses"]["Error"];
+            /** @description Auth or edge error; see code enum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_json";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "invalid_token" | "missing_token" | "token_revoked";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "cross_site_request" | "wrong_password";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "method_not_allowed";
+                    };
+                };
+            };
+            /** @description Edge rate limit exceeded; Retry-After is seconds. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "rate_limited";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "internal_error";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "upstream_unavailable";
+                    };
+                };
+            };
+            /** @description Auth or edge error; see code enum. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"] & {
+                        /** @enum {string} */
+                        code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
+                    };
+                };
+            };
         };
     };
     getCurrentUser: {
@@ -5070,7 +7303,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateProfileRequest"];
@@ -5104,7 +7337,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RenameUsernameRequest"];
@@ -5139,7 +7372,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateAvatarRequest"];
@@ -5371,7 +7604,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacySettingsBulkPatch"];
@@ -5430,7 +7663,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["MvpSettings"];
@@ -5463,7 +7696,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PrivacySettingsPatch"];
@@ -5528,7 +7761,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PrivacyExceptionRequest"];
@@ -5619,7 +7852,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacyNotificationSettings"];
@@ -5678,7 +7911,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacySoundSettings"];
@@ -5737,7 +7970,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacyAdvancedSettings"];
@@ -5796,7 +8029,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacyFoldersRequest"];
@@ -5841,7 +8074,16 @@ export interface operations {
                 };
             };
             401: components["responses"]["UserUnauthorized"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "GET";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -5855,7 +8097,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacyStorageSettings"];
@@ -5874,7 +8116,16 @@ export interface operations {
             400: components["responses"]["UserInvalidInput"];
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "PUT";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -5901,7 +8152,16 @@ export interface operations {
             };
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "DELETE";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -5928,7 +8188,16 @@ export interface operations {
             };
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "DELETE";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -5996,7 +8265,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BlockUserRequest"];
@@ -6073,7 +8342,16 @@ export interface operations {
                 };
             };
             401: components["responses"]["UserUnauthorized"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "GET";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -6087,7 +8365,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SetPasscodeRequest"];
@@ -6106,7 +8384,16 @@ export interface operations {
             400: components["responses"]["UserInvalidInput"];
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "POST";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -6120,7 +8407,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PasscodeRequest"];
@@ -6139,7 +8426,16 @@ export interface operations {
             400: components["responses"]["UserPasscodeNotSet"];
             401: components["responses"]["UserPasscodeUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "POST";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -6153,7 +8449,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PasscodeRequest"];
@@ -6172,7 +8468,16 @@ export interface operations {
             400: components["responses"]["UserPasscodeNotSet"];
             401: components["responses"]["UserPasscodeUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "POST";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -6186,7 +8491,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PasscodeTimeoutRequest"];
@@ -6205,7 +8510,16 @@ export interface operations {
             400: components["responses"]["UserInvalidInput"];
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
-            404: components["responses"]["UserRouteNotFound"];
+            /** @description Method not allowed; Allow identifies the supported method. */
+            405: {
+                headers: {
+                    Allow?: "PUT";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMethodNotAllowedBody"];
+                };
+            };
             429: components["responses"]["UserRateLimited"];
             500: components["responses"]["UserInternalError"];
             502: components["responses"]["UserBadGateway"];
@@ -6245,7 +8559,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DeviceRegistrationRequest"];
@@ -6365,7 +8679,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 8 KiB JSON body. */
+        /** @description At most 8 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PushSubscriptionRequest"];
@@ -6398,7 +8712,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 8 KiB JSON body. */
+        /** @description At most 8 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DeletePushSubscriptionRequest"];
@@ -7862,8 +10176,15 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description A message is not in this chat or already deleted */
+            /** @description A message is not in this chat */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Database error (internal_error) */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7979,7 +10300,14 @@ export interface operations {
     };
     listPinnedMessages: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description chat (default) is shared and retains role permissions; personal belongs only to the authenticated user and requires membership, not an admin role. Unknown, empty and duplicate scope values return 400. all is not supported. */
+                scope?: "chat" | "personal";
+                /** @description Personal scope page size; ignored for chat scope. */
+                limit?: number;
+                /** @description Personal scope keyset cursor; ignored for chat scope. */
+                cursor?: string;
+            };
             header?: never;
             path: {
                 chatId: string;
@@ -7988,18 +10316,26 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pins */
+            /** @description Pins; both Message pin flags are viewer-specific and independent. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessagePinsPage"];
+                };
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     pinMessage: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description chat (default) is shared and retains role permissions; personal belongs only to the authenticated user and requires membership, not an admin role. Unknown, empty and duplicate scope values return 400. all is not supported. */
+                scope?: "chat" | "personal";
+            };
             header?: never;
             path: {
                 chatId: string;
@@ -8009,18 +10345,25 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pinned */
+            /** @description Desired state saved; repeats succeed. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     unpinMessage: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description chat (default) is shared and retains role permissions; personal belongs only to the authenticated user and requires membership, not an admin role. Unknown, empty and duplicate scope values return 400. all is not supported. */
+                scope?: "chat" | "personal";
+            };
             header?: never;
             path: {
                 chatId: string;
@@ -8030,13 +10373,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Unpinned */
+            /** @description Desired state saved; repeats succeed. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     markMessagesRead: {
@@ -8271,12 +10618,79 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description One emoji from the existing client picker whitelist below (the alternatives in pattern). Raw input is limited to 64 UTF-8 bytes. Surrounding Unicode White_Space is trimmed, NFC is applied, and one optional trailing text/emoji presentation selector is replaced by the picker presentation (heart becomes ❤️). Stored and returned values use that canonical form. Text, multiple emoji, skin tones, flags and ZWJ sequences outside this whitelist return 400. */
                     emoji: string;
                 };
             };
         };
         responses: {
             /** @description Updated reaction state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionToggleResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    toggleMessageReactionLegacy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description One emoji from the existing client picker whitelist below (the alternatives in pattern). Raw input is limited to 64 UTF-8 bytes. Surrounding Unicode White_Space is trimmed, NFC is applied, and one optional trailing text/emoji presentation selector is replaced by the picker presentation (heart becomes ❤️). Stored and returned values use that canonical form. Text, multiple emoji, skin tones, flags and ZWJ sequences outside this whitelist return 400. */
+                    emoji: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated reaction state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionToggleResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    setMyMessageReaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description One emoji from the existing client picker whitelist below (the alternatives in pattern). Raw input is limited to 64 UTF-8 bytes. Surrounding Unicode White_Space is trimmed, NFC is applied, and one optional trailing text/emoji presentation selector is replaced by the picker presentation (heart becomes ❤️). Stored and returned values use that canonical form. Text, multiple emoji, skin tones, flags and ZWJ sequences outside this whitelist return 400. */
+                    emoji: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Desired reaction state */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8738,11 +11152,15 @@ export interface operations {
                 "multipart/form-data": {
                     /** Format: binary */
                     file: string;
+                    /** @description Stored purpose: message/avatar/gif/sticker; missing or unknown values normalize to unknown. */
+                    purpose?: string;
                 };
                 "application/json": {
-                    /** @description Data URL */
-                    file: string;
-                    fileName?: string;
+                    file: components["schemas"]["MediaDataUrl"];
+                    /** @description Optional filename; limit is 255 UTF-8 bytes. */
+                    fileName?: string | null;
+                    /** @description message selects the encrypted-envelope request instead; other unknown strings normalize to unknown. */
+                    purpose?: string | null;
                 } | components["schemas"]["EncryptedMediaUploadRequest"];
             };
         };
@@ -8757,8 +11175,14 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
             413: components["responses"]["FileTooLarge"];
             415: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     getMedia: {
@@ -8777,39 +11201,60 @@ export interface operations {
             /** @description Media stream, or encrypted media metadata and ciphertext */
             200: {
                 headers: {
-                    "Accept-Ranges"?: string;
                     "Content-Length"?: number;
+                    "Accept-Ranges"?: string;
+                    "Content-Range"?: string;
+                    /** @description private, no-cache; access is checked again for reuse. */
+                    "Cache-Control"?: string;
+                    /** @description Authorization, Cookie; Bearer is not accepted. */
+                    Vary?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/octet-stream": string;
-                    "application/json": components["schemas"]["Object"];
+                    "application/json": components["schemas"]["MediaEncryptedDownload"];
+                    "*/*": string;
                 };
             };
             /** @description Partial media stream */
             206: {
                 headers: {
+                    "Content-Length"?: number;
+                    "Accept-Ranges"?: string;
+                    "Content-Range"?: string;
+                    /** @description private, no-cache; access is checked again for reuse. */
+                    "Cache-Control"?: string;
+                    /** @description Authorization, Cookie; Bearer is not accepted. */
+                    Vary?: string;
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "*/*": string;
+                };
             };
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
-            /** @description Requested range is not satisfiable */
+            405: components["responses"]["Error"];
+            /** @description Unsatisfiable Range; empty body, Content-Range may specify the object size. */
             416: {
                 headers: {
+                    "Content-Range"?: string;
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
             502: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     headMedia: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Range?: string;
+            };
             path: {
                 uploadId: string;
             };
@@ -8820,6 +11265,13 @@ export interface operations {
             /** @description Media headers */
             200: {
                 headers: {
+                    "Content-Length"?: number;
+                    "Accept-Ranges"?: string;
+                    "Content-Range"?: string;
+                    /** @description private, no-cache; access is checked again for reuse. */
+                    "Cache-Control"?: string;
+                    /** @description Authorization, Cookie; Bearer is not accepted. */
+                    Vary?: string;
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -8827,21 +11279,81 @@ export interface operations {
             /** @description Partial media headers */
             206: {
                 headers: {
+                    "Content-Length"?: number;
+                    "Accept-Ranges"?: string;
+                    "Content-Range"?: string;
+                    /** @description private, no-cache; access is checked again for reuse. */
+                    "Cache-Control"?: string;
+                    /** @description Authorization, Cookie; Bearer is not accepted. */
+                    Vary?: string;
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            401: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-            /** @description Requested range is not satisfiable */
-            416: {
+            /** @description Same 401 status as GET; HEAD has no response body. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            502: components["responses"]["Error"];
+            /** @description Same 403 status as GET; HEAD has no response body. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 404 status as GET; HEAD has no response body. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 405 status as GET; HEAD has no response body. */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unsatisfiable Range; empty body, Content-Range may specify the object size. */
+            416: {
+                headers: {
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 429 status as GET; HEAD has no response body. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 500 status as GET; HEAD has no response body. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 502 status as GET; HEAD has no response body. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same 503 status as GET; HEAD has no response body. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listEmojis: {
@@ -8858,8 +11370,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaEmojisResponse"];
+                };
             };
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
         };
     };
     listGifs: {
@@ -8876,8 +11392,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaGifsResponse"];
+                };
             };
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     createGif: {
@@ -8891,7 +11414,7 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @description Optional name, trimmed before saving; empty is allowed. At most 255 Unicode code points after trimming, without control characters. */
-                    name?: string;
+                    name?: string | null;
                     url: string;
                 };
             };
@@ -8902,12 +11425,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaGifResponse"];
+                };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            405: components["responses"]["Error"];
             413: components["responses"]["RequestTooLarge"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listFavoriteGifs: {
@@ -8924,8 +11454,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaGifsResponse"];
+                };
             };
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     favoriteGif: {
@@ -8944,18 +11481,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
             /** @description Added to favorites */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     unfavoriteGif: {
@@ -8974,11 +11520,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listStickerPacks: {
@@ -8995,8 +11548,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaStickerPacksResponse"];
+                };
             };
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     createStickerPack: {
@@ -9009,10 +11569,14 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Trimmed nonempty name. */
                     name: string;
-                    description?: string;
-                    /** Format: byte */
-                    icon?: string;
+                    description?: string | null;
+                    /**
+                     * @description Optional complete base64 data URL; absent, null or empty means no icon.
+                     * @example data:image/png;base64,YQ==
+                     */
+                    icon?: string | null;
                 };
             };
         };
@@ -9022,11 +11586,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaStickerPackResponse"];
+                };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
             413: components["responses"]["StickerTooLarge"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listStickers: {
@@ -9045,8 +11616,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaStickersResponse"];
+                };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     addSticker: {
@@ -9061,8 +11640,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: byte */
-                    image: string;
+                    image: components["schemas"]["MediaDataUrl"];
                 };
             };
         };
@@ -9072,12 +11650,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MediaStickerResponse"];
+                };
             };
             400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            405: components["responses"]["Error"];
             413: components["responses"]["StickerTooLarge"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     deleteStickerPack: {
@@ -9096,8 +11681,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     deleteSticker: {
@@ -9116,8 +11710,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Success"];
+                };
             };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            405: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     adminListUsers: {

@@ -15,7 +15,11 @@ type Schema = {
   enum?: unknown[];
   allOf?: Schema[];
 };
-type Response = { $ref?: string; content?: Record<string, { schema: Schema }> };
+type Response = {
+  $ref?: string;
+  content?: Record<string, { schema: Schema }>;
+  headers?: Record<string, { schema: Schema }>;
+};
 type Operation = {
   operationId: string;
   security?: unknown[];
@@ -84,7 +88,7 @@ const profile = {
   lastName: '',
   bio: '',
   avatarUrl: '',
-  badges: null,
+  badges: [],
   isPremium: false,
   isBot: false,
 } satisfies components['schemas']['UserProfile'];
@@ -145,6 +149,20 @@ describe('Исполнимый контракт User API (#453)', () => {
     }
   });
 
+  it('Storage и Passcode документируют 405 с точным Allow (#449)', () => {
+    for (const [path, item] of Object.entries(paths)) {
+      if (!/^\/users\/(storage|passcode)(\/|$)/.test(path)) continue;
+      for (const [method, operation] of Object.entries(item)) {
+        if (!operation.operationId) continue;
+        expect(operation.responses['404'], path).toBeUndefined();
+        expect(operation.responses['405'].headers?.Allow.schema.enum, path).toEqual([
+          method.toUpperCase(),
+        ]);
+        expect(operation['x-error-codes']['405']).toEqual(['method_not_allowed']);
+      }
+    }
+  });
+
   it('матрица ошибок согласована с reusable responses и их enum кодов', () => {
     for (const op of operations) {
       for (const status of ['429', '500', '502']) expect(op.responses[status]).toBeDefined();
@@ -153,7 +171,7 @@ describe('Исполнимый контракт User API (#453)', () => {
       }
       for (const [status, response] of Object.entries(op.responses)) {
         if (status.startsWith('2')) continue;
-        const reusable = responses[schemaName(response.$ref!)];
+        const reusable = response.$ref ? responses[schemaName(response.$ref)] : response;
         const name = schemaName(reusable.content!['application/json'].schema.$ref!);
         const codes = schemas[name].allOf![1].properties!.code.enum!;
         expect(op['x-error-codes'][status], `${op.operationId}: ${status}`).toBeDefined();
@@ -278,12 +296,13 @@ describe('Исполнимый контракт User API (#453)', () => {
     expect(accepts('PrivacySettingsPatch', { callsFrom: 'all' })).toBe(false);
   });
 
-  it('сохраняет реальную nullable-семантику списков и обязательные поля профиля', () => {
+  it('возвращает коллекции массивами и сохраняет обязательные поля профиля', () => {
     expect(accepts('ProfileResponse', { user: profile })).toBe(true);
+    expect(accepts('ProfileResponse', { user: { ...profile, badges: null } })).toBe(false);
     expect(accepts('ProfileResponse', { user: { id: profile.id } })).toBe(false);
     for (const name of ['UserSearchResponse', 'UserBlockedResponse']) {
       const key = name === 'UserSearchResponse' ? 'users' : 'blocked';
-      expect(accepts(name, { [key]: null })).toBe(true);
+      expect(accepts(name, { [key]: null })).toBe(false);
       expect(accepts(name, { [key]: [] })).toBe(true);
       expect(accepts(name, {})).toBe(false);
     }
@@ -304,7 +323,8 @@ describe('Исполнимый контракт User API (#453)', () => {
     expect(accepts('UserExport', { ...exported, exportedAt: '2026-10-16 18:00:00+00' })).toBe(
       false
     );
-    expect(accepts('UserExport', { ...exported, chats: null })).toBe(true);
+    expect(accepts('UserExport', { ...exported, chats: null })).toBe(false);
+    expect(accepts('UserExport', { ...exported, chats: [] })).toBe(true);
   });
 
   it('фиксирует timeout=0 и обязательность endpoint/keys без изменения Go', () => {

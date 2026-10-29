@@ -23,7 +23,9 @@ var (
 	ErrTwoFANotEnabled        = errors.New("2fa not enabled")
 	ErrTwoFARequired          = errors.New("2fa required")
 	ErrInvalidTwoFA           = errors.New("invalid 2fa")
+	ErrInvalidTwoFAState      = errors.New("enabled 2fa has no password hash")
 	ErrUserNotFound           = errors.New("user not found")
+	ErrInvalidPublicKey       = errors.New("public key is required")
 	ErrTokenGenerationChanged = errors.New("token generation kept changing during issuance")
 	ErrAuthorizationRevoked   = errors.New("authorization token was revoked during issuance")
 )
@@ -204,17 +206,18 @@ func (s *Service) Login(ctx context.Context, username, password, twoFAPassword s
 	}
 
 	if twoFAEnabled {
+		if !twoFAHash.Valid || strings.TrimSpace(twoFAHash.String) == "" {
+			return User{}, "", ErrInvalidTwoFAState
+		}
 		if twoFAPassword == "" {
 			return user, "", ErrTwoFARequired
 		}
-		if twoFAHash.Valid {
-			valid2FA, err := s.crypto.VerifyPassword(ctx, twoFAPassword, twoFAHash.String)
-			if err != nil {
-				return User{}, "", err
-			}
-			if !valid2FA {
-				return User{}, "", ErrInvalidTwoFA
-			}
+		valid2FA, err := s.crypto.VerifyPassword(ctx, twoFAPassword, twoFAHash.String)
+		if err != nil {
+			return User{}, "", err
+		}
+		if !valid2FA {
+			return User{}, "", ErrInvalidTwoFA
 		}
 	}
 
@@ -225,7 +228,7 @@ func (s *Service) Login(ctx context.Context, username, password, twoFAPassword s
 func (s *Service) SavePublicKey(ctx context.Context, userID, publicKey string) error {
 	publicKey = strings.TrimSpace(publicKey)
 	if publicKey == "" {
-		return errors.New("public key is required")
+		return ErrInvalidPublicKey
 	}
 	var userExists bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id = $1)`, userID).Scan(&userExists); err != nil {

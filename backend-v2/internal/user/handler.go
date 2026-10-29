@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -448,7 +449,18 @@ func (h *Handler) Storage(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
 	default:
-		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
+		var allowed string
+		switch path {
+		case "/api/v2/users/storage":
+			allowed = http.MethodGet
+		case "/api/v2/users/storage/settings":
+			allowed = http.MethodPut
+		case "/api/v2/users/storage/cache":
+			allowed = http.MethodDelete
+		case "/api/v2/users/storage/all":
+			allowed = http.MethodDelete
+		}
+		respondUserSubrouteMethod(w, r, allowed)
 	}
 }
 
@@ -708,8 +720,31 @@ func (h *Handler) Passcode(w http.ResponseWriter, r *http.Request) {
 		}
 		respondPasscode(w, r, h.service.UpdatePasscodeTimeout(r.Context(), current.ID, input.Timeout))
 	default:
-		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
+		var allowed string
+		switch path {
+		case "/api/v2/users/passcode":
+			allowed = http.MethodGet
+		case "/api/v2/users/passcode/set":
+			allowed = http.MethodPost
+		case "/api/v2/users/passcode/verify":
+			allowed = http.MethodPost
+		case "/api/v2/users/passcode/disable":
+			allowed = http.MethodPost
+		case "/api/v2/users/passcode/timeout":
+			allowed = http.MethodPut
+		}
+		respondUserSubrouteMethod(w, r, allowed)
 	}
+}
+
+// Неизвестный путь отличается от известного пути с неподдерживаемым методом.
+func respondUserSubrouteMethod(w http.ResponseWriter, r *http.Request, allowed string) {
+	if allowed == "" {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
+		return
+	}
+	w.Header().Set("Allow", allowed)
+	httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 }
 
 func respondPasscode(w http.ResponseWriter, r *http.Request, err error) {
@@ -741,11 +776,20 @@ func isValidUUID(value string) bool {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(value); err != nil {
+	if !decodeSingleJSON(w, r, value, 128<<10) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}
 	return true
+}
+
+func decodeSingleJSON(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
+	if err := dec.Decode(value); err != nil {
+		return false
+	}
+	// После первого значения допустимы только пробелы и конец тела.
+	return errors.Is(dec.Decode(&struct{}{}), io.EOF)
 }
 
 type preferenceRouteSpec struct {

@@ -43,6 +43,7 @@ var (
 )
 
 type Chat struct {
+	CanCall       bool   `json:"canCall"`
 	ID            string `json:"id"`
 	Type          string `json:"type"`
 	Title         string `json:"title"`
@@ -79,6 +80,8 @@ type Chat struct {
 }
 
 type LastMessagePreview struct {
+	UpdatedAt  string           `json:"updatedAt,omitempty"`
+	IsEdited   *bool            `json:"isEdited,omitempty"`
 	ID         string           `json:"id"`
 	Content    string           `json:"content"`
 	Entities   MessageEntities  `json:"entities"`
@@ -126,7 +129,9 @@ type Message struct {
 	// ForwardedSenderID — автор оригинала, чтобы открыть его профиль. Только
 	// когда его правило «Пересылка» разрешило ссылку (#785).
 	ForwardedSenderID string  `json:"forwardedSenderId,omitempty"`
-	IsPinned          bool    `json:"isPinned"`
+	IsPinned          bool    `json:"isPinned"` // Deprecated alias of IsChatPinned.
+	IsChatPinned      bool    `json:"isChatPinned"`
+	IsPersonalPinned  bool    `json:"isPersonalPinned"`
 	IsEdited          bool    `json:"isEdited"`
 	CreatedAt         string  `json:"createdAt"`
 	UpdatedAt         string  `json:"updatedAt"`
@@ -285,24 +290,26 @@ func NewService(db *sql.DB, ws realtimeServer, presence presence.Store) *Service
 // hydrateMessageFields дополняет сообщение для зрителя viewerID: цитата
 // ответа на скрытое им сообщение показывается как на удалённое (#840).
 func (s *Service) hydrateMessageFields(ctx context.Context, viewerID string, msg *Message) error {
+	normalizeMessageTimes(msg)
 	msg.SenderFirstName = msg.SenderName
 	if msg.ReplyTo != nil {
 		msg.ReplyToMessageID = msg.ReplyTo
 		var preview LastMessagePreview
 		err := s.db.QueryRowContext(ctx, `
-				SELECT COALESCE(up.first_name, au.first_name, au.username, ''), m.id::text, m.content, m.entities, m.type, COALESCE(m.sender_id::text, '')
+				SELECT COALESCE(up.first_name, au.first_name, au.username, ''), m.id::text, m.content, m.entities, m.type, COALESCE(m.sender_id::text, ''), GREATEST(m.updated_at,m.created_at)::text, m.updated_at > m.created_at
 				FROM messages.messages m
 				LEFT JOIN auth.users au ON au.id = m.sender_id
 				LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 				WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
 				  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $3)
-			`, *msg.ReplyTo, msg.ChatID, viewerID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
+			`, *msg.ReplyTo, msg.ChatID, viewerID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID, &preview.UpdatedAt, &preview.IsEdited)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		msg.ReplySenderName = preview.SenderName
 		msg.ReplyToSenderName = preview.SenderName
 		if err == nil {
+			preview.UpdatedAt = canonicalMessageTime(preview.UpdatedAt)
 			preview.Reactions = []Reaction{}
 			msg.ReplyPreview = &preview
 		}
@@ -1235,13 +1242,17 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, chatID, memberID st
 		return ErrForbidden
 	}
 
-	// Удаление и пометка «нужна смена ключа» — одним запросом: исключённый
+	// Участника и личные настройки удаляем атомарно с пометкой смены ключа (#462): исключённый
 	// не должен читать то, что напишут после него (#806).
 	result, err := s.db.ExecContext(ctx, `
 		WITH removed AS (
 			DELETE FROM chats.members
 			WHERE chat_id = $1 AND user_id = $2 AND role = $3
-			RETURNING chat_id
+			RETURNING chat_id, user_id
+		), cleaned AS (
+			DELETE FROM chats.user_chat_settings cs
+			USING removed r
+			WHERE cs.chat_id = r.chat_id AND cs.user_id = r.user_id
 		)
 		UPDATE chats.chats SET key_rotation_needed = TRUE
 		WHERE id IN (SELECT chat_id FROM removed)
@@ -1344,10 +1355,15 @@ func (s *Service) MarkMessagesRead(ctx context.Context, userID, chatID string, m
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id::text, COALESCE(sender_id::text, ''), deleted_at IS NOT NULL, created_at
-		FROM messages.messages
-		WHERE chat_id = $1 AND id = ANY($2::uuid[])
-	`, chatID, pq.Array(ids))
+		SELECT m.id::text, COALESCE(m.sender_id::text, ''), m.deleted_at IS NOT NULL,
+		       EXISTS (
+		           SELECT 1 FROM messages.hidden_messages hm
+		           WHERE hm.message_id = m.id AND hm.user_id = $3
+		       ),
+		       m.created_at
+		FROM messages.messages m
+		WHERE m.chat_id = $1 AND m.id = ANY($2::uuid[])
+	`, chatID, pq.Array(ids), userID)
 	if err != nil {
 		return ReadMark{}, err
 	}
@@ -1357,13 +1373,13 @@ func (s *Service) MarkMessagesRead(ctx context.Context, userID, chatID string, m
 	var newest time.Time
 	for rows.Next() {
 		var id, senderID string
-		var deleted bool
+		var deleted, hidden bool
 		var createdAt time.Time
-		if err := rows.Scan(&id, &senderID, &deleted, &createdAt); err != nil {
+		if err := rows.Scan(&id, &senderID, &deleted, &hidden, &createdAt); err != nil {
 			return ReadMark{}, err
 		}
 		found++
-		if deleted || senderID == userID {
+		if deleted || hidden || senderID == userID {
 			continue
 		}
 		readIDs = append(readIDs, id)
@@ -1734,6 +1750,9 @@ func (s *Service) BanMember(ctx context.Context, actorID, chatID, userID string,
 		memberRemoved = affected == 1
 	}
 	if memberRemoved {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM chats.user_chat_settings WHERE user_id = $1 AND chat_id = $2`, userID, chatID); err != nil {
+			return err
+		}
 		if err := markKeyRotationNeeded(ctx, tx, chatID); err != nil {
 			return err
 		}
@@ -2088,6 +2107,7 @@ func (s *Service) peerPublicKey(ctx context.Context, userID, chatID string) (str
 // зрителя (#463, #783, #784): статус и время активности, фото. Время —
 // взаимно и с приблизительным вместо скрытого (#791); фото — нет.
 func applyPeerPrivacy(chat *Chat, pair privacy.Pair, now time.Time) {
+	chat.CanCall = chat.Type == "private" && chat.PeerID != "" && !pair.ViewerToOwner.Blocked && privacy.Decide(pair.Owner, pair.OwnerToViewer, privacy.Calls)
 	if view := pair.LastSeen(privacy.ParseLastSeen(chat.PeerLastSeen), now); !view.Exact {
 		chat.PeerIsOnline = false
 		chat.PeerLastSeen = ""
@@ -2170,7 +2190,7 @@ func (s *Service) ListMessages(ctx context.Context, userID, chatID string, limit
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
 		       m.content, m.entities, m.type, m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
-		       m.created_at::text, m.updated_at::text, m.deleted_at::text
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $4)
 		FROM messages.messages m
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
@@ -2214,10 +2234,11 @@ func scanMessages(rows *sql.Rows) ([]Message, error) {
 			&msg.SenderName, &msg.SenderAvatar,
 			&msg.Content, &msg.Entities, &msg.Type, &replyTo, &metadataBytes,
 			&msg.IsPinned, &msg.IsEdited,
-			&msg.CreatedAt, &msg.UpdatedAt, &deletedAt,
+			&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &msg.IsPersonalPinned,
 		); err != nil {
 			return nil, err
 		}
+		msg.IsChatPinned = msg.IsPinned
 		if replyTo.Valid {
 			msg.ReplyTo = &replyTo.String
 		}
@@ -2386,8 +2407,8 @@ func (s *Service) SendMessages(ctx context.Context, userID, chatID string, outgo
 
 		err = tx.QueryRowContext(ctx, `
 		WITH inserted AS (
-			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata, created_at, entities)
-			VALUES ($1, $2, $3, $4, $5, $6, NOW() + $7::int * interval '1 microsecond', $8)
+			INSERT INTO messages.messages (chat_id, sender_id, content, type, reply_to, metadata, created_at, entities, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, NOW() + $7::int * interval '1 microsecond', $8, NOW() + $7::int * interval '1 microsecond')
 			RETURNING *
 		)
 		SELECT m.id::text, m.chat_id::text, m.sender_id::text,
@@ -2525,7 +2546,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	err = s.db.QueryRowContext(ctx, `
 		WITH updated AS (
 			UPDATE messages.messages AS m
-			SET content = $1, entities = $4, updated_at = NOW()
+			SET content = $1, entities = $4, updated_at = GREATEST(clock_timestamp(), m.created_at + interval '1 microsecond', m.updated_at + interval '1 microsecond')
 			FROM chats.members AS cm
 			WHERE m.id = $2 AND m.sender_id = $3 AND m.deleted_at IS NULL
 			  AND cm.chat_id = m.chat_id AND cm.user_id = $3
@@ -2535,7 +2556,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
 		       u.content, u.entities, u.type, u.reply_to::text, u.metadata,
 		       (p.message_id IS NOT NULL), u.updated_at > u.created_at,
-		       u.created_at::text, u.updated_at::text, u.deleted_at::text
+		       u.created_at::text, u.updated_at::text, u.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = u.id AND pp.user_id = $3)
 		FROM updated u
 		LEFT JOIN auth.users au ON au.id = u.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = u.sender_id
@@ -2545,8 +2566,9 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 		&msg.SenderName, &msg.SenderAvatar,
 		&msg.Content, &msg.Entities, &msg.Type, &replyToStr, &metadataBytes,
 		&msg.IsPinned, &msg.IsEdited,
-		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt)
+		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &msg.IsPersonalPinned)
 
+	msg.IsChatPinned = msg.IsPinned
 	if err == sql.ErrNoRows {
 		return Message{}, ErrNotFound
 	}
@@ -2576,6 +2598,7 @@ func (s *Service) EditMessage(ctx context.Context, userID, messageID, content st
 	if s.ws != nil {
 		payload, _ := json.Marshal(map[string]any{
 			"type":      "message_edited",
+			"isEdited":  msg.IsEdited,
 			"chatId":    msg.ChatID,
 			"messageId": msg.ID,
 			"content":   msg.Content,
@@ -2669,7 +2692,7 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 		       COALESCE(up.first_name, au.first_name, au.username, ''), COALESCE(up.avatar_url, ''),
 		       m.content, m.entities, m.type, m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
-		       m.created_at::text, m.updated_at::text, m.deleted_at::text,
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $4),
 		       COALESCE((
 		           SELECT jsonb_agg(jsonb_build_object(
 		               'emoji', grouped.emoji,
@@ -2699,8 +2722,9 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 		&msg.SenderName, &msg.SenderAvatar,
 		&msg.Content, &msg.Entities, &msg.Type, &replyTo, &metadataBytes,
 		&msg.IsPinned, &msg.IsEdited,
-		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &reactionsBytes,
+		&msg.CreatedAt, &msg.UpdatedAt, &deletedAt, &msg.IsPersonalPinned, &reactionsBytes,
 	)
+	msg.IsChatPinned = msg.IsPinned
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -2718,28 +2742,31 @@ func (s *Service) loadMessageAfterDelete(ctx context.Context, tx *sql.Tx, userID
 		return nil, err
 	}
 	msg.SenderFirstName = msg.SenderName
-	if err := s.hydrateDeleteMessageFields(ctx, tx, &msg); err != nil {
+	if err := s.hydrateDeleteMessageFields(ctx, tx, &msg, hiddenFor); err != nil {
 		return nil, err
 	}
 	return &msg, nil
 }
 
-func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, msg *Message) error {
+func (s *Service) hydrateDeleteMessageFields(ctx context.Context, tx *sql.Tx, msg *Message, hiddenFor string) error {
+	normalizeMessageTimes(msg)
 	if msg.ReplyTo != nil {
 		var preview LastMessagePreview
 		err := tx.QueryRowContext(ctx, `
-			SELECT COALESCE(up.first_name, au.first_name, au.username, ''), m.id::text, m.content, m.entities, m.type, COALESCE(m.sender_id::text, '')
+			SELECT COALESCE(up.first_name, au.first_name, au.username, ''), m.id::text, m.content, m.entities, m.type, COALESCE(m.sender_id::text, ''), GREATEST(m.updated_at,m.created_at)::text, m.updated_at > m.created_at
 			FROM messages.messages m
 			LEFT JOIN auth.users au ON au.id = m.sender_id
 			LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 			WHERE m.id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
-		`, *msg.ReplyTo, msg.ChatID).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID)
+			  AND ($3::uuid IS NULL OR NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $3))
+		`, *msg.ReplyTo, msg.ChatID, nullableUUID(hiddenFor)).Scan(&preview.SenderName, &preview.ID, &preview.Content, &preview.Entities, &preview.Type, &preview.SenderID, &preview.UpdatedAt, &preview.IsEdited)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		msg.ReplySenderName = preview.SenderName
 		msg.ReplyToSenderName = preview.SenderName
 		if err == nil {
+			preview.UpdatedAt = canonicalMessageTime(preview.UpdatedAt)
 			preview.Reactions = []Reaction{}
 			msg.ReplyPreview = &preview
 		}
@@ -2839,7 +2866,8 @@ func (s *Service) ForwardOrigin(ctx context.Context, userID, messageID string) (
 		LEFT JOIN auth.users au ON au.id = m.sender_id
 		LEFT JOIN users.profiles up ON up.user_id = m.sender_id
 		WHERE m.id = $1 AND m.deleted_at IS NULL
-	`, messageID).Scan(&chatID, &senderName, &senderID, &metadataBytes)
+		  AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)
+	`, messageID, userID).Scan(&chatID, &senderName, &senderID, &metadataBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ForwardSource{}, ErrNotFound
 	}
@@ -2948,8 +2976,8 @@ func (s *Service) ListReactions(ctx context.Context, userID, messageID string) (
 	}
 
 	err := s.db.QueryRowContext(ctx,
-		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-		messageID,
+		`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+		messageID, userID,
 	).Scan(&chatID)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -3082,29 +3110,23 @@ func (s *Service) isMemberWithQuerier(ctx context.Context, q Querier, userID, ch
 // transaction under an advisory lock on the (message_id, user_id) pair, so
 // that concurrent toggles by the same user cannot race.
 func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji string) (ReactionStatus, string, []Reaction, error) {
-	const method = "ToggleReaction"
+	return s.writeReaction(ctx, userID, messageID, &emoji, true)
+}
 
-	if emoji == "" {
-		slog.WarnContext(ctx, "empty emoji rejected",
-			"layer", "service",
-			"method", method,
-			"user_id", userID,
-			"message_id", messageID,
-		)
-		return "", "", nil, ErrInvalidInput
-	}
-	// Length limit and rejection of characters that would break rendering
-	// or downstream consumers (HTML/JSON). UTF-8 is measured in bytes: 64
-	// bytes comfortably covers any single emoji with modifiers.
-	if len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
-		slog.WarnContext(ctx, "invalid emoji rejected",
-			"layer", "service",
-			"method", method,
-			"user_id", userID,
-			"message_id", messageID,
-			"emoji_len", len(emoji),
-		)
-		return "", "", nil, ErrInvalidInput
+// SetReaction sets the desired state. Nil removes the reaction idempotently.
+func (s *Service) SetReaction(ctx context.Context, userID, messageID string, emoji *string) (ReactionStatus, string, []Reaction, error) {
+	return s.writeReaction(ctx, userID, messageID, emoji, false)
+}
+
+func (s *Service) writeReaction(ctx context.Context, userID, messageID string, desired *string, toggle bool) (ReactionStatus, string, []Reaction, error) {
+	const method = "writeReaction"
+	emoji := ""
+	if desired != nil {
+		canonical, err := canonicalReactionEmoji(*desired)
+		if err != nil {
+			return "", "", nil, err
+		}
+		emoji = canonical
 	}
 
 	// READ COMMITTED is enough here: serialization of concurrent toggles
@@ -3130,8 +3152,8 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	// drift away from the subsequent locking.
 	var chatID string
 	err = tx.QueryRowContext(ctx,
-		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-		messageID,
+		`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+		messageID, userID,
 	).Scan(&chatID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", nil, ErrNotFound
@@ -3210,7 +3232,14 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 	}
 
 	var status ReactionStatus
+	changed := true
 	switch {
+	case !toggle && !hasCurrent && emoji == "":
+		status = StatusRemoved
+		changed = false
+	case !toggle && hasCurrent && currentEmoji == emoji:
+		status = StatusAdded
+		changed = false
 	case !hasCurrent:
 		result, execErr := tx.ExecContext(ctx,
 			`INSERT INTO messages.reactions (message_id, user_id, emoji)
@@ -3233,7 +3262,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 		currentEmoji = emoji
 		status = StatusAdded
 
-	case currentEmoji == emoji:
+	case emoji == "" || (toggle && currentEmoji == emoji):
 		result, execErr := tx.ExecContext(ctx,
 			`DELETE FROM messages.reactions
 			 WHERE message_id = $1 AND user_id = $2`,
@@ -3295,7 +3324,7 @@ func (s *Service) ToggleReaction(ctx context.Context, userID, messageID, emoji s
 
 	// The WS notification is sent after the commit: if the broadcast
 	// fails, the transaction still remains consistent.
-	if s.ws != nil {
+	if changed && s.ws != nil {
 		change := ChangeResponse{Action: string(status)}
 		switch status {
 		case StatusAdded:
@@ -3458,7 +3487,7 @@ func (s *Service) ListReactionAuthors(
 	if validate.Var(viewerID, "required,uuid") != nil {
 		return ReactionAuthorsPage{}, ErrInvalidInput
 	}
-	// Same rules as in ToggleReaction: empty, too long, or markup-breaking
+	// Author queries may address legacy reactions: empty, too long, or markup-breaking
 	// characters → ErrInvalidInput.
 	if emoji == "" || len(emoji) > 64 || strings.ContainsAny(emoji, "<>\"'&/\\") {
 		return ReactionAuthorsPage{}, ErrInvalidInput
@@ -3682,7 +3711,8 @@ func (s *Service) ListPins(
 			m.metadata,
 			m.updated_at > m.created_at,
 			m.created_at::text,
-			m.updated_at::text
+			m.updated_at::text,
+ EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $2)
 		FROM messages.pins AS p
 		JOIN messages.messages AS m
 			ON m.id = p.message_id
@@ -3728,6 +3758,7 @@ func (s *Service) ListPins(
 			&pin.Message.IsEdited,
 			&pin.Message.CreatedAt,
 			&pin.Message.UpdatedAt,
+			&pin.Message.IsPersonalPinned,
 		); err != nil {
 			return nil, err
 		}
@@ -3745,6 +3776,7 @@ func (s *Service) ListPins(
 
 		// Сообщение получено из таблицы закреплений.
 		pin.Message.IsPinned = true
+		pin.Message.IsChatPinned = true
 
 		// WHERE m.deleted_at IS NULL гарантирует, что DeletedAt остаётся nil.
 		pins = append(pins, pin)
@@ -3831,6 +3863,7 @@ func (s *Service) PinMessage(ctx context.Context, userID, chatID, messageID stri
 func messagePinnedPayload(pin Pin) ([]byte, error) {
 	// Событие уходит всем участникам — без аватара отправителя (#789).
 	pin.Message.SenderAvatar = ""
+	pin.Message.IsPersonalPinned = false
 	return json.Marshal(map[string]any{
 		"type":      "message_pinned",
 		"chatId":    pin.ChatID,
@@ -3898,7 +3931,7 @@ func (s *Service) SearchMessages(ctx context.Context, userID, query string, limi
 		       m.content, m.entities, m.type,
 		       m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
-		       m.created_at::text, m.updated_at::text, m.deleted_at::text
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $1)
 		FROM messages.messages m
 		JOIN chats.members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
 		LEFT JOIN auth.users au ON au.id = m.sender_id
@@ -3946,7 +3979,7 @@ func (s *Service) ListFavorites(ctx context.Context, userID string, limit, offse
 		       m.content, m.entities, m.type,
 		       m.reply_to::text, m.metadata,
 		       (p.message_id IS NOT NULL), m.updated_at > m.created_at,
-		       m.created_at::text, m.updated_at::text, m.deleted_at::text
+		       m.created_at::text, m.updated_at::text, m.deleted_at::text, EXISTS(SELECT 1 FROM messages.personal_pins pp WHERE pp.message_id = m.id AND pp.user_id = $1)
 		FROM messages.favorites f
 		JOIN messages.messages m ON m.id = f.message_id
 		LEFT JOIN auth.users au ON au.id = m.sender_id

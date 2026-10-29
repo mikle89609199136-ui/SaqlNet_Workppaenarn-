@@ -193,7 +193,7 @@ export const ChatThreadHeader = ({
           <Icon className="size-5" name="search" />
         </Button>
         {/* Звонки — только один на один (#715): в группе кнопок нет. */}
-        {CALLS_ENABLED && chat.type === 'private' && (
+        {CALLS_ENABLED && chat.type === 'private' && chat.canCall !== false && (
           <>
             <Button
               aria-label={t('audioCall', 'Позвонить')}

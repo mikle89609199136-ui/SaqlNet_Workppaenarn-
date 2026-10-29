@@ -25,13 +25,19 @@ export const createRegisterFormSchema = (t: TFunction) =>
         .string()
         .trim()
         .min(1, t('validation.firstNameRequired', 'Введите имя'))
-        .max(NAME_MAX, t('validation.firstNameTooLong', 'Слишком длинное имя')),
+        .refine(
+          (value) => [...value].length <= NAME_MAX,
+          t('validation.firstNameTooLong', 'Слишком длинное имя')
+        ),
       /* Необязательна: в профиле её тоже можно не заполнять, и требовать
          фамилию при заведении аккаунта — лишний повод бросить регистрацию. */
       lastName: z
         .string()
         .trim()
-        .max(NAME_MAX, t('validation.lastNameTooLong', 'Слишком длинная фамилия')),
+        .refine(
+          (value) => [...value].length <= NAME_MAX,
+          t('validation.lastNameTooLong', 'Слишком длинная фамилия')
+        ),
       username: z
         .string()
         .trim()

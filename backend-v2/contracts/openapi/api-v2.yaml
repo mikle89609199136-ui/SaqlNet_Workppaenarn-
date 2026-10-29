@@ -2,7 +2,12 @@ openapi: 3.0.3
 info:
   title: CraneApp API v2
   version: 0.3.0
-  description: Public REST API exposed by the CraneApp edge gateway.
+  description: >-
+    Public REST API exposed by the CraneApp edge gateway. Protected operations can
+    return HTTP 503 crypto_unavailable when token verification cannot complete,
+    including a crypto transport failure, 5xx or malformed response. The existing
+    session cookie is preserved. Only a confirmed invalid/expired token is 401;
+    token revocation and missing-session checks remain enforced.
 servers:
   - url: /api/v2
 tags:
@@ -126,6 +131,8 @@ paths:
   /messages/favorites: { $ref: './paths/messages.yaml#/~1messages~1favorites' }
   /messages/{id}: { $ref: './paths/messages.yaml#/~1messages~1{id}' }
   /messages/{messageId}/reactions: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1reactions' }
+  /messages/{messageId}/react: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1react' }
+  /messages/{messageId}/reactions/me: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1reactions~1me' }
   /messages/{messageId}/reactions/users: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1reactions~1users' }
   /messages/{messageId}/location: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1location' }
   /messages/{messageId}/favorite: { $ref: './paths/messages.yaml#/~1messages~1{messageId}~1favorite' }
@@ -175,5 +182,6 @@ components:
     MessageEntity: { $ref: './components/schemas.yaml#/MessageEntity' }
     MessageEntities: { $ref: './components/schemas.yaml#/MessageEntities' }
     LastMessagePreview: { $ref: './components/schemas.yaml#/LastMessagePreview' }
+    MessageEditedEvent: { $ref: './components/schemas.yaml#/MessageEditedEvent' }
     ReceiptEvent: { $ref: './components/schemas.yaml#/ReceiptEvent' }
     PushNotificationPayload: { $ref: './components/schemas.yaml#/PushNotificationPayload' }

@@ -48,7 +48,7 @@ func TestSearchAndFavoritesArrayContract(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) {
 				h, mock := messageValidationHandler(t)
-				rows := entityMessageRows("hello", "[]")
+				rows := entityReadMessageRows("hello", "[]")
 				if empty {
 					rows = sqlmock.NewRows([]string{"id"})
 				}

@@ -92,8 +92,8 @@ func TestToggleReaction_Scenarios(t *testing.T) {
 				mock.ExpectBegin()
 
 				mock.ExpectQuery(regexp.QuoteMeta(
-					`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-				)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+					`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
@@ -129,8 +129,8 @@ func TestToggleReaction_Scenarios(t *testing.T) {
 				mock.ExpectBegin()
 
 				mock.ExpectQuery(regexp.QuoteMeta(
-					`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-				)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+					`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
@@ -165,8 +165,8 @@ func TestToggleReaction_Scenarios(t *testing.T) {
 				mock.ExpectBegin()
 
 				mock.ExpectQuery(regexp.QuoteMeta(
-					`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-				)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+					`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+				)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
 				mock.ExpectQuery(regexp.QuoteMeta(
 					`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
@@ -241,8 +241,8 @@ func TestToggleReaction_AfterReplacement_OnlyOneUserReaction(t *testing.T) {
 	mock.ExpectBegin()
 
 	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+		`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+	)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
@@ -319,8 +319,8 @@ func TestToggleReaction_AggregatedCountsCorrect(t *testing.T) {
 	mock.ExpectBegin()
 
 	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+		`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+	)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
@@ -419,8 +419,8 @@ func TestToggleReaction_WebSocketBroadcast(t *testing.T) {
 			mock.ExpectBegin()
 
 			mock.ExpectQuery(regexp.QuoteMeta(
-				`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-			)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+				`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+			)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
 			mock.ExpectQuery(regexp.QuoteMeta(
 				`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
@@ -481,8 +481,8 @@ func TestToggleReaction_DoubleCalls_NoDuplicateReactions(t *testing.T) {
 	mock.ExpectBegin()
 
 	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+		`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+	)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,
@@ -518,8 +518,8 @@ func TestToggleReaction_DoubleCalls_NoDuplicateReactions(t *testing.T) {
 	mock.ExpectBegin()
 
 	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT chat_id::text FROM messages.messages WHERE id = $1 AND deleted_at IS NULL`,
-	)).WithArgs(messageID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
+		`SELECT m.chat_id::text FROM messages.messages m WHERE m.id = $1 AND m.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM messages.hidden_messages hm WHERE hm.message_id = m.id AND hm.user_id = $2)`,
+	)).WithArgs(messageID, userID).WillReturnRows(sqlmock.NewRows([]string{"chat_id"}).AddRow(chatID))
 
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE user_id = $1 AND chat_id = $2)`,

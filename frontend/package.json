@@ -1,6 +1,6 @@
 {
   "name": "craneapp-frontend",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "CraneApp Messenger - React/Vite client",
   "private": true,
   "type": "module",
@@ -23,7 +23,7 @@
     "e2e:ui": "playwright test --ui",
     "check:cycles": "dpdm --no-tree --no-warning --tsconfig tsconfig.app.json --exit-code circular:1 --transform src/app/main.tsx",
     "api:types": "openapi-typescript ../backend-v2/contracts/openapi/api-v2.yaml -o src/types/api.generated.ts",
-    "api:check": "tsc --noEmit --strict --skipLibCheck --target es2023 --moduleResolution bundler --module esnext src/types/userApiContract.node.test.ts && vitest run src/types/userApiContract.node.test.ts"
+    "api:check": "tsc --noEmit --strict --skipLibCheck --target es2023 --moduleResolution bundler --module esnext --resolveJsonModule src/types/userApiContract.node.test.ts src/types/mediaApiContract.node.test.ts src/types/authApiContract.node.test.ts && vitest run src/types/userApiContract.node.test.ts src/types/mediaApiContract.node.test.ts src/types/authApiContract.node.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

@@ -91,6 +91,7 @@ func main() {
 	go chat.OutboxRelay(workerCtx, pool, natsConn)
 	go chat.ProfileChangeRelay(workerCtx, databaseURL, pool, wsServer)
 	go chat.SettingsChangeRelay(workerCtx, databaseURL, wsServer)
+	go chat.CallPrivacyChangeRelay(workerCtx, databaseURL, pool, wsServer)
 	go chat.BlockChangeRelay(workerCtx, databaseURL, pool, wsServer)
 	go chat.RevocationRelay(workerCtx, databaseURL, wsServer)
 	authenticated := authctx.Middleware(crypto, authctx.NewDBTokenChecker(pool))

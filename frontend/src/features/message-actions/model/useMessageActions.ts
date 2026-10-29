@@ -175,37 +175,32 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
    * поставленной реакции он молча возвращался, и шесть эмодзи в меню
    * становились мёртвыми: ни снять, ни поменять.
    *
-   * Без подписки реакция одна: выбор другого эмодзи сначала снимает
-   * прежний. С подпиской они копятся — это и есть всё её отличие здесь.
+   * На сообщение допускается одна реакция пользователя; повторный
+   * выбор снимает её, другой emoji заменяет прежний.
    */
   const handleReact = async (message: IMessageDto, emoji: string) => {
     const previous = message.reactions ?? [];
     const mine = previous.find((reaction) => reaction.myReaction);
-    const allowMultiple = Boolean(currentUser?.isPremium);
 
     const attempt = (reactionAttempts.get(message.id) ?? 0) + 1;
     reactionAttempts.set(message.id, attempt);
     const isLatest = () => reactionAttempts.get(message.id) === attempt;
 
-    // Пока идёт замена, вести сервера по этому сообщению не применяются:
-    // между двумя запросами он рассылает состояние «реакции нет».
+    // Пока запрос выполняется, сохраняем оптимистический результат.
     beginReactionChange(message.id);
 
     /* Результат показывается сразу, до ответа сервера: реакция — жест
        мгновенный, и ожидание на ней заметно сильнее, чем где-либо ещё.
-       При замене запросов и вовсе два, и ждать оба значит смотреть, как
-       эмодзи меняются по очереди. */
+       Сервер получает желаемое состояние одним запросом. */
     patchThreadMessage(queryClient, chatId, message.id, {
-      reactions: applyReaction(previous, emoji, { allowMultiple }),
+      reactions: applyReaction(previous, emoji, { allowMultiple: false }),
     });
 
     try {
-      // Своя же реакция снимается одним запросом: сервер переключает сам.
-      if (mine && mine.emoji !== emoji && !allowMultiple) {
-        await services.messageService.reactToMessage(message.id, mine.emoji);
-      }
-
-      const result = await services.messageService.reactToMessage(message.id, emoji);
+      const result = await services.messageService.reactToMessage(
+        message.id,
+        mine?.emoji === emoji ? null : emoji
+      );
 
       // Пока ходили на сервер, человек мог выбрать другое — тогда ответ
       // устарел и показывать его нельзя.
@@ -227,66 +222,16 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     }
   };
 
-  const handleUnpinMessage = async (message: IMessageDto) => {
-    try {
-      if (selectionMode) {
-        for (const message of selectedMessages) {
-          await services.messageService.unpinMessage(chatId, message.id);
-        }
-        return;
-      }
-
-      await services.messageService.unpinMessage(chatId, message.id);
-    } catch (err: any) {
-      setError(describeApiError(err, t, t('messageUnpinError', 'Не удалось открепить сообщение')));
-      if (
-        chatType === CHAT_TYPES.GROUP &&
-        chatRole !== CHAT_ROLES.ADMIN &&
-        chatRole !== CHAT_ROLES.OWNER
-      ) {
-        showToast(
-          'error',
-          t(
-            'messageUnpinMemberError',
-            'Не удалось открепить сообщение. У вас нет прав администратора.'
-          )
-        );
-        return;
-      }
-
-      showToast('error', t('messageUnpinError', 'Не удалось открепить сообщение'));
-    }
+  const handleUnpinMessage = (message: IMessageDto) => {
+    useChatUiStore
+      .getState()
+      .setPinRequest({ targets: selectionMode ? selectedMessages : [message], unpin: true });
   };
 
-  const handlePinMessage = async (message: IMessageDto) => {
-    try {
-      if (selectionMode) {
-        for (const message of selectedMessages) {
-          await services.messageService.pinMessage(chatId, message.id);
-        }
-        return;
-      }
-
-      await services.messageService.pinMessage(chatId, message.id);
-    } catch (err: any) {
-      setError(describeApiError(err, t, t('messagePinError', 'Не удалось закрепить сообщение')));
-      if (
-        chatType === CHAT_TYPES.GROUP &&
-        chatRole !== CHAT_ROLES.ADMIN &&
-        chatRole !== CHAT_ROLES.OWNER
-      ) {
-        showToast(
-          'error',
-          t(
-            'messagePinMemberError',
-            'Не удалось закрепить сообщение. У вас нет прав администратора.'
-          )
-        );
-        return;
-      }
-
-      showToast('error', t('messagePinError', 'Не удалось закрепить сообщение'));
-    }
+  const handlePinMessage = (message: IMessageDto) => {
+    useChatUiStore
+      .getState()
+      .setPinRequest({ targets: selectionMode ? selectedMessages : [message], unpin: false });
   };
 
   const startSelection = (message: IMessageDto) => {

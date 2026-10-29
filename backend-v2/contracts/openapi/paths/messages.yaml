@@ -171,7 +171,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
   delete:
     tags: [Messages]
     summary: Delete a message for everyone
-    description: Kept until clients move to POST /chats/{chatId}/messages/delete (#840).
+    description: Legacy single-message delete. Use POST /chats/{chatId}/messages/delete for idempotent deletion.
     deprecated: true
     operationId: deleteMessage
     security: *secure
@@ -204,7 +204,7 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
       '403': *error
       '404': *error
       '500': *error
-  post:
+  post: &toggleReaction
     tags: [Messages]
     summary: Toggle a reaction
     operationId: toggleMessageReaction
@@ -217,10 +217,67 @@ x-error: &error { $ref: '../components/responses.yaml#/Error' }
             type: object
             required: [emoji]
             properties:
-              emoji: { type: string, minLength: 1 }
+              emoji: &reactionEmoji
+                type: string
+                minLength: 1
+                maxLength: 64
+                x-maxUtf8Bytes: 64
+                description: >-
+                  One emoji from the existing client picker whitelist below (the
+                  alternatives in pattern). Raw input is limited to 64 UTF-8 bytes.
+                  Surrounding Unicode White_Space is trimmed, NFC is applied, and
+                  one optional trailing text/emoji presentation selector is replaced
+                  by the picker presentation (heart becomes ❤️). Stored and returned
+                  values use that canonical form. Text, multiple emoji, skin tones,
+                  flags and ZWJ sequences outside this whitelist return 400.
+                pattern: "^[\\t-\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*(?:😀|😃|😄|😁|😆|😅|😂|🤣|🙂|🙃|😉|😊|😇|🥰|😍|🤩|😘|😋|😜|🤪|🤔|🤨|😐|🙄|😏|😴|😌|🥲|😭|😤|😡|🤯|😱|🥶|😳|🤗|🤫|😎|👍|👎|👌|✌|🤞|🤝|👏|🙌|👐|🙏|💪|👀|👋|🤙|☝|👆|👇|👉|👈|✍|🫶|🤘|🖐|✊|❤|🧡|💛|💚|💙|💜|🖤|🤍|🤎|💔|❣|💕|💞|💓|💗|💖|💘|💝|🎉|🎊|🎁|🏆|⚽|🎮|🎧|🎵|☕|🍕|🍰|🍺|💻|📱|📷|🔑|💡|📌|✅|❌|⚡|🔥|⭐|🚀)[︎️]?[\\t-\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]*$"
     responses:
       '200':
         description: Updated reaction state
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/ReactionToggleResponse' }
+      '400': *error
+      '403': *error
+      '404': *error
+      '500': *error
+
+/messages/{messageId}/react:
+  parameters:
+    - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+  post:
+    <<: *toggleReaction
+    operationId: toggleMessageReactionLegacy
+    summary: Legacy reaction toggle alias
+    deprecated: true
+
+/messages/{messageId}/reactions/me:
+  parameters:
+    - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+  put:
+    tags: [Messages]
+    summary: Set my reaction state idempotently
+    description: >-
+      Sets the user's single reaction atomically, or removes it for emoji null.
+      Repeating the same desired state does not toggle or broadcast a change.
+      Responses use added for an already-present desired reaction and removed
+      for an already-absent reaction. Legacy POST reactions and react remain toggles.
+    operationId: setMyMessageReaction
+    security: *secure
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [emoji]
+            properties:
+              emoji:
+                <<: *reactionEmoji
+                nullable: true
+    responses:
+      '200':
+        description: Desired reaction state
         content:
           application/json:
             schema: { $ref: '../components/schemas.yaml#/ReactionToggleResponse' }

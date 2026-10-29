@@ -119,6 +119,42 @@ func TestCallPrivacyOnRealSchema(t *testing.T) {
 				_, err := db.Exec(`INSERT INTO users.blocked_users (user_id,blocked_user_id) VALUES ($1,$2)`, calleeID, callerID)
 				require.NoError(t, err)
 			}
+			// Оба чтения используют ту же batch-проекцию, что и проверка звонка.
+			got, err := chats.Get(ctx, callerID, chatID)
+			require.NoError(t, err)
+			require.Equal(t, tc.allowed, got.CanCall)
+			listed, err := chats.List(ctx, callerID, false)
+			require.NoError(t, err)
+			require.Len(t, listed, 1)
+			require.Equal(t, tc.allowed, listed[0].CanCall)
+			reverse, err := chats.Get(ctx, calleeID, chatID)
+			require.NoError(t, err)
+			require.Equal(t, !tc.blocked, reverse.CanCall)
+			encoded, err := json.Marshal(got)
+			require.NoError(t, err)
+			var dto map[string]any
+			require.NoError(t, json.Unmarshal(encoded, &dto))
+			require.Equal(t, tc.allowed, dto["canCall"])
+			for _, path := range []string{"/api/v2/chats", "/api/v2/chats/" + chatID} {
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				req = req.WithContext(authctx.WithUser(req.Context(), authctx.User{ID: callerID}))
+				res := httptest.NewRecorder()
+				if path == "/api/v2/chats" {
+					handler.List(res, req)
+				} else {
+					handler.Chat(res, req)
+				}
+				require.Equal(t, http.StatusOK, res.Code, res.Body.String())
+				var body map[string]any
+				require.NoError(t, json.Unmarshal(res.Body.Bytes(), &body))
+				var projection map[string]any
+				if path == "/api/v2/chats" {
+					projection = body["chats"].([]any)[0].(map[string]any)
+				} else {
+					projection = body["chat"].(map[string]any)
+				}
+				require.Equal(t, tc.allowed, projection["canCall"])
+			}
 			before := counts()
 			code, out := create(callerID)
 			if tc.allowed {

@@ -78,8 +78,7 @@ func (h *Handler) QROfferCreate(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Replaces string `json:"replaces"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQRRequestBodyBytes)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, maxQRRequestBodyBytes) {
 		return
 	}
 
@@ -194,8 +193,7 @@ func (h *Handler) QROfferClaim(w http.ResponseWriter, r *http.Request) {
 		MAC        string `json:"mac"`
 		DeviceName string `json:"deviceName"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQRRequestBodyBytes)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, maxQRRequestBodyBytes) {
 		return
 	}
 	if _, ok := decodeQRPublicKey(input.PublicKey); !ok {
@@ -288,8 +286,7 @@ func (h *Handler) QROfferConfirm(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Payload json.RawMessage `json:"payload"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQRRequestBodyBytes)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, maxQRRequestBodyBytes) {
 		return
 	}
 	if !validQRPayload(input.Payload) {

@@ -12,7 +12,7 @@ import { canCopyImageToClipboard } from '../model/mediaActions';
 import { saveFilePicker } from '@/entities/media';
 import { formatEditedAt, pinsQuery } from '@/entities/message';
 import { useProfileStore } from '@/entities/user';
-import { useChatUiStore } from '@/entities/chat';
+import { chatQuery, useChatUiStore } from '@/entities/chat';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import type { IMessageDto, TIconTypes } from '@/types';
@@ -123,9 +123,13 @@ export const MessageActionsPopover = ({
   const selectionMode = useChatUiStore((state) => state.selectionMode);
   const actionMenu = useChatUiStore((state) => state.actionMenu);
   const setActionMenu = useChatUiStore((state) => state.setActionMenu);
+  const setReactionAuthorsModal = useChatUiStore((state) => state.setReactionAuthorsModal);
   // Закреплённые живут в кеше запросов: меню должно знать, закреплено ли
   // сообщение, чтобы показать «Закрепить» или «Открепить».
   const { data: pinnedMessages = [] } = useQuery(pinsQuery(chatId));
+  const { data: personalPins = [] } = useQuery(pinsQuery(chatId, 'personal'));
+  const { data: chat } = useQuery(chatQuery(chatId));
+  const canShare = chat?.type === 'private' || chat?.role === 'owner' || chat?.role === 'admin';
 
   const messageRef = useMemo(
     () => ({
@@ -138,7 +142,16 @@ export const MessageActionsPopover = ({
 
   const mine = message.senderId === currentUser?.id;
   const myReaction = message.reactions?.find((reaction) => reaction.myReaction)?.emoji;
-  const isPinned = pinnedMessages.some((p) => p.messageId === message.id);
+  const isChatPinned =
+    pinnedMessages.some((p) => p.messageId === message.id) ||
+    Boolean(message.isChatPinned ?? message.isPinned);
+  const isPersonalPinned =
+    personalPins.some((p) => p.messageId === message.id) || Boolean(message.isPersonalPinned);
+  const isPinned = isChatPinned || isPersonalPinned;
+  const pinTarget = useMemo(
+    () => ({ ...message, isChatPinned, isPersonalPinned }),
+    [message, isChatPinned, isPersonalPinned]
+  );
   const isSelected = selectedMessages.some((m) => m.id === message.id);
   const receipt = mine && showReceipt ? formatReceipt(message, t) : null;
   // Время правки — у своих и у чужих (#1066): на телефоне наведения нет,
@@ -179,6 +192,18 @@ export const MessageActionsPopover = ({
         action: () => actions.startReply(message),
       },
       {
+        show: available.has('viewReactions') && !selectionMode,
+        icon: 'heart',
+        key: 'viewReactions',
+        def: t('messageActions.whoReacted', 'Кто отреагировал'),
+        action: () =>
+          setReactionAuthorsModal({
+            messageId: message.id,
+            chatId: message.chatId,
+            reactions: message.reactions,
+          }),
+      },
+      {
         // В режиме выбора копируются все отмеченные — пункт есть всегда.
         show: available.has('copyText') || copiesImage || selectionMode,
         icon: 'copy',
@@ -214,22 +239,24 @@ export const MessageActionsPopover = ({
       // выделения действие применяется ко всем отмеченным, поэтому
       // «Закрепить всё».
       {
-        show: available.has('pin'),
+        show:
+          available.has('pin') ||
+          (available.has('unpin') && (!isPersonalPinned || (!isChatPinned && canShare))),
         icon: 'pin',
         key: 'pin',
         def: selectionMode
           ? t('messageActions.pinAll', 'Закрепить всё')
           : t('messageActions.pin', 'Закрепить'),
-        action: () => actions.handlePinMessage(message),
+        action: () => actions.handlePinMessage(pinTarget),
       },
       {
-        show: available.has('unpin'),
+        show: available.has('unpin') && (isPersonalPinned || canShare),
         icon: 'pin',
         key: 'unpin',
         def: selectionMode
           ? t('messageActions.unpinAll', 'Открепить всё')
           : t('messageActions.unpin', 'Открепить'),
-        action: () => actions.handleUnpinMessage(message),
+        action: () => actions.handleUnpinMessage(pinTarget),
       },
       {
         show: available.has('forward') && forwardsSelection,
@@ -260,12 +287,17 @@ export const MessageActionsPopover = ({
       actions,
       available,
       canPickLocation,
+      canShare,
+      isChatPinned,
+      isPersonalPinned,
+      pinTarget,
       copiesImage,
       forwardsSelection,
       isSelected,
       message,
       onSelection,
       selectionMode,
+      setReactionAuthorsModal,
       t,
     ]
   );

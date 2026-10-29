@@ -67,3 +67,21 @@ describe('profileFormSchema', () => {
     });
   });
 });
+
+describe('длина имён в кодовых точках Unicode', () => {
+  for (const field of ['firstName', 'lastName']) {
+    for (const symbol of ['a', 'Я', '😀', 'e\u0301']) {
+      it(`${field}, ${symbol}: граница 64/65`, () => {
+        const value = symbol.repeat(symbol === 'e\u0301' ? 32 : 64);
+        const data = { firstName: 'Имя', lastName: '', username: 'valid_user', bio: '' };
+        expect(profileFormSchema.safeParse({ ...data, [field]: value }).success).toBe(true);
+        expect(profileFormSchema.safeParse({ ...data, [field]: value + 'a' }).success).toBe(false);
+      });
+    }
+  }
+  it('пустая фамилия допустима, пустое имя запрещено', () => {
+    const data = { firstName: 'Имя', lastName: '', username: 'valid_user', bio: '' };
+    expect(profileFormSchema.safeParse(data).success).toBe(true);
+    expect(profileFormSchema.safeParse({ ...data, firstName: '  ' }).success).toBe(false);
+  });
+});
