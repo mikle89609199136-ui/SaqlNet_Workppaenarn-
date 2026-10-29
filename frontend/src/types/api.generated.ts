@@ -7314,7 +7314,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateProfileRequest"];
@@ -7348,7 +7348,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RenameUsernameRequest"];
@@ -7383,7 +7383,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateAvatarRequest"];
@@ -7615,7 +7615,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacySettingsBulkPatch"];
@@ -7674,7 +7674,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["MvpSettings"];
@@ -7707,7 +7707,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PrivacySettingsPatch"];
@@ -7772,7 +7772,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PrivacyExceptionRequest"];
@@ -7863,7 +7863,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacyNotificationSettings"];
@@ -7922,7 +7922,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacySoundSettings"];
@@ -7981,7 +7981,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacyAdvancedSettings"];
@@ -8040,7 +8040,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacyFoldersRequest"];
@@ -8099,7 +8099,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LegacyStorageSettings"];
@@ -8240,7 +8240,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BlockUserRequest"];
@@ -8331,7 +8331,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SetPasscodeRequest"];
@@ -8364,7 +8364,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PasscodeRequest"];
@@ -8397,7 +8397,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PasscodeRequest"];
@@ -8430,7 +8430,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PasscodeTimeoutRequest"];
@@ -8489,7 +8489,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 128 KiB JSON body. Decoder errors, including body limit, return 400 invalid_json; strict single-root decoding is pending #450. */
+        /** @description At most 128 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DeviceRegistrationRequest"];
