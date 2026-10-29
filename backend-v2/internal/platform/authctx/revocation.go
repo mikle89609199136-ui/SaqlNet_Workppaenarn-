@@ -10,7 +10,7 @@ import (
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
 )
 
-// DBTokenChecker requires an active owned session and checks exact-token
+// DBTokenChecker requires an active account and owned session, and checks exact-token
 // revocations and the user's current logout-all generation.
 // Any Go service with a DB pool can use this to participate in token revocation.
 type DBTokenChecker struct {
@@ -48,7 +48,7 @@ func (c *DBTokenChecker) IsTokenRevoked(ctx context.Context, token string, claim
 			),
 			token_generation
 		FROM auth.users
-		WHERE id = $2`,
+		WHERE id = $2 AND disabled_at IS NULL`,
 		TokenHash(token),
 		claims.Subject,
 	).Scan(&sessionRevoked, &currentGeneration)
