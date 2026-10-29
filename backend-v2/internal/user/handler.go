@@ -449,7 +449,18 @@ func (h *Handler) Storage(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
 	default:
-		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
+		var allowed string
+		switch path {
+		case "/api/v2/users/storage":
+			allowed = http.MethodGet
+		case "/api/v2/users/storage/settings":
+			allowed = http.MethodPut
+		case "/api/v2/users/storage/cache":
+			allowed = http.MethodDelete
+		case "/api/v2/users/storage/all":
+			allowed = http.MethodDelete
+		}
+		respondUserSubrouteMethod(w, r, allowed)
 	}
 }
 
@@ -709,8 +720,31 @@ func (h *Handler) Passcode(w http.ResponseWriter, r *http.Request) {
 		}
 		respondPasscode(w, r, h.service.UpdatePasscodeTimeout(r.Context(), current.ID, input.Timeout))
 	default:
-		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
+		var allowed string
+		switch path {
+		case "/api/v2/users/passcode":
+			allowed = http.MethodGet
+		case "/api/v2/users/passcode/set":
+			allowed = http.MethodPost
+		case "/api/v2/users/passcode/verify":
+			allowed = http.MethodPost
+		case "/api/v2/users/passcode/disable":
+			allowed = http.MethodPost
+		case "/api/v2/users/passcode/timeout":
+			allowed = http.MethodPut
+		}
+		respondUserSubrouteMethod(w, r, allowed)
 	}
+}
+
+// Неизвестный путь отличается от известного пути с неподдерживаемым методом.
+func respondUserSubrouteMethod(w http.ResponseWriter, r *http.Request, allowed string) {
+	if allowed == "" {
+		httpx.ErrorJSON(w, r, http.StatusNotFound, "route_not_found", "route not found")
+		return
+	}
+	w.Header().Set("Allow", allowed)
+	httpx.ErrorJSON(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 }
 
 func respondPasscode(w http.ResponseWriter, r *http.Request, err error) {

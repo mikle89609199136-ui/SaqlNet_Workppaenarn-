@@ -15,7 +15,11 @@ type Schema = {
   enum?: unknown[];
   allOf?: Schema[];
 };
-type Response = { $ref?: string; content?: Record<string, { schema: Schema }> };
+type Response = {
+  $ref?: string;
+  content?: Record<string, { schema: Schema }>;
+  headers?: Record<string, { schema: Schema }>;
+};
 type Operation = {
   operationId: string;
   security?: unknown[];
@@ -145,6 +149,20 @@ describe('Исполнимый контракт User API (#453)', () => {
     }
   });
 
+  it('Storage и Passcode документируют 405 с точным Allow (#449)', () => {
+    for (const [path, item] of Object.entries(paths)) {
+      if (!/^\/users\/(storage|passcode)(\/|$)/.test(path)) continue;
+      for (const [method, operation] of Object.entries(item)) {
+        if (!operation.operationId) continue;
+        expect(operation.responses['404'], path).toBeUndefined();
+        expect(operation.responses['405'].headers?.Allow.schema.enum, path).toEqual([
+          method.toUpperCase(),
+        ]);
+        expect(operation['x-error-codes']['405']).toEqual(['method_not_allowed']);
+      }
+    }
+  });
+
   it('матрица ошибок согласована с reusable responses и их enum кодов', () => {
     for (const op of operations) {
       for (const status of ['429', '500', '502']) expect(op.responses[status]).toBeDefined();
@@ -153,7 +171,7 @@ describe('Исполнимый контракт User API (#453)', () => {
       }
       for (const [status, response] of Object.entries(op.responses)) {
         if (status.startsWith('2')) continue;
-        const reusable = responses[schemaName(response.$ref!)];
+        const reusable = response.$ref ? responses[schemaName(response.$ref)] : response;
         const name = schemaName(reusable.content!['application/json'].schema.$ref!);
         const codes = schemas[name].allOf![1].properties!.code.enum!;
         expect(op['x-error-codes'][status], `${op.operationId}: ${status}`).toBeDefined();

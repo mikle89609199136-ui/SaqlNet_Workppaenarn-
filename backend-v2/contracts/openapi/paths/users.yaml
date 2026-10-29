@@ -845,7 +845,12 @@
     responses:
       '200': {description: Storage usage and settings, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/StorageResponse}}}}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
-      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '405':
+        description: Method not allowed; Allow identifies the supported method.
+        headers:
+          Allow:
+            schema: {type: string, enum: [GET]}
+        content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserMethodNotAllowedBody}}}
       '429': {$ref: ../components/responses.yaml#/UserRateLimited}
       '500': {$ref: ../components/responses.yaml#/UserInternalError}
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
@@ -856,12 +861,12 @@
       canonical account settings.
     x-error-codes:
       '401': [missing_token, invalid_token, token_revoked]
-      '404': [route_not_found]
+      '405': [method_not_allowed]
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
-    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
+
 /users/storage/settings:
   put:
     deprecated: true
@@ -884,7 +889,12 @@
       '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
       '403': {$ref: ../components/responses.yaml#/UserForbidden}
-      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '405':
+        description: Method not allowed; Allow identifies the supported method.
+        headers:
+          Allow:
+            schema: {type: string, enum: [PUT]}
+        content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserMethodNotAllowedBody}}}
       '429': {$ref: ../components/responses.yaml#/UserRateLimited}
       '500': {$ref: ../components/responses.yaml#/UserInternalError}
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
@@ -893,12 +903,12 @@
       '400': [invalid_json, validation_failed]
       '401': [missing_token, invalid_token, token_revoked]
       '403': [cross_site_request]
-      '404': [route_not_found]
+      '405': [method_not_allowed]
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
-    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
+
 /users/storage/cache:
   delete:
     tags:
@@ -911,7 +921,12 @@
       '200': {description: Cache cleared, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
       '403': {$ref: ../components/responses.yaml#/UserForbidden}
-      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '405':
+        description: Method not allowed; Allow identifies the supported method.
+        headers:
+          Allow:
+            schema: {type: string, enum: [DELETE]}
+        content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserMethodNotAllowedBody}}}
       '429': {$ref: ../components/responses.yaml#/UserRateLimited}
       '500': {$ref: ../components/responses.yaml#/UserInternalError}
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
@@ -922,12 +937,12 @@
     x-error-codes:
       '401': [missing_token, invalid_token, token_revoked]
       '403': [cross_site_request]
-      '404': [route_not_found]
+      '405': [method_not_allowed]
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
-    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
+
 /users/storage/all:
   delete:
     tags:
@@ -940,7 +955,12 @@
       '200': {description: Data deleted, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
       '403': {$ref: ../components/responses.yaml#/UserForbidden}
-      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '405':
+        description: Method not allowed; Allow identifies the supported method.
+        headers:
+          Allow:
+            schema: {type: string, enum: [DELETE]}
+        content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserMethodNotAllowedBody}}}
       '429': {$ref: ../components/responses.yaml#/UserRateLimited}
       '500': {$ref: ../components/responses.yaml#/UserInternalError}
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
@@ -953,12 +973,12 @@
     x-error-codes:
       '401': [missing_token, invalid_token, token_revoked]
       '403': [cross_site_request]
-      '404': [route_not_found]
+      '405': [method_not_allowed]
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
-    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
+
 /users/export:
   get:
     tags:
@@ -1083,19 +1103,24 @@
     responses:
       '200': {description: Passcode state, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PasscodeState}}}}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
-      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '405':
+        description: Method not allowed; Allow identifies the supported method.
+        headers:
+          Allow:
+            schema: {type: string, enum: [GET]}
+        content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserMethodNotAllowedBody}}}
       '429': {$ref: ../components/responses.yaml#/UserRateLimited}
       '500': {$ref: ../components/responses.yaml#/UserInternalError}
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
       '503': {$ref: ../components/responses.yaml#/UserUnavailable}
     x-error-codes:
       '401': [missing_token, invalid_token, token_revoked]
-      '404': [route_not_found]
+      '405': [method_not_allowed]
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
-    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
+
 /users/passcode/set:
   post:
     tags:
@@ -1113,7 +1138,12 @@
       '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
       '403': {$ref: ../components/responses.yaml#/UserForbidden}
-      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '405':
+        description: Method not allowed; Allow identifies the supported method.
+        headers:
+          Allow:
+            schema: {type: string, enum: [POST]}
+        content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserMethodNotAllowedBody}}}
       '429': {$ref: ../components/responses.yaml#/UserRateLimited}
       '500': {$ref: ../components/responses.yaml#/UserInternalError}
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
@@ -1122,12 +1152,12 @@
       '400': [invalid_json, validation_failed]
       '401': [missing_token, invalid_token, token_revoked]
       '403': [cross_site_request]
-      '404': [route_not_found]
+      '405': [method_not_allowed]
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
-    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
+
 /users/passcode/verify:
   post:
     tags:
@@ -1145,7 +1175,12 @@
       '400': {$ref: ../components/responses.yaml#/UserPasscodeNotSet}
       '401': {$ref: ../components/responses.yaml#/UserPasscodeUnauthorized}
       '403': {$ref: ../components/responses.yaml#/UserForbidden}
-      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '405':
+        description: Method not allowed; Allow identifies the supported method.
+        headers:
+          Allow:
+            schema: {type: string, enum: [POST]}
+        content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserMethodNotAllowedBody}}}
       '429': {$ref: ../components/responses.yaml#/UserRateLimited}
       '500': {$ref: ../components/responses.yaml#/UserInternalError}
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
@@ -1154,12 +1189,12 @@
       '400': [invalid_json, no_passcode_set]
       '401': [missing_token, invalid_token, token_revoked, wrong_passcode]
       '403': [cross_site_request]
-      '404': [route_not_found]
+      '405': [method_not_allowed]
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
-    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
+
 /users/passcode/disable:
   post:
     tags:
@@ -1177,7 +1212,12 @@
       '400': {$ref: ../components/responses.yaml#/UserPasscodeNotSet}
       '401': {$ref: ../components/responses.yaml#/UserPasscodeUnauthorized}
       '403': {$ref: ../components/responses.yaml#/UserForbidden}
-      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '405':
+        description: Method not allowed; Allow identifies the supported method.
+        headers:
+          Allow:
+            schema: {type: string, enum: [POST]}
+        content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserMethodNotAllowedBody}}}
       '429': {$ref: ../components/responses.yaml#/UserRateLimited}
       '500': {$ref: ../components/responses.yaml#/UserInternalError}
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
@@ -1186,12 +1226,12 @@
       '400': [invalid_json, no_passcode_set]
       '401': [missing_token, invalid_token, token_revoked, wrong_passcode]
       '403': [cross_site_request]
-      '404': [route_not_found]
+      '405': [method_not_allowed]
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
-    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
+
 /users/passcode/timeout:
   put:
     tags:
@@ -1209,7 +1249,12 @@
       '400': {$ref: ../components/responses.yaml#/UserInvalidInput}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
       '403': {$ref: ../components/responses.yaml#/UserForbidden}
-      '404': {$ref: ../components/responses.yaml#/UserRouteNotFound}
+      '405':
+        description: Method not allowed; Allow identifies the supported method.
+        headers:
+          Allow:
+            schema: {type: string, enum: [PUT]}
+        content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserMethodNotAllowedBody}}}
       '429': {$ref: ../components/responses.yaml#/UserRateLimited}
       '500': {$ref: ../components/responses.yaml#/UserInternalError}
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
@@ -1222,14 +1267,14 @@
       '400': [invalid_json, validation_failed]
       '401': [missing_token, invalid_token, token_revoked]
       '403': [cross_site_request]
-      '404': [route_not_found]
+      '405': [method_not_allowed]
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-contract-gaps:
       - '#442'
-    x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
+
 /users/devices:
   get:
     tags:
