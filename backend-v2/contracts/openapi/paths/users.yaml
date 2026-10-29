@@ -23,7 +23,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
   put:
     tags:
       - Users
@@ -55,7 +55,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/me/username:
   put:
     tags:
@@ -94,7 +94,7 @@
       '429': [rate_limited, username_change_cooldown]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/avatar:
   put:
     tags:
@@ -127,7 +127,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/check-username:
   get:
     tags:
@@ -178,7 +178,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/qr-code:
   get:
     tags:
@@ -212,7 +212,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/{userId}/profile:
   get:
     tags:
@@ -241,7 +241,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/{userId}/status:
   get:
     tags:
@@ -270,7 +270,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /premium/subscribe:
   post:
     tags:
@@ -300,7 +300,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/all-settings:
   get:
     deprecated: true
@@ -328,7 +328,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
   put:
     deprecated: true
     description: >-
@@ -371,7 +371,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/settings:
   get:
     tags:
@@ -399,7 +399,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
   put:
     tags:
       - Users
@@ -438,7 +438,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/privacy:
   put:
     tags:
@@ -476,7 +476,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/privacy/exceptions:
   get:
     tags:
@@ -506,7 +506,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/privacy/exceptions/{rule}/{userId}:
   parameters:
     - name: rule
@@ -552,7 +552,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
   delete:
     tags:
       - Users
@@ -579,7 +579,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/notifications:
   get:
     deprecated: true
@@ -607,7 +607,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
   put:
     deprecated: true
     description: >-
@@ -643,7 +643,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/sounds:
   get:
     deprecated: true
@@ -671,7 +671,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
   put:
     deprecated: true
     description: >-
@@ -707,7 +707,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/advanced-settings:
   get:
     deprecated: true
@@ -734,7 +734,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
   put:
     deprecated: true
     description: >-
@@ -769,7 +769,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/folders:
   get:
     deprecated: true
@@ -796,7 +796,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
   put:
     deprecated: true
     description: >-
@@ -831,7 +831,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-contract-gaps:
       - '#441'
 /users/storage:
@@ -860,7 +860,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/storage/settings:
   put:
@@ -897,7 +897,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/storage/cache:
   delete:
@@ -926,7 +926,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/storage/all:
   delete:
@@ -957,7 +957,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/export:
   get:
@@ -985,7 +985,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/blocked:
   get:
     tags:
@@ -1008,7 +1008,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
   post:
     tags:
       - Users
@@ -1042,7 +1042,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/blocked/{userId}:
   delete:
     tags:
@@ -1071,7 +1071,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/passcode:
   get:
     tags:
@@ -1094,7 +1094,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/passcode/set:
   post:
@@ -1126,7 +1126,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/passcode/verify:
   post:
@@ -1158,7 +1158,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/passcode/disable:
   post:
@@ -1190,7 +1190,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
 /users/passcode/timeout:
   put:
@@ -1226,7 +1226,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     x-contract-gaps:
       - '#442'
     x-wrong-method-contract-gap: '#449: target 405 method_not_allowed; current 404 route_not_found retained above'
@@ -1255,7 +1255,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/devices/register:
   post:
     tags:
@@ -1289,7 +1289,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/push/vapid-key:
   get:
     tags:
@@ -1317,7 +1317,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/push/subscriptions:
   post:
     tags:
@@ -1355,7 +1355,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
   delete:
     tags:
       - Users
@@ -1385,7 +1385,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/devices/terminate-all:
   post:
     tags:
@@ -1413,7 +1413,7 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
 /users/devices/{sessionId}:
   delete:
     tags:
@@ -1450,4 +1450,4 @@
       '429': [rate_limited]
       '500': [internal_error]
       '502': [upstream_unavailable]
-      '503': [auth_check_unavailable, crypto_protocol_not_ready]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]

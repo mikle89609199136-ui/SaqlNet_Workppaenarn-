@@ -331,3 +331,20 @@ docker compose up -d --no-deps --force-recreate auth
 
 For the v2 Compose file, pass `-f infrastructure/docker/docker-compose.v2.yml`
 to both commands. Repeat the acceptance scenario after activation.
+
+### Crypto dependency outages (#425)
+
+Auth, User, Chat, Media и Admin проверяют доступность и token-generation
+capability crypto в `/health/ready`; ошибка даёт 503, `/health/live` остаётся
+проверкой жизни процесса. Перезапускать сессии пользователей при таком сбое
+не требуется.
+
+Если crypto не может проверить cookie (сеть, timeout, 5xx, некорректный ответ),
+защищённый HTTP-запрос получает `503 crypto_unavailable`, WS handshake — 503.
+Cookie сохраняется: после восстановления crypto можно повторить запрос или
+переподключить сокет без нового входа. Только подтверждённые crypto ответы
+`401 invalid_token|token_expired` означают неверный токен; отказ proxy или
+неожиданный 401 зависимости не считается доказательством истечения сессии.
+Login/registration/QR token issuance возвращают `503 token_issuer_not_ready`,
+если обязательная crypto-операция не выполнена; password/2FA операции —
+`503 crypto_unavailable`. Ошибки не раскрывают адреса и ответы зависимости.

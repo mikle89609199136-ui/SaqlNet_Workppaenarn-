@@ -3107,7 +3107,7 @@ export interface components {
         };
         UserUnavailableBody: components["schemas"]["Error"] & {
             /** @enum {string} */
-            code?: "auth_check_unavailable" | "crypto_protocol_not_ready";
+            code?: "auth_check_unavailable" | "crypto_protocol_not_ready" | "crypto_unavailable";
         };
         /** @description Partial update. Omitted/null string leaves preserve the value. Empty firstName is ignored; empty lastName/bio/avatarUrl clears it. No enforced field length limits or avatar URL validator exist in this handler. Unknown keys are currently ignored; this is not the strict settings patch contract. */
         UpdateProfileRequest: {
@@ -4347,6 +4347,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description HTTP 503. Verification or another required crypto operation could not be completed. code is crypto_unavailable, crypto_protocol_not_ready or token_issuer_not_ready. The session cookie is not cleared; retry after recovery. This is not proof of an invalid token. */
+        CryptoUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description HTTP 401; code is invalid_token or missing_token or token_revoked. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
         UserUnauthorized: {
             headers: {
@@ -4403,7 +4412,7 @@ export interface components {
                 "application/json": components["schemas"]["UserBadGatewayBody"];
             };
         };
-        /** @description HTTP 503; code is auth_check_unavailable or crypto_protocol_not_ready. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
+        /** @description HTTP 503; code is auth_check_unavailable, crypto_protocol_not_ready or crypto_unavailable. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
         UserUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -4701,6 +4710,7 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             409: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     login: {
@@ -4733,6 +4743,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     saveAuthPublicKey: {
@@ -4759,6 +4770,7 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     createQrToken: {
@@ -4836,6 +4848,7 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     declineQrRequest: {
@@ -4857,6 +4870,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     getQrStatus: {
@@ -4909,6 +4923,7 @@ export interface operations {
             400: components["responses"]["Error"];
             403: components["responses"]["Error"];
             409: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     createQrOffer: {
@@ -4937,6 +4952,7 @@ export interface operations {
             401: components["responses"]["Error"];
             403: components["responses"]["Error"];
             409: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     getQrOffer: {
@@ -4960,6 +4976,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     withdrawQrOffer: {
@@ -4981,6 +4998,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     claimQrOffer: {
@@ -5064,6 +5082,7 @@ export interface operations {
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     logout: {
@@ -5082,6 +5101,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     logoutAll: {
@@ -5123,6 +5143,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     changePassword: {
@@ -5151,6 +5172,7 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     getTwoFactorStatus: {
@@ -5169,6 +5191,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     enableTwoFactor: {
@@ -5194,6 +5217,7 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     disableTwoFactor: {
@@ -5220,6 +5244,7 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     verifyTwoFactor: {
@@ -5246,6 +5271,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Error"];
+            503: components["responses"]["CryptoUnavailable"];
         };
     };
     getCurrentUser: {

@@ -46,7 +46,11 @@ func Middleware(crypto TokenVerifier, checker TokenChecker) func(http.Handler) h
 					httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_protocol_not_ready", "crypto token-generation protocol is not ready")
 					return
 				}
-				httpx.ErrorJSON(w, r, http.StatusUnauthorized, "invalid_token", "token is invalid or expired")
+				if errors.Is(err, cryptoclient.ErrInvalidToken) {
+					httpx.ErrorJSON(w, r, http.StatusUnauthorized, "invalid_token", "token is invalid or expired")
+				} else {
+					httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", "session verification is temporarily unavailable")
+				}
 				return
 			}
 			if checker == nil {

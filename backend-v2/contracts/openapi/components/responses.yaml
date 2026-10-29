@@ -281,8 +281,17 @@ UserBadGateway:
 
 UserUnavailable:
   description: >-
-    HTTP 503; code is auth_check_unavailable or crypto_protocol_not_ready. See docs/user-api-contract.md for
+    HTTP 503; code is auth_check_unavailable, crypto_protocol_not_ready or crypto_unavailable. See docs/user-api-contract.md for
     current behavior and marked runtime gaps.
   content:
     application/json:
       schema: {$ref: ./schemas.yaml#/UserUnavailableBody}
+
+CryptoUnavailable:
+  description: >-
+    HTTP 503. Verification or another required crypto operation could not be completed.
+    code is crypto_unavailable, crypto_protocol_not_ready or token_issuer_not_ready.
+    The session cookie is not cleared; retry after recovery. This is not proof of an invalid token.
+  content:
+    application/json:
+      schema: { $ref: './schemas.yaml#/Error' }
