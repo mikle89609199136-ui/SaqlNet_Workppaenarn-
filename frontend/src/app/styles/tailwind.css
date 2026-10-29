@@ -568,7 +568,7 @@
     @apply block mb-[7px] rounded-[10px] object-contain;
     width: min(100%, 360px);
     max-height: 360px;
-    background: rgba(0, 0, 0, 0.18);
+    background: transparent;
   }
   .message-media-open {
     @apply block max-w-full border-0 bg-transparent cursor-zoom-in;
