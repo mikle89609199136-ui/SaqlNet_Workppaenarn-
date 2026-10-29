@@ -31,19 +31,22 @@ export function SettingsSidebar() {
 
   return (
     <>
-      <div className="flex items-center gap-1.5 pt-3.5 pr-4 pb-2.5 pl-2.5">
+      <div className="flex h-16 shrink-0 items-center pr-4 pl-2.5">
         {/* Назад к чатам: прежде туда вела боковая панель, которой больше
-            нет (#818). Как в макете — стрелка цветом акцента. */}
+            нет (#818). Как в макете — стрелка цветом акцента, вся плашка
+            кликабельна на всю ширину (#1083). */}
         <Link
-          aria-label={t('backToChats', 'Назад к чатам')}
-          className="flex size-10 shrink-0 items-center justify-center rounded-icon text-brand hover:layer-hover focus-visible:outline-2 focus-visible:outline-brand"
+          aria-label={`${t('backToChats', 'Назад к чатам')}: ${t('settings.menu.title', 'Настройки')}`}
+          className="flex h-11 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-button text-ink hover:layer-hover active:layer-press focus-visible:outline-2 focus-visible:outline-brand"
           to={ROUTES.CHATS}
         >
-          <Icon className="size-5.5 stroke-2" name="chevronLeft" />
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-icon text-brand">
+            <Icon className="size-5.5 stroke-2" name="chevronLeft" />
+          </span>
+          <h1 className="m-0 truncate text-section font-semibold tracking-[-0.01em]">
+            {t('settings.menu.title', 'Настройки')}
+          </h1>
         </Link>
-        <h1 className="m-0 text-section font-semibold tracking-[-0.01em]">
-          {t('settings.menu.title', 'Настройки')}
-        </h1>
       </div>
 
       {/* Свой профиль — так, как его видят другие (#828). */}

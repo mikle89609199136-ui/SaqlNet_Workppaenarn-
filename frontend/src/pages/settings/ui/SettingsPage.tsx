@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Outlet, useLocation, useMatch } from 'react-router-dom';
 import { DEFAULT_SETTINGS_SECTION, ROUTES } from '@/shared/config/routes';
-import { cn, useIsMobile } from '@/shared/lib';
+import { useIsMobile } from '@/shared/lib';
 import { Icon } from '@/shared/ui';
 import { settingsHeader } from './settingsHeader';
 import { SettingsSidebar } from './SettingsSidebar';
@@ -41,19 +41,21 @@ export function SettingsPage() {
 
       {showMain && (
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-chat-bg pt-[env(safe-area-inset-top,0px)] md:rounded-window md:pt-0">
-          <header className="flex h-16 shrink-0 items-center gap-1.5 border-b border-divider px-1.5 md:px-4">
-            {header.backTo && (
+          <header className="flex h-16 shrink-0 items-center border-b border-divider px-1.5 md:px-4">
+            {header.backTo ? (
               <Link
-                aria-label={header.backLabel}
-                className="flex size-10 shrink-0 items-center justify-center rounded-icon text-brand hover:layer-hover focus-visible:outline-2 focus-visible:outline-brand"
+                aria-label={`${header.backLabel}: ${header.title}`}
+                className="flex h-11 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-button text-ink hover:layer-hover active:layer-press focus-visible:outline-2 focus-visible:outline-brand"
                 to={header.backTo}
               >
-                <Icon className="size-5.5 stroke-2" name="chevronLeft" />
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-icon text-brand">
+                  <Icon className="size-5.5 stroke-2" name="chevronLeft" />
+                </span>
+                <h2 className="m-0 truncate text-[18px] font-semibold">{header.title}</h2>
               </Link>
+            ) : (
+              <h2 className="m-0 truncate pl-2 text-[18px] font-semibold">{header.title}</h2>
             )}
-            <h2 className={cn('m-0 truncate text-[18px] font-semibold', !header.backTo && 'pl-2')}>
-              {header.title}
-            </h2>
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]">

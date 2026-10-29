@@ -116,7 +116,7 @@ describe('push на этом устройстве', () => {
       saveSubscription: vi.fn(async () => Promise.reject(new Error('500'))),
     });
 
-    expect(await enablePush(deps)).toBe('off');
+    await expect(enablePush(deps)).rejects.toThrow();
     expect(readPushSubscriptionId()).toBeNull();
     warn.mockRestore();
   });
@@ -135,6 +135,32 @@ describe('push на этом устройстве', () => {
     expect(usePushStore.getState()).toMatchObject({ status: 'off', subscriptionId: null });
     expect(readPushSubscriptionId()).toBeNull();
   });
+
+  it.each(['server', 'browser'] as const)(
+    'при ошибке отключения %s сохраняет статус, id подписки и снимает busy',
+    async (failure) => {
+      const { deps, setCurrent } = makeDeps();
+      const subscription = fakeSubscription();
+      setCurrent(subscription);
+      writePushSubscriptionId('sub-id-1');
+      usePushStore.setState({ status: 'on', subscriptionId: 'sub-id-1' });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      if (failure === 'server') {
+        vi.mocked(deps.deleteSubscription).mockRejectedValueOnce(new Error('network'));
+      } else {
+        subscription.unsubscribe.mockRejectedValueOnce(new Error('browser'));
+      }
+      await disablePush(deps);
+      expect(usePushStore.getState()).toMatchObject({
+        status: 'on',
+        subscriptionId: 'sub-id-1',
+        busy: false,
+      });
+      expect(readPushSubscriptionId()).toBe('sub-id-1');
+      if (failure === 'server') expect(subscription.unsubscribe).not.toHaveBeenCalled();
+      warn.mockRestore();
+    }
+  );
 
   describe('при входе', () => {
     it('включённое раньше — подтверждается серверу, без вопросов', async () => {
