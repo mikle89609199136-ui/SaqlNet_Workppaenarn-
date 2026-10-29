@@ -68,7 +68,8 @@ func TestCleanupWorkerCompletesSuccessfulAndMissingObjects(t *testing.T) {
 			store := &cleanupTestStore{deleteErr: map[string]error{}}
 			worker, mock := newCleanupWorkerTest(t, store)
 			mock.ExpectQuery("WITH candidate").WillReturnRows(cleanupJobRows("job-1", "bucket", "key", "claim-1", 0))
-			mock.ExpectExec("SET completed_at = NOW").WithArgs("job-1", "claim-1").WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectQuery("SELECT media.prepare_object_cleanup").WillReturnRows(sqlmock.NewRows([]string{"ready"}).AddRow(true))
+			mock.ExpectExec("SET completed_at = NOW").WithArgs("job-1", "claim-1", "bucket", "key").WillReturnResult(sqlmock.NewResult(0, 1))
 
 			processed, err := worker.ProcessNext(context.Background())
 			if err != nil || !processed {
@@ -89,6 +90,7 @@ func TestCleanupWorkerSchedulesRetryWithBackoff(t *testing.T) {
 	store := &cleanupTestStore{deleteErr: map[string]error{"bucket/key": storageErr}}
 	worker, mock := newCleanupWorkerTest(t, store)
 	mock.ExpectQuery("WITH candidate").WillReturnRows(cleanupJobRows("job-1", "bucket", "key", "claim-1", 0))
+	mock.ExpectQuery("SELECT media.prepare_object_cleanup").WillReturnRows(sqlmock.NewRows([]string{"ready"}).AddRow(true))
 	before := time.Now().UTC()
 	mock.ExpectExec("SET attempts = attempts \\+ 1").
 		WithArgs("job-1", "claim-1", futureTimeArgument{after: before.Add(cleanupBaseBackoff - time.Second)}, "temporary storage failure").
@@ -125,8 +127,10 @@ func TestCleanupWorkerPartialBatchCompletesIndependently(t *testing.T) {
 	store := &cleanupTestStore{deleteErr: map[string]error{"bucket/failed": storageErr}}
 	worker, mock := newCleanupWorkerTest(t, store)
 	mock.ExpectQuery("WITH candidate").WillReturnRows(cleanupJobRows("job-ok", "bucket", "ok", "claim-ok", 0))
-	mock.ExpectExec("SET completed_at = NOW").WithArgs("job-ok", "claim-ok").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT media.prepare_object_cleanup").WillReturnRows(sqlmock.NewRows([]string{"ready"}).AddRow(true))
+	mock.ExpectExec("SET completed_at = NOW").WithArgs("job-ok", "claim-ok", "bucket", "ok").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("WITH candidate").WillReturnRows(cleanupJobRows("job-failed", "bucket", "failed", "claim-failed", 2))
+	mock.ExpectQuery("SELECT media.prepare_object_cleanup").WillReturnRows(sqlmock.NewRows([]string{"ready"}).AddRow(true))
 	mock.ExpectExec("SET attempts = attempts \\+ 1").
 		WithArgs("job-failed", "claim-failed", futureTimeArgument{after: time.Now().UTC()}, "second object unavailable").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -152,8 +156,9 @@ func TestCleanupWorkerConcurrentClaimsProcessJobOnce(t *testing.T) {
 	worker, mock := newCleanupWorkerTest(t, store)
 	mock.MatchExpectationsInOrder(false)
 	mock.ExpectQuery("WITH candidate").WillReturnRows(cleanupJobRows("job-1", "bucket", "key", "claim-1", 0))
+	mock.ExpectQuery("SELECT media.prepare_object_cleanup").WillReturnRows(sqlmock.NewRows([]string{"ready"}).AddRow(true))
 	mock.ExpectQuery("WITH candidate").WillReturnError(sql.ErrNoRows)
-	mock.ExpectExec("SET completed_at = NOW").WithArgs("job-1", "claim-1").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("SET completed_at = NOW").WithArgs("job-1", "claim-1", "bucket", "key").WillReturnResult(sqlmock.NewResult(0, 1))
 
 	start := make(chan struct{})
 	results := make(chan bool, 2)
