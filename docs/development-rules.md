@@ -141,3 +141,22 @@ gh api -X POST repos/{owner}/{repo}/issues/339/sub_issues -F sub_issue_id=$ID
 ```
 
 Процессы описаны в `docs/processes/` — постановка, разработка, git, код-ревью.
+
+## Образ MinIO для интеграционных тестов
+
+`TestMediaStorageContract` в `cmd/edge` по умолчанию собирает MinIO из
+`backend-v2/cmd/edge/testdata/minio.Dockerfile`. В CI готовый образ сохраняется
+отдельным кешем по ОС, архитектуре и хешу Dockerfile, загружается через
+`docker load` и передаётся тесту в `MINIO_TEST_IMAGE`. При заданной переменной
+тест использует образ напрямую, без Docker build. Тег содержит хеш Dockerfile,
+поэтому его изменение инвалидирует также кеш результатов Go-теста.
+Локально переменная необязательна; существующая сборка с Docker layer cache
+продолжает работать. Подготовленный образ можно проверить локально так:
+
+```sh
+MINIO_TEST_IMAGE=craneapp-media-minio-test:2025-10-15 \
+  go -C backend-v2 test -tags=integration -count=1 -run '^TestMediaStorageContract$' ./cmd/edge
+```
+
+Кеш образа сохраняется до тестов; Backend job имеет бюджет 20 минут, чтобы
+первичная сборка и сохранение Go-кеша успевали завершиться на холодном runner.

@@ -133,7 +133,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     defaults:
       run:
@@ -188,6 +188,36 @@ jobs:
         with:
           version: v2.13.2
           working-directory: backend-v2
+
+      # MinIO собирается из исходников. Go-кеш не содержит Docker layers:
+      # сохраняем готовый образ отдельно и до запуска тестов, чтобы даже
+      # неудачный тест не заставлял следующий runner компилировать MinIO заново.
+      - name: Restore MinIO test image
+        id: minio-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/minio-test-image.tar
+          key: minio-test-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend-v2/cmd/edge/testdata/minio.Dockerfile') }}
+
+      - name: Prepare MinIO test image
+        env:
+          MINIO_TEST_IMAGE: craneapp-media-minio-test:${{ hashFiles('backend-v2/cmd/edge/testdata/minio.Dockerfile') }}
+        run: |
+          if [ "${{ steps.minio-cache.outputs.cache-hit }}" = "true" ]; then
+            docker load --input "$RUNNER_TEMP/minio-test-image.tar"
+          else
+            docker build --tag "$MINIO_TEST_IMAGE" --file cmd/edge/testdata/minio.Dockerfile cmd/edge/testdata
+            docker save --output "$RUNNER_TEMP/minio-test-image.tar" "$MINIO_TEST_IMAGE"
+          fi
+          docker image inspect "$MINIO_TEST_IMAGE" > /dev/null
+          printf 'MINIO_TEST_IMAGE=%s\n' "$MINIO_TEST_IMAGE" >> "$GITHUB_ENV"
+
+      - name: Save MinIO test image
+        if: steps.minio-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/minio-test-image.tar
+          key: ${{ steps.minio-cache.outputs.cache-primary-key }}
 
       # Все тесты одним запуском: тег integration включает и обычные. Каждый
       # интеграционный пакет поднимает один Postgres и копирует для тестов
