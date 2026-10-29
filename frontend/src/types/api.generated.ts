@@ -8609,7 +8609,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 8 KiB JSON body. */
+        /** @description At most 8 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PushSubscriptionRequest"];
@@ -8642,7 +8642,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description At most 8 KiB JSON body. */
+        /** @description At most 8 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DeletePushSubscriptionRequest"];

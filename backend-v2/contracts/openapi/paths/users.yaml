@@ -1335,7 +1335,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: At most 8 KiB JSON body.
+      description: 'At most 8 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PushSubscriptionRequest}}}
     responses:
       '200': {description: Saved; the id is sent over the socket in client_state so that a visible device gets no push, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/PushSubscriptionResponse}}}}
@@ -1365,7 +1365,7 @@
       - {sessionCookie: []}
     requestBody:
       required: true
-      description: At most 8 KiB JSON body.
+      description: 'At most 8 KiB JSON body; exactly one JSON value with no trailing data. Decoder errors, including body limit and trailing data, return 400 invalid_json.'
       content: {application/json: {schema: {$ref: ../components/schemas.yaml#/DeletePushSubscriptionRequest}}}
     responses:
       '204': {description: Removed (only the requester's own subscription)}
