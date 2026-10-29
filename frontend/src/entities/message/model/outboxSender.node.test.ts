@@ -60,28 +60,32 @@ describe('outboxSender: пересжатие фото', () => {
     expect(send.mock.calls[1][1]).toBe(encoded.file);
   });
 
-  it('без флага отправляет как есть — «Файл» уходит оригиналом', async () => {
-    const queryClient = new QueryClient();
-    const original = new File(['jpeg'], 'original.jpg', { type: 'image/jpeg' });
-    const send = vi
-      .spyOn(services.messageService, 'sendMediaMessage')
-      .mockRejectedValue(new Error('network'));
+  it.each([undefined, false])(
+    'при optimizeImage=%s сохраняет готовый PNG без повторного пересжатия',
+    async (optimizeImage) => {
+      const queryClient = new QueryClient();
+      const original = new File(['png'], 'photo-edited.png', { type: 'image/png' });
+      const send = vi
+        .spyOn(services.messageService, 'sendMediaMessage')
+        .mockRejectedValue(new Error('network'));
 
-    addOutboxItem({
-      senderId: 'user-1',
-      tempId: 'temp-original',
-      chatId: 'chat-1',
-      content: '',
-      type: 'image',
-      file: original,
-      status: 'uploading',
-      createdAt: new Date('2026-10-09T00:00:00Z'),
-    });
+      addOutboxItem({
+        senderId: 'user-1',
+        tempId: 'temp-original',
+        chatId: 'chat-1',
+        content: '',
+        type: 'image',
+        file: original,
+        optimizeImage,
+        status: 'uploading',
+        createdAt: new Date('2026-10-09T00:00:00Z'),
+      });
 
-    await sendOutboxItem(queryClient, getOutboxItem('temp-original')!);
-    expect(encoded.calls).toBe(0);
-    expect(send.mock.calls[0][1]).toBe(original);
-  });
+      await sendOutboxItem(queryClient, getOutboxItem('temp-original')!);
+      expect(encoded.calls).toBe(0);
+      expect(send.mock.calls[0][1]).toBe(original);
+    }
+  );
 });
 
 describe('outboxSender', () => {
