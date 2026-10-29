@@ -39,10 +39,17 @@ describe('ApiClient: обработка 401', () => {
     expect(onUnauthorized).toHaveBeenCalledOnce();
   });
 
-  it('should stay silent on other error codes', async () => {
+  it.each([400, 403, 429, 500, 502, 503])('не завершает сессию при HTTP %s', async (status) => {
     const onUnauthorized = vi.fn();
 
-    server.use(http.get(api('/chats'), () => HttpResponse.json({}, { status: 500 })));
+    server.use(
+      http.get(api('/chats'), () =>
+        HttpResponse.json(
+          { code: status === 403 ? 'wrong_password' : 'internal_error' },
+          { status }
+        )
+      )
+    );
 
     await new ApiClient(API, { onUnauthorized }).get('/chats').catch(() => {});
 

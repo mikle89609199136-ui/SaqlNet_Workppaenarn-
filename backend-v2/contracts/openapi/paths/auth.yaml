@@ -3,44 +3,84 @@
     tags: [Auth]
     summary: Register a user
     operationId: register
+    x-body-limit-bytes: 65536
     requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/RegisterRequest' } } } }
+    security: []
+    x-error-codes:
+      '400': [invalid_json, validation_failed, weak_password]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '409': [username_taken]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [token_issuer_not_ready]
     responses:
-      '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' }
-      '201': { description: Registered, headers: { Set-Cookie: { description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: { type: string } } }, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/AuthResponse' } } } }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '409': { $ref: '../components/responses.yaml#/Error' }
+      '201': {description: Registered, headers: {Set-Cookie: {description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: {type: string}}}, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/AuthResponse}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json, validation_failed, weak_password]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '409': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [username_taken]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [token_issuer_not_ready]}}}]}}}}
 /auth/login:
   post:
     tags: [Auth]
     summary: Authenticate a user
     operationId: login
+    x-body-limit-bytes: 65536
     requestBody: { required: true, content: { application/json: { schema: { $ref: '../components/schemas.yaml#/LoginRequest' } } } }
+    security: []
+    x-error-codes:
+      '400': [invalid_json]
+      '401': [invalid_2fa, invalid_credentials]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [token_issuer_not_ready]
     responses:
-      '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' }
-      '200':
-        description: Authenticated (session cookie is set) or 2FA challenge
-        headers: { Set-Cookie: { description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: { type: string } } }
-        content:
-          application/json:
-            schema:
-              oneOf:
-                - { $ref: '../components/schemas.yaml#/AuthResponse' }
-                - type: object
-                  required: [twoFARequired, userId]
-                  properties:
-                    twoFARequired: { type: boolean, enum: [true] }
-                    userId: { type: string, format: uuid }
-      '401': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: 'Authenticated with Set-Cookie, or twoFARequired challenge without a new cookie. No token in JSON.', headers: {Set-Cookie: {description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: {type: string}}}, content: {application/json: {schema: {oneOf: [{$ref: ../components/schemas.yaml#/AuthResponse}, {type: object, required: [twoFARequired, userId], properties: {twoFARequired: {type: boolean, enum: [true]}, userId: {type: string, format: uuid}}}]}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json]}}}]}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_2fa, invalid_credentials]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [token_issuer_not_ready]}}}]}}}}
 /auth/public-key:
   post:
     tags: [Auth]
     summary: Save the authenticated user's public key
     operationId: saveAuthPublicKey
     security: [{ sessionCookie: [] }]
+    x-body-limit-bytes: 65536
     requestBody:
       required: true
-      content: { application/json: { schema: { type: object, required: [publicKey], properties: { publicKey: { type: string } } } } }
-    responses: { '200': { description: Saved }, '400': { $ref: '../components/responses.yaml#/Error' }, '401': { $ref: '../components/responses.yaml#/Error' }, '500': { $ref: '../components/responses.yaml#/Error' }, '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' } }
+      content: { application/json: { schema: { type: object, required: [publicKey], properties: { publicKey: { type: string, minLength: 1, pattern: '\S' } } } } }
+    x-error-codes:
+      '400': [invalid_json, invalid_public_key]
+      '401': [invalid_session, invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+    responses:
+      '200': {description: Saved, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json, invalid_public_key]}}}]}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_session, invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
 /auth/qr-token:
   post:
     tags: [Auth]
@@ -59,16 +99,28 @@
       The secret is never drawn into the QR code. A scanned code cannot be
       replaced (409 qr_scanned).
     operationId: createQrToken
+    x-body-limit-bytes: 16384
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrTokenRequest' } } }
+    security: []
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '403': [cross_site_request, invalid_secret]
+      '405': [method_not_allowed]
+      '409': [qr_scanned]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
     responses:
-      '200':
-        description: QR login started
-        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrTokenResponse' } } }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '403': { $ref: '../components/responses.yaml#/Error' }
-      '409': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: QR login started, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/QrTokenResponse}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json, validation_failed]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request, invalid_secret]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '409': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [qr_scanned]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
 /auth/qr-token/{token}:
   delete:
     tags: [Auth]
@@ -76,13 +128,24 @@
     description: Called when the page showing the code goes away. Needs the secret from creation; an unknown code is ignored.
     operationId: cancelQrToken
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    x-body-limit-bytes: 16384
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrSecretRequest' } } }
+    security: []
+    x-error-codes:
+      '400': [invalid_json]
+      '403': [cross_site_request, invalid_secret]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '502': [upstream_unavailable]
     responses:
-      '204': { description: Withdrawn }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '403': { $ref: '../components/responses.yaml#/Error' }
+      '204': {description: Withdrawn}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request, invalid_secret]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
 /auth/qr-request/{token}:
   get:
     tags: [Auth]
@@ -95,13 +158,21 @@
     operationId: getQrRequest
     security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    x-error-codes:
+      '401': [invalid_token, missing_token, token_revoked]
+      '404': [invalid_token, qr_rotated]
+      '429': [rate_limited]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+      '405': [method_not_allowed]
     responses:
-      '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' }
-      '200':
-        description: Pending QR login
-        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrLoginRequest' } } }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '404': { $ref: '../components/responses.yaml#/Error' }
+      '405': { description: Unsupported method, content: { application/json: { schema: { allOf: [ { $ref: '../components/schemas.yaml#/Error' }, { type: object, properties: { code: { type: string, enum: [method_not_allowed] } } } ] } } } }
+      '200': {description: Pending QR login, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/QrLoginRequest}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '404': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, qr_rotated]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
   delete:
     tags: [Auth]
     summary: Decline a scanned QR login
@@ -109,10 +180,21 @@
     operationId: declineQrRequest
     security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    x-error-codes:
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request]
+      '429': [rate_limited]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+      '405': [method_not_allowed]
     responses:
-      '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' }
-      '204': { description: Declined }
-      '401': { $ref: '../components/responses.yaml#/Error' }
+      '405': { description: Unsupported method, content: { application/json: { schema: { allOf: [ { $ref: '../components/schemas.yaml#/Error' }, { type: object, properties: { code: { type: string, enum: [method_not_allowed] } } } ] } } } }
+      '204': {description: Declined}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
 /auth/qr-status/{token}:
   get:
     tags: [Auth]
@@ -126,12 +208,20 @@
     parameters:
       - { name: token, in: path, required: true, schema: { type: string } }
       - { name: X-QR-Secret, in: header, required: true, schema: { type: string } }
+    security: []
+    x-error-codes:
+      '400': [invalid_request]
+      '403': [invalid_secret]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '502': [upstream_unavailable]
     responses:
-      '200':
-        description: Pending, scanned, confirmed, or expired QR login status; confirmed sets the session cookie
-        headers: { Set-Cookie: { description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: { type: string } } }
-        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrStatusResponse' } } }
-      '403': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: 'Pending, scanned, confirmed, or expired QR login status; confirmed sets the session cookie', headers: {Set-Cookie: {description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: {type: string}}}, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/QrStatusResponse}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_request]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_secret]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
 /auth/qr-confirm:
   post:
     tags: [Auth]
@@ -147,15 +237,31 @@
       inspects /auth/qr-request/{token} and checks its public key against the fragment.
     operationId: confirmQrLogin
     security: [{ sessionCookie: [] }]
+    x-body-limit-bytes: 16384
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrConfirmRequest' } } }
+    x-error-codes:
+      '400': [invalid_json, invalid_request, invalid_token, validation_failed]
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request, not_scanned]
+      '405': [method_not_allowed]
+      '409': [already_confirmed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable, token_issuer_not_ready]
     responses:
-      '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' }
-      '200': { description: Confirmed }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '403': { $ref: '../components/responses.yaml#/Error' }
-      '409': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Confirmed, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json, invalid_request, invalid_token, validation_failed]}}}]}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request, not_scanned]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '409': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [already_confirmed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable, token_issuer_not_ready]}}}]}}}}
 /auth/qr-offer:
   post:
     tags: [Auth]
@@ -169,18 +275,31 @@
       (409 qr_scanned).
     operationId: createQrOffer
     security: [{ sessionCookie: [] }]
+    x-body-limit-bytes: 16384
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferRequest' } } }
+    x-error-codes:
+      '400': [invalid_json]
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request, forbidden]
+      '405': [method_not_allowed]
+      '409': [qr_scanned]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     responses:
-      '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' }
-      '200':
-        description: Code created
-        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferResponse' } } }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '403': { $ref: '../components/responses.yaml#/Error' }
-      '409': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Code created, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/QrOfferResponse}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json]}}}]}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request, forbidden]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '409': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [qr_scanned]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
 /auth/qr-offer/{token}:
   get:
     tags: [Auth]
@@ -192,12 +311,19 @@
     operationId: getQrOffer
     security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    x-error-codes:
+      '401': [invalid_token, missing_token, token_revoked]
+      '429': [rate_limited]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+      '405': [method_not_allowed]
     responses:
-      '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' }
-      '200':
-        description: Offer state
-        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferState' } } }
-      '401': { $ref: '../components/responses.yaml#/Error' }
+      '405': { description: Unsupported method, content: { application/json: { schema: { allOf: [ { $ref: '../components/schemas.yaml#/Error' }, { type: object, properties: { code: { type: string, enum: [method_not_allowed] } } } ] } } } }
+      '200': {description: Offer state, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/QrOfferState}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
   delete:
     tags: [Auth]
     summary: Withdraw the code
@@ -205,10 +331,21 @@
     operationId: withdrawQrOffer
     security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    x-error-codes:
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request]
+      '429': [rate_limited]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+      '405': [method_not_allowed]
     responses:
-      '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' }
-      '204': { description: Withdrawn }
-      '401': { $ref: '../components/responses.yaml#/Error' }
+      '405': { description: Unsupported method, content: { application/json: { schema: { allOf: [ { $ref: '../components/schemas.yaml#/Error' }, { type: object, properties: { code: { type: string, enum: [method_not_allowed] } } } ] } } } }
+      '204': {description: Withdrawn}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
 /auth/qr-offer/{token}/claim:
   post:
     tags: [Auth]
@@ -219,15 +356,28 @@
       carries the secret for polling the result. Not cacheable.
     operationId: claimQrOffer
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    x-body-limit-bytes: 16384
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferClaimRequest' } } }
+    security: []
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '403': [cross_site_request]
+      '404': [invalid_token, qr_rotated]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
     responses:
-      '200':
-        description: Claimed
-        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferClaimResponse' } } }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '404': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Claimed, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/QrOfferClaimResponse}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json, validation_failed]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request]}}}]}}}}
+      '404': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, qr_rotated]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
 /auth/qr-offer/{token}/status:
   get:
     tags: [Auth]
@@ -240,12 +390,18 @@
     parameters:
       - { name: token, in: path, required: true, schema: { type: string } }
       - { name: X-QR-Secret, in: header, required: true, schema: { type: string } }
+    security: []
+    x-error-codes:
+      '403': [invalid_secret]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '502': [upstream_unavailable]
     responses:
-      '200':
-        description: Pending, confirmed, or expired; confirmed sets the session cookie
-        headers: { Set-Cookie: { description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: { type: string } } }
-        content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferStatusResponse' } } }
-      '403': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: 'Pending, confirmed, or expired; confirmed sets the session cookie', headers: {Set-Cookie: {description: 'Session cookie (sessionCookie) with the issued token, HttpOnly', schema: {type: string}}}, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/QrOfferStatusResponse}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_secret]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
 /auth/qr-offer/{token}/confirm:
   post:
     tags: [Auth]
@@ -257,23 +413,56 @@
     operationId: confirmQrOffer
     security: [{ sessionCookie: [] }]
     parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+    x-body-limit-bytes: 16384
     requestBody:
       required: true
       content: { application/json: { schema: { $ref: '../components/schemas.yaml#/QrOfferConfirmRequest' } } }
+    x-error-codes:
+      '400': [invalid_json, validation_failed]
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request]
+      '404': [invalid_token]
+      '405': [method_not_allowed]
+      '409': [already_confirmed, not_claimed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable, token_issuer_not_ready]
     responses:
-      '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' }
-      '200': { description: Confirmed }
-      '400': { $ref: '../components/responses.yaml#/Error' }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '404': { $ref: '../components/responses.yaml#/Error' }
-      '409': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: Confirmed, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json, validation_failed]}}}]}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request]}}}]}}}}
+      '404': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '409': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [already_confirmed, not_claimed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable, token_issuer_not_ready]}}}]}}}}
 /auth/logout:
   post:
     tags: [Auth]
     summary: Revoke the current token
     operationId: logout
     security: [{ sessionCookie: [] }]
-    responses: { '200': { description: Logged out; the session cookie is cleared }, '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' } }
+    x-error-codes:
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+    responses:
+      '200': {description: Logged out; the session cookie is cleared, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}, headers: {Set-Cookie: {description: Clears the HttpOnly session cookie., schema: {type: string}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
 /auth/logout-all:
   post:
     tags: [Auth]
@@ -281,10 +470,23 @@
     description: May return 503 while generation revocation is disabled during a compatibility rollout.
     operationId: logoutAll
     security: [{ sessionCookie: [] }]
+    x-error-codes:
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable, logout_all_unavailable]
     responses:
-      '200': { description: All sessions revoked; the session cookie is cleared }
-      '401': { $ref: '../components/responses.yaml#/Error' }
-      '503': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: All sessions revoked; the session cookie is cleared, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}, headers: {Set-Cookie: {description: Clears the HttpOnly session cookie., schema: {type: string}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable, logout_all_unavailable]}}}]}}}}
 /auth/sessions:
   get:
     tags: [Auth]
@@ -292,52 +494,149 @@
     description: Canonical active credential sessions, sharing stable IDs with /users/devices. isCurrent belongs to the request cookie. Unregistered legacy tokens require a fresh login.
     operationId: listAuthSessions
     security: [{ sessionCookie: [] }]
+    x-error-codes:
+      '401': [invalid_token, missing_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
     responses:
-      '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' }
-      '200':
-        description: Active sessions with the current credential first, then by recent activity
-        content:
-          application/json:
-            schema: { $ref: '../components/schemas.yaml#/AuthSessionsResponse' }
-      '401': { $ref: '../components/responses.yaml#/Error' }
+      '200': {description: 'Active sessions with the current credential first, then by recent activity', content: {application/json: {schema: {$ref: ../components/schemas.yaml#/AuthSessionsResponse}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
 /auth/change-password:
   post:
     tags: [Auth]
     summary: Change password
     operationId: changePassword
     security: [{ sessionCookie: [] }]
+    x-body-limit-bytes: 65536
     requestBody:
       required: true
       content: { application/json: { schema: { type: object, required: [currentPassword, newPassword], properties: { currentPassword: { type: string, format: password }, newPassword: { $ref: '../components/schemas.yaml#/Password' } } } } }
-    responses: { '200': { description: Password changed }, '400': { $ref: '../components/responses.yaml#/Error' }, '401': { $ref: '../components/responses.yaml#/Error' }, '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' } }
+    x-error-codes:
+      '400': [invalid_json, weak_password]
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request, wrong_password]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+    responses:
+      '200': {description: Password changed, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json, weak_password]}}}]}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request, wrong_password]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
 /auth/2fa/status:
   get:
     tags: [Auth]
     summary: Get 2FA status
     operationId: getTwoFactorStatus
     security: [{ sessionCookie: [] }]
-    responses: { '200': { description: 2FA status }, '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' } }
+    x-error-codes:
+      '401': [invalid_token, missing_token, token_revoked]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+    responses:
+      '200': {description: 2FA status, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/TwoFactorStatusResponse}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
 /auth/2fa/enable:
   post:
     tags: [Auth]
     summary: Enable 2FA
     operationId: enableTwoFactor
     security: [{ sessionCookie: [] }]
+    x-body-limit-bytes: 65536
     requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { $ref: '../components/schemas.yaml#/Password' } } } } } }
-    responses: { '200': { description: 2FA enabled }, '400': { $ref: '../components/responses.yaml#/Error' }, '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' } }
+    x-error-codes:
+      '400': [invalid_json, weak_password]
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+    responses:
+      '200': {description: 2FA enabled, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json, weak_password]}}}]}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
 /auth/2fa/disable:
   post:
     tags: [Auth]
     summary: Disable 2FA
     operationId: disableTwoFactor
     security: [{ sessionCookie: [] }]
+    x-body-limit-bytes: 65536
     requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
-    responses: { '200': { description: 2FA disabled }, '400': { $ref: '../components/responses.yaml#/Error' }, '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' } }
+    x-error-codes:
+      '400': [invalid_json, two_fa_not_enabled]
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request, wrong_password]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+    responses:
+      '200': {description: 2FA disabled, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json, two_fa_not_enabled]}}}]}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request, wrong_password]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}
 /auth/2fa/verify:
   post:
     tags: [Auth]
     summary: Verify 2FA password
     operationId: verifyTwoFactor
     security: [{ sessionCookie: [] }]
+    x-body-limit-bytes: 65536
     requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, format: password } } } } } }
-    responses: { '200': { description: Verification result }, '401': { $ref: '../components/responses.yaml#/Error' }, '503': { $ref: '../components/responses.yaml#/CryptoUnavailable' } }
+    x-error-codes:
+      '400': [invalid_json]
+      '401': [invalid_token, missing_token, token_revoked]
+      '403': [cross_site_request, wrong_password]
+      '405': [method_not_allowed]
+      '429': [rate_limited]
+      '500': [internal_error]
+      '502': [upstream_unavailable]
+      '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+    responses:
+      '200': {description: Verification result, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/TwoFactorVerifyResponse}}}}
+      '400': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_json]}}}]}}}}
+      '401': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [invalid_token, missing_token, token_revoked]}}}]}}}}
+      '403': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [cross_site_request, wrong_password]}}}]}}}}
+      '405': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [method_not_allowed]}}}]}}}}
+      '429': {description: Edge rate limit exceeded; Retry-After is seconds., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [rate_limited]}}}]}}}, headers: {Retry-After: {schema: {type: integer, minimum: 1}, description: Seconds to wait before retrying.}}}
+      '500': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [internal_error]}}}]}}}}
+      '502': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [upstream_unavailable]}}}]}}}}
+      '503': {description: Auth or edge error; see code enum., content: {application/json: {schema: {allOf: [{$ref: ../components/schemas.yaml#/Error}, {type: object, properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}}]}}}}

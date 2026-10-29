@@ -265,7 +265,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, ErrWrongPassword) {
-		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "wrong_password", "current password is incorrect")
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "wrong_password", "current password is incorrect")
 		return
 	}
 	if errors.Is(err, cryptoclient.ErrUnavailable) {
@@ -339,7 +339,7 @@ func (h *Handler) TwoFADisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, ErrWrongPassword) {
-		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "wrong_password", "incorrect 2FA password")
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "wrong_password", "incorrect 2FA password")
 		return
 	}
 	if errors.Is(err, cryptoclient.ErrUnavailable) {
@@ -375,7 +375,7 @@ func (h *Handler) TwoFAVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if required && !ok {
-		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "wrong_password", "incorrect 2FA password")
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "wrong_password", "incorrect 2FA password")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "required": required})
