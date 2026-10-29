@@ -7,7 +7,7 @@ import (
 
 // files contains the modular API contract used by Swagger UI and API clients.
 //
-//go:embed api-v2.yaml paths/*.yaml components/*.yaml
+//go:embed api-v2.yaml paths/*.yaml components/*.yaml media-policy.json
 var files embed.FS
 
 //go:embed api-v2.yaml

@@ -27,6 +27,7 @@ type callRoom struct {
 	createdAt    int64
 	answeredAt   int64
 	participants map[string]*Participant
+	disconnected map[string]*time.Timer // ожидание повторного call_join после обрыва
 }
 
 type RoomSnapshot struct {
@@ -178,6 +179,10 @@ func (m *CallRoomManager) JoinRoom(roomID, userID, displayName, avatarURL string
 		UserID: userID, DisplayName: displayName, AvatarURL: avatarURL,
 		joinedAt: time.Now().UnixMilli(),
 	}
+	if timer := r.disconnected[userID]; timer != nil {
+		timer.Stop()
+		delete(r.disconnected, userID)
+	}
 	m.userToRoom[userID] = roomID
 	if r.answeredAt == 0 && len(r.participants) >= 2 {
 		r.answeredAt = time.Now().UnixMilli()
@@ -258,6 +263,50 @@ func (m *CallRoomManager) LeaveRoom(roomID, userID string) LeaveResult {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.leaveRoomLocked(roomID, userID)
+}
+
+// DisconnectRoom сохраняет даже опустевшую комнату до возвращения участника.
+// Таймер принадлежит конкретному обрыву: старый callback не завершает уже
+// восстановленный звонок или новое ожидание того же пользователя (#940).
+func (m *CallRoomManager) DisconnectRoom(roomID, userID string, grace time.Duration, expired func(*RoomSnapshot)) LeaveResult {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r := m.rooms[roomID]
+	if r == nil || r.participants[userID] == nil {
+		return LeaveResult{}
+	}
+	delete(r.participants, userID)
+	if m.userToRoom[userID] == roomID {
+		delete(m.userToRoom, userID)
+	}
+	if r.disconnected == nil {
+		r.disconnected = make(map[string]*time.Timer)
+	}
+	var timer *time.Timer
+	timer = time.AfterFunc(grace, func() {
+		m.mu.Lock()
+		if m.rooms[roomID] != r || r.disconnected[userID] != timer {
+			m.mu.Unlock()
+			return
+		}
+		for id := range r.participants {
+			if m.userToRoom[id] == roomID {
+				delete(m.userToRoom, id)
+			}
+		}
+		for _, pending := range r.disconnected {
+			pending.Stop()
+		}
+		delete(m.rooms, roomID)
+		snap := &RoomSnapshot{
+			ChatID: r.chatID, CallKind: r.callKind,
+			AnsweredAt: r.answeredAt, CreatedAt: r.createdAt, HostID: r.hostID,
+		}
+		m.mu.Unlock()
+		expired(snap)
+	})
+	r.disconnected[userID] = timer
+	return LeaveResult{OK: true}
 }
 
 func (m *CallRoomManager) GetUserRoom(userID string) *RoomPublic {

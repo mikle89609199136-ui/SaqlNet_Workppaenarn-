@@ -16,7 +16,7 @@ func TestHydrateMessageFieldsPopulatesReplyAliases(t *testing.T) {
 
 	replyID := "reply-id"
 	mock.ExpectQuery("SELECT COALESCE").WithArgs(replyID, "chat-id", "viewer-id").
-		WillReturnRows(sqlmock.NewRows([]string{"name", "id", "content", "entities", "type", "sender_id"}).AddRow("Анна", replyID, "Привет", []byte(`[{"type":"bold","offset":0,"length":6}]`), "text", "sender-id"))
+		WillReturnRows(sqlmock.NewRows([]string{"name", "id", "content", "entities", "type", "sender_id", "updated_at", "is_edited"}).AddRow("Анна", replyID, "Привет", []byte(`[{"type":"bold","offset":0,"length":6}]`), "text", "sender-id", "2026-10-29 01:02:03.123456+00", true))
 
 	msg := Message{ChatID: "chat-id", SenderName: "Иван", ReplyTo: &replyID}
 	if err := NewService(db, nil, nil).hydrateMessageFields(context.Background(), "viewer-id", &msg); err != nil {

@@ -77,3 +77,15 @@ describe('getImageExportConfig', () => {
     });
   });
 });
+
+describe('пустой MIME из буфера обмена', () => {
+  it.each(['png', 'webp', 'PNG', 'WEBP'])('определяет формат по имени .%s', (extension) => {
+    expect(getImageExportConfig(new File(['data'], `photo.${extension}`)).extension).toBe(
+      extension.toLowerCase()
+    );
+  });
+
+  it('фактический MIME имеет приоритет над именем', () => {
+    expect(getImageExportConfig({ type: 'image/png', name: 'photo.webp' }).extension).toBe('png');
+  });
+});

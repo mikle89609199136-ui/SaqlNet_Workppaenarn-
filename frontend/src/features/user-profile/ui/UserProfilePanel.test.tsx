@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { I18nextProvider } from 'react-i18next';
@@ -11,6 +11,7 @@ import { server } from '@/test/msw/server';
 import { ProfileDetails } from './ProfileDetails';
 import { ProfileHeader, useProfileStore } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
+import { resolveInvalidations } from '@/realtime/invalidationMap';
 import { services } from '@/services/serviceContainer';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { UserProfilePanel } from './UserProfilePanel';
@@ -19,12 +20,14 @@ function renderWithI18n(ui: React.ReactElement) {
   return render(<I18nextProvider i18n={testI18n}>{ui}</I18nextProvider>);
 }
 
-function renderPanelWithProviders(ui: React.ReactElement, path = '/chats') {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-    },
-  });
+function renderPanelWithProviders(ui: React.ReactElement, path = '/chats', client?: QueryClient) {
+  const queryClient =
+    client ??
+    new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    });
 
   return render(
     <QueryClientProvider client={queryClient}>
@@ -562,5 +565,49 @@ describe('UserProfile subcomponents and UserProfilePanel', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
       });
     });
+  });
+});
+
+describe('canCall в открытом профиле (#1056)', () => {
+  it('перерисовывает обе кнопки по инвалидации чата без закрытия профиля', async () => {
+    const peer = makeUser({ id: 'user-1056', username: 'calls_peer', firstName: 'Собеседник' });
+    const chat = makeChat({ id: 'chat-1056', type: 'private', peerId: peer.id, canCall: false });
+    let canCall = true;
+    server.use(
+      http.get(api('/users/:userId/profile'), () => HttpResponse.json({ user: peer })),
+      http.get(api('/chats/chat-1056'), () => HttpResponse.json({ chat: { ...chat, canCall } }))
+    );
+    useProfileStore.setState({ user: makeUser({ id: 'viewer-1056' }) });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderPanelWithProviders(
+      <UserProfilePanel
+        startCall={vi.fn()}
+        onClose={vi.fn()}
+        profileState={{ isOpen: true, userId: peer.id, chat }}
+      />,
+      '/chats',
+      client
+    );
+    await screen.findByRole('heading', { name: 'Собеседник' });
+    expect(screen.queryByRole('button', { name: /аудиозвонок/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /видеозвонок/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Медиа' })).toBeInTheDocument();
+    const invalidate = async () => {
+      await act(async () => {
+        for (const key of resolveInvalidations('chat_updated', { chatId: chat.id })) {
+          await client.invalidateQueries({ queryKey: key, exact: true });
+        }
+      });
+    };
+    await invalidate();
+    expect(await screen.findByRole('button', { name: /аудиозвонок/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /видеозвонок/i })).toBeEnabled();
+    canCall = false;
+    await invalidate();
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /аудиозвонок/i })).not.toBeInTheDocument()
+    );
+    expect(screen.queryByRole('button', { name: /видеозвонок/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Медиа' })).toBeInTheDocument();
   });
 });

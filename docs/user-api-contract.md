@@ -7,7 +7,7 @@
 ## Общие правила
 
 - Все операции требуют session cookie, кроме `GET /users/check-username`. Public profile/status/QR также требуют сессию. Владелец настроек определяется сессией, а не присланным userId.
-- Меняющие данные запросы с cookie проходят Origin-защиту (`403 cross_site_request`). Любая операция может получить gateway `429 rate_limited`, `500 internal_error`, `502 upstream_unavailable`; защищённые — `401 missing_token|invalid_token|token_revoked` и `503 auth_check_unavailable|crypto_protocol_not_ready` до вызова handler.
+- Меняющие данные запросы с cookie проходят Origin-защиту (`403 cross_site_request`). Любая операция может получить gateway `429 rate_limited`, `500 internal_error`, `502 upstream_unavailable`; защищённые — `401 missing_token|invalid_token|token_revoked` и `503 auth_check_unavailable|crypto_protocol_not_ready|crypto_unavailable` до вызова handler.
 - Ошибка — JSON `{code, message, requestId?}`. `code` — стабильный машинный идентификатор; текст `message` клиент не разбирает. `requestId` необязателен. У каждого HTTP status есть reusable response с точным enum кодов для операции; `x-error-codes` повторяет его в компактной матрице.
 - `Retry-After` для 429 содержит целое число секунд, минимум 1. Переименование также возвращает `username_change_cooldown`; это другой отказ, чем gateway limit. Не вводим общий `409` для settings: CAS/ETag/revision API отсутствует.
 - Обычный JSON decoder ограничен 128 KiB; push subscriptions — 8 KiB. Ошибка декодирования/лимита — `400 invalid_json`, не новый `413`. Trailing JSON ещё принимается (#450). Ни OpenAPI, ни тесты схем сами по себе не исправляют decoder.

@@ -28,9 +28,9 @@ var deleteMessageCreatedAt = time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 func deleteMessageRows(id, content, createdAt string) *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "chat_id", "sender_id", "sender_name", "sender_avatar", "content", "entities", "type",
-		"reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at", "reactions",
+		"reply_to", "metadata", "is_pinned", "is_edited", "created_at", "updated_at", "deleted_at", "is_personal_pinned", "reactions",
 	}).AddRow(id, deleteMessageChatID, deleteMessageUserID, "Alice", "", content, []byte("[]"), "text", nil,
-		[]byte(`{}`), false, false, createdAt, createdAt, nil, []byte(`[]`))
+		[]byte(`{}`), false, false, createdAt, createdAt, nil, false, []byte(`[]`))
 }
 
 func emptyDeleteMessageRows() *sqlmock.Rows {

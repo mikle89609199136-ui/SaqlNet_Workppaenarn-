@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"craneapp/backend-v2/internal/auth"
 	"craneapp/backend-v2/internal/platform/authctx"
@@ -136,6 +137,13 @@ func (s *Service) Me(ctx context.Context, userID string) (Profile, error) {
 }
 
 func (s *Service) UpdateProfile(ctx context.Context, userID string, firstName, lastName, bio, avatarURL *string) (Profile, error) {
+	// PostgreSQL VARCHAR(64) считает кодовые точки Unicode, а не байты UTF-8.
+	for _, name := range []*string{firstName, lastName} {
+		if name != nil && utf8.RuneCountInString(*name) > 64 {
+			return Profile{}, ErrInvalidInput
+		}
+	}
+
 	if err := s.ensureProfile(ctx, userID); err != nil {
 		return Profile{}, err
 	}
@@ -411,6 +419,9 @@ func (s *Service) Search(ctx context.Context, viewerID, query string) ([]SearchR
 			"error", err,
 		)
 		return nil, err
+	}
+	if users == nil {
+		users = []SearchResult{}
 	}
 	// Фото тех, кто закрыл его от ищущего, в выдаче нет (#789).
 	if err := privacy.HidePhotos(ctx, s.db, viewerID, photoSlots(users)); err != nil {
@@ -858,6 +869,9 @@ func (s *Service) Export(ctx context.Context, userID string) (ExportData, error)
 		}
 		chats = append(chats, chat)
 	}
+	if chats == nil {
+		chats = []ExportChat{}
+	}
 	return ExportData{User: profile, Chats: chats, Settings: settings, Privacy: privacy, ExportedAt: time.Now().UTC().Format(time.RFC3339)}, rows.Err()
 }
 
@@ -888,6 +902,9 @@ func (s *Service) Blocked(ctx context.Context, userID string) ([]BlockedUser, er
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if blocked == nil {
+		blocked = []BlockedUser{}
 	}
 	slots := make([]privacy.PhotoSlot, len(blocked))
 	for i := range blocked {

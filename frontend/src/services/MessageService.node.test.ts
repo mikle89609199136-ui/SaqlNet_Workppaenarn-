@@ -1128,3 +1128,103 @@ describe('MessageService: обработка последнего сообщен
     expect(processed.entities).toEqual([{ type: 'bold', offset: 0, length: 6 }]);
   });
 });
+
+describe('MessageService: listReactionAuthors (#998)', () => {
+  it('вызывает эндпоинт с messageId, emoji, cursor и limit', async () => {
+    const mockApiClient = {
+      get: vi.fn().mockResolvedValue({
+        data: {
+          emoji: '👍',
+          total: 2,
+          users: [{ id: 'u-1', firstName: 'Алексей', lastName: 'Иванов', username: 'alex' }],
+          nextCursor: 'cur-123',
+        },
+      }),
+    } as unknown as ApiClient;
+
+    const service = new MessageService(mockApiClient, {} as CryptoService);
+    const result = await service.listReactionAuthors('msg-100', '👍', 'cur-prev', 20);
+
+    expect(mockApiClient.get).toHaveBeenCalledWith('/messages/msg-100/reactions/users', {
+      emoji: '👍',
+      cursor: 'cur-prev',
+      limit: 20,
+    });
+    expect(result?.total).toBe(2);
+    expect(result?.users).toHaveLength(1);
+    expect(result?.nextCursor).toBe('cur-123');
+  });
+});
+
+describe('MessageService: желаемое состояние реакции', () => {
+  it('отправляет одну замену или снятие через PUT', async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.put(api('/messages/message-1/reactions/me'), async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ reactions: [] });
+      })
+    );
+    const service = createService();
+    await service.reactToMessage('message-1', '❤️');
+    await service.reactToMessage('message-1', null);
+    expect(bodies).toEqual([{ emoji: '❤️' }, { emoji: null }]);
+  });
+});
+
+describe('персональные закрепления: HTTP контракт', () => {
+  afterEach(() => setChatResolver(null));
+  it('передаёт scope и не отправляет устаревший forEveryone', async () => {
+    const requests: { method: string; scope: string | null; body: string }[] = [];
+    const record = async ({ request }: { request: Request }) => {
+      requests.push({
+        method: request.method,
+        scope: new URL(request.url).searchParams.get('scope'),
+        body: await request.text(),
+      });
+      return HttpResponse.json({ success: true });
+    };
+    server.use(
+      http.post(api('/chats/c-999/pins/m-999'), record),
+      http.delete(api('/chats/c-999/pins/m-999'), record)
+    );
+    const service = createService();
+    await service.pinMessage('c-999', 'm-999', 'personal');
+    await service.pinMessage('c-999', 'm-999', 'chat');
+    await service.unpinMessage('c-999', 'm-999', 'personal');
+    expect(requests).toEqual([
+      { method: 'POST', scope: 'personal', body: '' },
+      { method: 'POST', scope: 'chat', body: '' },
+      { method: 'DELETE', scope: 'personal', body: '' },
+    ]);
+  });
+  it('дочитывает все страницы личных pins по серверному cursor', async () => {
+    setChatResolver(async (chatId) => ({ id: chatId, type: 'private' }) as never);
+    const cursors: (string | null)[] = [];
+    server.use(
+      http.get(api('/chats/c-999/pins'), ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        expect(params.get('scope')).toBe('personal');
+        cursors.push(params.get('cursor'));
+        const second = Boolean(params.get('cursor'));
+        const id = second ? 'pin-second' : 'pin-first';
+        return HttpResponse.json({
+          pins: [
+            {
+              id,
+              messageId: id,
+              chatId: 'c-999',
+              pinnedBy: 'me',
+              pinnedAt: '2026-10-29T00:00:00Z',
+              message: message(id, 'c-999', ''),
+            },
+          ],
+          nextCursor: second ? undefined : 'cursor-2',
+        });
+      })
+    );
+    const pins = await createService().listPins('c-999', 'personal');
+    expect(pins).toHaveLength(2);
+    expect(cursors).toEqual([null, 'cursor-2']);
+  });
+});

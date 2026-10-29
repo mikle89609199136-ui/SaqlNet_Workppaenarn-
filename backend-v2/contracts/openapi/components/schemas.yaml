@@ -186,6 +186,7 @@ User:
         exceptions) hides the photo from the caller. The caller always sees
         their own.
 Password:
+  pattern: "^(?=[\\s\\S]*[0-9])(?=[\\s\\S]*[!@#$%\\^&*()_+\\-=\\[\\]{}|;:'\",.<>/?`~])(?![\\s\\S]*[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000])[\\s\\S]*$"
   # Требования задаёт internal/auth/password_validator.go и применяет во
   # всех трёх местах, где пароль задаётся: регистрация, смена, включение
   # второго пароля. Нарушение любого из них возвращает 400 weak_password.
@@ -200,15 +201,18 @@ Password:
   example: parolproba1!
 RegisterRequest:
   type: object
-  required: [username, password, firstName]
+  required:
+    - username
+    - password
+    - firstName
   properties:
-    username: { $ref: '#/Username' }
-    password: { $ref: '#/Password' }
-    firstName: { type: string, minLength: 1 }
-    lastName: { type: string }
-    language: { type: string }
-    deviceName: { type: string, maxLength: 64 }
-    deviceType: { type: string, enum: [desktop, mobile, tablet] }
+    username: {$ref: '#/Username'}
+    password: {$ref: '#/Password'}
+    firstName: {type: string, minLength: 1, maxLength: 64, pattern: \S}
+    lastName: {type: string, maxLength: 64}
+    language: {type: string}
+    deviceName: {type: string, maxLength: 64}
+    deviceType: {type: string, enum: [desktop, mobile, tablet]}
 LoginRequest:
   type: object
   required: [username, password]
@@ -220,9 +224,11 @@ LoginRequest:
     deviceType: { type: string, enum: [desktop, mobile, tablet] }
 AuthResponse:
   type: object
-  required: [user]
+  required:
+    - user
   properties:
-    user: { $ref: '#/User' }
+    user: {$ref: '#/AuthUser'}
+  additionalProperties: false
 AuthSession:
   type: object
   required: [id, deviceName, deviceType, ipAddress, location, userAgent, lastActive, createdAt, isCurrent]
@@ -281,9 +287,11 @@ UpdateProfileRequest:
   properties:
     firstName:
       type: string
+      maxLength: 64
       nullable: true
     lastName:
       type: string
+      maxLength: 64
       nullable: true
     bio:
       type: string
@@ -293,7 +301,7 @@ UpdateProfileRequest:
       nullable: true
   description: >-
     Partial update. Omitted/null string leaves preserve the value. Empty firstName is ignored; empty
-    lastName/bio/avatarUrl clears it. No enforced field length limits or avatar URL validator exist in this
+    lastName/bio/avatarUrl clears it. Names are limited to 64 Unicode code points before normalization. No avatar URL validator exists in this
     handler. Unknown keys are currently ignored; this is not the strict settings patch contract.
 RenameUsernameRequest:
   type: object
@@ -385,6 +393,14 @@ Chat:
   type: object
   required: [id, type]
   properties:
+    canCall:
+      type: boolean
+      description: >-
+        Viewer-specific 1:1 call availability including recipient calls privacy,
+        exceptions and blocks in both directions. False for group/self chats.
+        Optional for old servers/caches; clients preserve previous controls when absent.
+        Never replaces server authorization when starting a call.
+
     id: { type: string, format: uuid }
     type:
       type: string
@@ -521,6 +537,13 @@ LastMessagePreview:
     type: { type: string }
     senderId: { type: string, format: uuid }
     senderName: { type: string }
+    updatedAt:
+      type: string
+      format: date-time
+      description: Canonical Message.updatedAt of the referenced message. Included in reply previews; optional for older clients and other preview projections. Never null when present.
+    isEdited:
+      type: boolean
+      description: Edit flag of the referenced message, included with updatedAt in reply previews. Optional for backward compatibility.
     reactions:
       type: array
       description: Always an array; empty reactions are [], never null.
@@ -539,7 +562,7 @@ LastMessagePreview:
         — the first member.
 Message:
   type: object
-  required: [id, chatId, senderId, senderFirstName, content, entities, type, reactions, isForwarded, isPinned, isEdited, createdAt, updatedAt]
+  required: [id, chatId, senderId, senderFirstName, content, entities, type, reactions, isForwarded, isPinned, isChatPinned, isPersonalPinned, isEdited, createdAt, updatedAt]
   properties:
     id: { type: string, format: uuid }
     chatId: { type: string, format: uuid }
@@ -588,10 +611,21 @@ Message:
         Original author, to open their profile. Present only when the author's
         forwards rule allowed the forwarder to link to them; absent together
         with forwardedFrom when the link is hidden.
-    isPinned: { type: boolean }
+    isPinned: { type: boolean, deprecated: true, description: Alias of isChatPinned. }
+    isChatPinned: { type: boolean, description: Shared pin visible to the chat. }
+    isPersonalPinned: { type: boolean, description: Personal pin of the authenticated viewer. Never copied from another user in chat broadcasts. }
     isEdited: { type: boolean }
-    createdAt: { type: string }
-    updatedAt: { type: string }
+    createdAt: { type: string, format: date-time }
+    updatedAt:
+      type: string
+      format: date-time
+      description: >-
+        Canonical content/entities edit timestamp in UTC RFC3339, preserving database
+        microsecond precision across edit response, history, pins, favorites, reply
+        previews and message_edited WebSocket events. Required and never null.
+        For an unedited message isEdited is false and updatedAt equals createdAt;
+        service-only changes do not advance it. Existing field retained for backward
+        compatibility; no separate nullable editedAt is introduced.
     deletedAt: { type: string, nullable: true }
     deliveredAt:
       type: string
@@ -605,6 +639,19 @@ Message:
         Only on the caller's own messages (#657): when another member's read
         boundary first passed the message. Absent — not read yet. In group chats
         — the first member.
+MessageEditedEvent:
+  type: object
+  description: WebSocket message_edited event. updatedAt and isEdited have the same values as the edit response and subsequent REST reload. A no-op edit preserves both values.
+  required: [type, chatId, messageId, content, entities, updatedAt, isEdited]
+  properties:
+    type: { type: string, enum: [message_edited] }
+    chatId: { type: string, format: uuid }
+    messageId: { type: string, format: uuid }
+    content: { type: string }
+    entities: { $ref: '#/MessageEntities' }
+    updatedAt: { type: string, format: date-time, description: Canonical non-null UTC content/entities edit timestamp with database microsecond precision. }
+    isEdited: { type: boolean }
+
 ReceiptEvent:
   type: object
   description: >-
@@ -781,8 +828,9 @@ MarkMessagesReadRequest:
       type: array
       description: >-
         Messages of this chat seen by the reader (duplicates are ignored). All
-        must belong to the chat, otherwise 400 invalid_message_ids. Own and
-        deleted messages are skipped.
+        must belong to the chat, otherwise 400 invalid_message_ids. Own,
+        deleted, and hidden messages are skipped and do not move the read
+        boundary.
       minItems: 1
       maxItems: 500
       items: { type: string, format: uuid }
@@ -1049,14 +1097,14 @@ CallHistoryResponse:
     hasMore: { type: boolean }
 UploadResponse:
   type: object
-  required: [success, url]
+  required: [success, url, fileName, sizeBytes, contentType]
   properties:
-    success: { type: boolean }
-    url: { type: string }
-    encrypted: { type: boolean }
-    encryption: {}
+    success: { type: boolean, enum: [true] }
+    url: { $ref: '#/MediaUrl' }
+    encrypted: { type: boolean, enum: [true], description: Present for encrypted uploads only. }
+    encryption: { type: string, description: JSON-encoded encryption metadata, not a nested JSON object. Present for encrypted uploads only. }
     fileName: { type: string }
-    sizeBytes: { type: integer, format: int64 }
+    sizeBytes: { type: integer, format: int64, minimum: 0, description: Plaintext size for encrypted uploads; file byte size otherwise. }
     contentType: { type: string }
 Object:
   type: object
@@ -1194,11 +1242,15 @@ QrTokenRequest:
     secret: { type: string, description: Secret of the replaced code. }
 QrTokenResponse:
   type: object
-  required: [qrToken, secret, expiresAt]
+  required:
+    - qrToken
+    - secret
+    - expiresAt
   properties:
-    qrToken: { type: string }
-    secret: { type: string, description: Kept by the device showing the code and never drawn into it. }
-    expiresAt: { type: integer, format: int64, description: Unix milliseconds. }
+    qrToken: {type: string}
+    secret: {type: string, description: Kept by the device showing the code and never drawn into it.}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+  additionalProperties: false
 QrSecretRequest:
   type: object
   required: [secret]
@@ -1206,21 +1258,30 @@ QrSecretRequest:
     secret: { type: string }
 QrLoginRequest:
   type: object
-  required: [publicKey, deviceName, userAgent, createdAt, expiresAt]
+  required:
+    - publicKey
+    - deviceName
+    - userAgent
+    - createdAt
+    - expiresAt
   properties:
-    publicKey: { type: string }
-    deviceName: { type: string }
-    userAgent: { type: string }
-    createdAt: { type: integer, format: int64 }
-    expiresAt: { type: integer, format: int64 }
+    publicKey: {type: string}
+    deviceName: {type: string}
+    userAgent: {type: string}
+    createdAt: {type: integer, format: int64, description: Unix milliseconds.}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+  additionalProperties: false
 QrKeyPayload:
   type: object
   description: The key backup master key encrypted to the new device's publicKey. Opaque to the server.
-  required: [senderPublicKey, iv, ct]
+  required:
+    - senderPublicKey
+    - iv
+    - ct
   properties:
-    senderPublicKey: { type: string }
-    iv: { type: string }
-    ct: { type: string }
+    senderPublicKey: {type: string, minLength: 1}
+    iv: {type: string, minLength: 1}
+    ct: {type: string, minLength: 1}
 QrConfirmRequest:
   type: object
   required: [qrToken, payload]
@@ -1233,26 +1294,41 @@ QrOfferRequest:
     replaces: { type: string, description: Token of the code shown so far; it stops working at once. }
 QrOfferResponse:
   type: object
-  required: [offerToken, expiresAt]
+  required:
+    - offerToken
+    - expiresAt
   properties:
-    offerToken: { type: string }
-    expiresAt: { type: integer, format: int64, description: Unix milliseconds. }
+    offerToken: {type: string}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+  additionalProperties: false
 QrOfferClaim:
   type: object
-  required: [publicKey, mac, deviceName, userAgent, claimedAt]
+  required:
+    - publicKey
+    - mac
+    - deviceName
+    - userAgent
+    - claimedAt
   properties:
-    publicKey: { type: string }
-    mac: { type: string }
-    deviceName: { type: string }
-    userAgent: { type: string }
-    claimedAt: { type: integer, format: int64 }
+    publicKey: {type: string}
+    mac: {type: string}
+    deviceName: {type: string}
+    userAgent: {type: string}
+    claimedAt: {type: integer, format: int64, description: Unix milliseconds.}
+  additionalProperties: false
 QrOfferState:
   type: object
-  required: [status]
+  required:
+    - status
   properties:
-    status: { type: string, enum: [pending, claimed, confirmed, expired] }
-    expiresAt: { type: integer, format: int64 }
-    claim: { $ref: '#/QrOfferClaim' }
+    status: {type: string, enum: [pending, claimed, confirmed, expired]}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+    claim: {$ref: '#/QrOfferClaim'}
+  additionalProperties: false
+  oneOf:
+    - {properties: {status: {enum: [pending]}}, required: [expiresAt], not: {required: [claim]}}
+    - {properties: {status: {enum: [claimed]}}, required: [expiresAt, claim]}
+    - {properties: {status: {enum: [confirmed, expired]}}, not: {anyOf: [{required: [expiresAt]}, {required: [claim]}]}}
 QrOfferClaimRequest:
   type: object
   required: [publicKey, mac]
@@ -1262,17 +1338,26 @@ QrOfferClaimRequest:
     deviceName: { type: string, maxLength: 64 }
 QrOfferClaimResponse:
   type: object
-  required: [claimSecret, expiresAt]
+  required:
+    - claimSecret
+    - expiresAt
   properties:
-    claimSecret: { type: string }
-    expiresAt: { type: integer, format: int64 }
+    claimSecret: {type: string}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+  additionalProperties: false
 QrOfferStatusResponse:
   type: object
-  required: [status]
+  required:
+    - status
   properties:
-    status: { type: string, enum: [pending, confirmed, expired] }
-    expiresAt: { type: integer, format: int64 }
-    payload: { $ref: '#/QrKeyPayload' }
+    status: {type: string, enum: [pending, confirmed, expired]}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+    payload: {$ref: '#/QrKeyPayload'}
+  additionalProperties: false
+  oneOf:
+    - {properties: {status: {enum: [pending]}}, required: [expiresAt], not: {required: [payload]}}
+    - {properties: {status: {enum: [confirmed]}}, required: [payload], not: {required: [expiresAt]}}
+    - {properties: {status: {enum: [expired]}}, not: {anyOf: [{required: [expiresAt]}, {required: [payload]}]}}
 QrOfferConfirmRequest:
   type: object
   required: [payload]
@@ -1280,12 +1365,17 @@ QrOfferConfirmRequest:
     payload: { $ref: '#/QrKeyPayload' }
 QrStatusResponse:
   type: object
-  required: [status]
+  required:
+    - status
   properties:
-    status: { type: string, enum: [pending, scanned, confirmed, expired] }
-    expiresAt: { type: integer, format: int64 }
-    payload: { $ref: '#/QrKeyPayload' }
-
+    status: {type: string, enum: [pending, scanned, confirmed, expired]}
+    expiresAt: {type: integer, format: int64, description: Unix milliseconds.}
+    payload: {$ref: '#/QrKeyPayload'}
+  additionalProperties: false
+  oneOf:
+    - {properties: {status: {enum: [pending, scanned]}}, required: [expiresAt], not: {required: [payload]}}
+    - {properties: {status: {enum: [confirmed]}}, required: [payload], not: {required: [expiresAt]}}
+    - {properties: {status: {enum: [expired]}}, not: {anyOf: [{required: [expiresAt]}, {required: [payload]}]}}
 LegacyGeneralSettings:
   type: object
   additionalProperties: false
@@ -1627,9 +1717,8 @@ UserProfile:
       description: Empty when absent or hidden by privacy; a URI format is not guaranteed by the current writer.
     badges:
       type: array
-      nullable: true
       items: {type: string}
-      description: Null is currently possible when empty (#435). Badge names are open server identifiers, not a closed enum.
+      description: Always an array; empty badges are [], never null. Badge names are open server identifiers, not a closed enum.
     isPremium:
       type: boolean
     isBot:
@@ -1679,10 +1768,9 @@ UserSearchResponse:
   properties:
     users:
       type: array
-      nullable: true
       items: {$ref: '#/UserSearchItem'}
       maxItems: 50
-      description: Empty query gives []; a nonempty search without matches may currently give null (#435). Ordered by username.
+      description: Always an array; empty query and no matches both give [], never null. Ordered by username.
 
 UsernameAvailabilityResponse:
   type: object
@@ -1724,8 +1812,8 @@ UserBlockedResponse:
   properties:
     blocked:
       type: array
-      nullable: true
       items: {$ref: '#/UserBlockedItem'}
+      description: Always an array; empty block list is [], never null.
 
 BlockUserRequest:
   type: object
@@ -1953,8 +2041,8 @@ UserExport:
       $ref: '#/UserProfile'
     chats:
       type: array
-      nullable: true
       items: {$ref: '#/UserExportChat'}
+      description: Always an array; no memberships give [], never null.
     settings:
       $ref: '#/LegacyGeneralSettings'
     privacy:
@@ -1965,8 +2053,8 @@ UserExport:
       description: UTC RFC 3339 generation time.
   description: >-
     Current partial export: profile, chat membership metadata, general settings and privacy. Excludes message
-    bodies, attachments, private keys and other account resources. A full archive is separate #447. chats may
-    currently be null when empty (#435).
+    bodies, attachments, private keys and other account resources. A full archive is separate #447. Empty chats
+    are [], never null.
 
 PasscodeState:
   type: object
@@ -2244,7 +2332,7 @@ UserUnavailableBody:
   allOf:
     - $ref: '#/Error'
     - type: object
-      properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready]}}
+      properties: {code: {type: string, enum: [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]}}
 
 LegacyNullSection:
   type: object
@@ -2252,3 +2340,176 @@ LegacyNullSection:
   enum:
     - null
   description: Only JSON null. Bulk compatibility no-op, never a leaf reset.
+
+# Media API wire DTOs (#614). Catalog timestamps preserve the legacy SQL text.
+MediaUrl:
+  type: string
+  pattern: '^/api/v2/media/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+  description: Relative authenticated download URL; the UUID alone grants no access.
+MediaDataUrl:
+  type: string
+  pattern: '^data:[^,]*,[A-Za-z0-9+/=\r\n]*$'
+  description: >-
+    Complete data URL with base64-encoded bytes, e.g. data:image/png;base64,YQ==.
+    This is not a bare base64 string. Decoded size is checked at runtime; plain uploads also validate MIME.
+    Sticker handlers currently also accept a data URL without the ;base64 marker
+    and do not apply the plain-upload MIME allowlist.
+  example: 'data:image/png;base64,YQ=='
+MediaTimestamp:
+  description: >-
+    Non-null timestamp. Current catalog handlers return PostgreSQL timestamptz
+    text (created_at::text), with a space and UTC offset such as +00. RFC 3339
+    date-time is also accepted for compatibility; no timestamp rewrite is required.
+  oneOf:
+    - { type: string, format: date-time }
+    - type: string
+      pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2}(?::\d{2})?$'
+      example: '2026-10-28 10:20:30.123456+00'
+MediaEmoji:
+  type: object
+  required: [code, img]
+  properties:
+    code: { type: string, description: Emoji shortcode, e.g. ':grinning:'. }
+    img: { type: string, description: Unicode emoji text; not an image URL. }
+MediaEmojisResponse:
+  type: object
+  required: [emojis]
+  properties:
+    emojis: { type: array, items: { $ref: '#/MediaEmoji' } }
+MediaGif:
+  type: object
+  required: [id, name, url, userName, createdAt]
+  properties:
+    id: { type: string, format: uuid }
+    name: { type: string }
+    url: { type: string, description: New records use a relative MediaUrl; legacy records may retain external URLs. }
+    userName: { type: string, description: Username in list responses; currently empty in the create response (#608). }
+    createdAt: { $ref: '#/MediaTimestamp' }
+MediaGifsResponse:
+  type: object
+  required: [gifs]
+  properties:
+    gifs: { type: array, items: { $ref: '#/MediaGif' } }
+MediaGifResponse:
+  type: object
+  required: [success, gif]
+  properties:
+    success: { type: boolean, enum: [true] }
+    gif: { $ref: '#/MediaGif' }
+MediaStickerPack:
+  type: object
+  required: [id, name, description, iconUrl, stickerCount, createdAt]
+  properties:
+    id: { type: string, format: uuid }
+    name: { type: string }
+    description: { type: string }
+    iconUrl: { type: string, description: Relative MediaUrl when managed; empty when no verified icon is available. }
+    stickerCount: { type: integer, minimum: 0 }
+    createdAt: { $ref: '#/MediaTimestamp' }
+MediaSticker:
+  type: object
+  required: [id, imageUrl, createdAt]
+  properties:
+    id: { type: string, format: uuid }
+    imageUrl: { type: string, description: Relative MediaUrl when managed; empty for legacy objects without verified storage coordinates. }
+    createdAt: { $ref: '#/MediaTimestamp' }
+MediaStickerPacksResponse:
+  type: object
+  required: [packs]
+  properties:
+    packs: { type: array, items: { $ref: '#/MediaStickerPack' } }
+MediaStickersResponse:
+  type: object
+  required: [stickers]
+  properties:
+    stickers: { type: array, items: { $ref: '#/MediaSticker' } }
+MediaStickerPackResponse:
+  type: object
+  required: [success, pack]
+  properties:
+    success: { type: boolean, enum: [true] }
+    pack: { $ref: '#/MediaStickerPack' }
+MediaStickerResponse:
+  type: object
+  required: [success, sticker]
+  properties:
+    success: { type: boolean, enum: [true] }
+    sticker: { $ref: '#/MediaSticker' }
+MediaEncryptedDownload:
+  type: object
+  required: [encrypted, mimeType, sizeBytes, ciphertext]
+  description: Complete encrypted envelope; version/algorithm/iv/keyEpoch may be absent in legacy uploads.
+  properties:
+    encrypted: { type: boolean, enum: [true] }
+    mimeType: { type: string }
+    sizeBytes: { type: integer, format: int64, minimum: 0 }
+    ciphertext: { type: string, format: byte }
+    version: { type: integer }
+    algorithm: { type: string }
+    iv: { type: string }
+    keyEpoch: { type: integer }
+    fileName: { type: string }
+
+MessagePin:
+  type: object
+  required: [id, messageId, chatId, pinnedBy, pinnedAt, message]
+  properties:
+    id: { type: string, format: uuid }
+    messageId: { type: string, format: uuid }
+    chatId: { type: string, format: uuid }
+    pinnedBy: { type: string, format: uuid }
+    pinnedAt: { type: string, format: date-time }
+    message: { $ref: '#/Message' }
+MessagePinsPage:
+  type: object
+  required: [pins]
+  properties:
+    pins: { type: array, items: { $ref: '#/MessagePin' } }
+    nextCursor:
+      type: string
+      description: Personal scope only. Opaque cursor ordered by pinned_at DESC, message_id DESC; absent on the last page.
+PersonalPinEvent:
+  type: object
+  description: >-
+    Sent after a committed change only to the owner via BroadcastToUsers, on all
+    active devices; never to the chat. Idempotent repeats emit no event.
+    Membership removal cascades pins in the revocation transaction; rejoining
+    does not restore them. Message soft deletion clears pins by trigger;
+    hard deletion of user, chat or message clears pins by FK cascade.
+  required: [type, scope, chatId, messageId, isPersonalPinned]
+  properties:
+    type: { type: string, enum: [message_personal_pinned, message_personal_unpinned] }
+    scope: { type: string, enum: [personal] }
+    chatId: { type: string, format: uuid }
+    messageId: { type: string, format: uuid }
+    isPersonalPinned: { type: boolean }
+    pinnedAt: { type: string, format: date-time, description: Present on message_personal_pinned. }
+
+TwoFactorStatusResponse:
+  type: object
+  required: [enabled]
+  properties:
+    enabled: { type: boolean }
+TwoFactorVerifyResponse:
+  type: object
+  required: [success, required]
+  properties:
+    success: { type: boolean, enum: [true] }
+    required: { type: boolean, description: Whether a secondary password is enabled. }
+AuthUser:
+  type: object
+  required:
+    - id
+    - username
+    - firstName
+    - lastName
+    - bio
+    - avatarUrl
+  properties:
+    id: {type: string, format: uuid}
+    username: {type: string}
+    firstName: {type: string}
+    lastName: {type: string}
+    bio: {type: string}
+    avatarUrl: {type: string}
+  additionalProperties: false

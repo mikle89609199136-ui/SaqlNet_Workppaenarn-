@@ -11,6 +11,7 @@ import type { IMediaItem, TMediaMessageType } from '@/types';
  */
 export type TMessageAction =
   | 'react'
+  | 'viewReactions'
   | 'reply'
   | 'copyText'
   | 'copyImage'
@@ -85,6 +86,9 @@ export function availableMessageActions(
   }
 
   actions.add('react');
+  if (message.reactions && message.reactions.length > 0) {
+    actions.add('viewReactions');
+  }
   if (inThread) {
     actions.add('reply');
     actions.add('select');

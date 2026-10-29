@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"craneapp/backend-v2/internal/platform/authctx"
 	cryptoclient "craneapp/backend-v2/internal/platform/crypto"
@@ -86,13 +87,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		DeviceName string `json:"deviceName"`
 		DeviceType string `json:"deviceType"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, 64<<10) {
 		return
 	}
 	input.Username = usernamepolicy.Normalize(input.Username)
-	if !usernamepolicy.Valid(input.Username) || strings.TrimSpace(input.FirstName) == "" {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username or firstName is invalid")
+	if !usernamepolicy.Valid(input.Username) || strings.TrimSpace(input.FirstName) == "" || utf8.RuneCountInString(input.FirstName) > 64 || utf8.RuneCountInString(input.LastName) > 64 {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "username, firstName or lastName is invalid")
 		return
 	}
 	user, token, err := h.service.Register(
@@ -132,8 +132,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		DeviceName    string `json:"deviceName"`
 		DeviceType    string `json:"deviceType"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, 64<<10) {
 		return
 	}
 	user, token, err := h.service.Login(
@@ -173,15 +172,17 @@ func (h *Handler) PublicKey(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		PublicKey string `json:"publicKey"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, 64<<10) {
 		return
 	}
 	if err := h.service.SavePublicKey(r.Context(), current.ID, input.PublicKey); errors.Is(err, ErrUserNotFound) {
 		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "invalid_session", "authenticated user no longer exists")
 		return
+	} else if errors.Is(err, ErrInvalidPublicKey) {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_public_key", "public key is required")
+		return
 	} else if err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_public_key", err.Error())
+		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "failed to save public key")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
@@ -255,8 +256,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		CurrentPassword string `json:"currentPassword"`
 		NewPassword     string `json:"newPassword"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, 64<<10) {
 		return
 	}
 	err := h.service.ChangePassword(r.Context(), current.ID, input.CurrentPassword, input.NewPassword)
@@ -265,7 +265,11 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, ErrWrongPassword) {
-		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "wrong_password", "current password is incorrect")
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "wrong_password", "current password is incorrect")
+		return
+	}
+	if errors.Is(err, cryptoclient.ErrUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", "crypto service is temporarily unavailable")
 		return
 	}
 	if err != nil {
@@ -298,13 +302,16 @@ func (h *Handler) TwoFAEnable(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, 64<<10) {
 		return
 	}
 	err := h.service.TwoFAEnable(r.Context(), current.ID, input.Password)
 	if errors.Is(err, ErrInvalidPassword) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "weak_password", "password does not meet security requirements")
+		return
+	}
+	if errors.Is(err, cryptoclient.ErrUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", "crypto service is temporarily unavailable")
 		return
 	}
 	if err != nil {
@@ -323,8 +330,7 @@ func (h *Handler) TwoFADisable(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, 64<<10) {
 		return
 	}
 	err := h.service.TwoFADisable(r.Context(), current.ID, input.Password)
@@ -333,7 +339,11 @@ func (h *Handler) TwoFADisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, ErrWrongPassword) {
-		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "wrong_password", "incorrect 2FA password")
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "wrong_password", "incorrect 2FA password")
+		return
+	}
+	if errors.Is(err, cryptoclient.ErrUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", "crypto service is temporarily unavailable")
 		return
 	}
 	if err != nil {
@@ -352,17 +362,20 @@ func (h *Handler) TwoFAVerify(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, 64<<10) {
 		return
 	}
 	required, ok, err := h.service.TwoFAVerify(r.Context(), current.ID, input.Password)
+	if errors.Is(err, cryptoclient.ErrUnavailable) {
+		httpx.ErrorJSON(w, r, http.StatusServiceUnavailable, "crypto_unavailable", "crypto service is temporarily unavailable")
+		return
+	}
 	if err != nil {
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "verification failed")
 		return
 	}
 	if required && !ok {
-		httpx.ErrorJSON(w, r, http.StatusUnauthorized, "wrong_password", "incorrect 2FA password")
+		httpx.ErrorJSON(w, r, http.StatusForbidden, "wrong_password", "incorrect 2FA password")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "required": required})
@@ -558,8 +571,7 @@ func (h *Handler) QRToken(w http.ResponseWriter, r *http.Request) {
 		Replaces   string `json:"replaces"`
 		Secret     string `json:"secret"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQRRequestBodyBytes)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, maxQRRequestBodyBytes) {
 		return
 	}
 	if _, ok := decodeQRPublicKey(input.PublicKey); !ok {
@@ -629,8 +641,7 @@ func (h *Handler) QRCancel(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Secret string `json:"secret"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQRRequestBodyBytes)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, maxQRRequestBodyBytes) {
 		return
 	}
 
@@ -777,8 +788,7 @@ func (h *Handler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 		QRToken string          `json:"qrToken"`
 		Payload json.RawMessage `json:"payload"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQRRequestBodyBytes)).Decode(&input); err != nil {
-		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+	if !decodeAuthJSON(w, r, &input, maxQRRequestBodyBytes) {
 		return
 	}
 
@@ -844,5 +854,5 @@ func (h *Handler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 func tokenIssuanceUnavailable(err error) bool {
-	return errors.Is(err, ErrTokenGenerationChanged) || errors.Is(err, cryptoclient.ErrTokenGenerationProtocol)
+	return errors.Is(err, ErrTokenGenerationChanged) || errors.Is(err, cryptoclient.ErrTokenGenerationProtocol) || errors.Is(err, cryptoclient.ErrUnavailable)
 }

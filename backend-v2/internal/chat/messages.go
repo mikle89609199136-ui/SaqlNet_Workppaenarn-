@@ -392,12 +392,16 @@ func (h *Handler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) deleteMessages(w http.ResponseWriter, r *http.Request, userID, chatID string) {
 	var input struct {
 		MessageIDs  []string `json:"messageIds"`
-		ForEveryone bool     `json:"forEveryone"`
+		ForEveryone *bool    `json:"forEveryone"`
 	}
 	if !decode(w, r, &input) {
 		return
 	}
-	lastMessage, err := h.service.DeleteMessages(r.Context(), userID, chatID, input.MessageIDs, input.ForEveryone)
+	if input.ForEveryone == nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "forEveryone is required")
+		return
+	}
+	lastMessage, err := h.service.DeleteMessages(r.Context(), userID, chatID, input.MessageIDs, *input.ForEveryone)
 	if err != nil {
 		respondSuccess(w, r, err)
 		return

@@ -29,7 +29,7 @@ npm run typecheck        # см. ниже, сейчас падает
 npm run check:cycles     # циклические импорты, dpdm
 npm run format:check     # prettier по src, те же исключения, что у хука
 npm run format           # то же с исправлением
-npm run e2e              # playwright, тестов пока нет (#277)
+npm run e2e              # пять сценариев Playwright, см. frontend/e2e/README.md (#277)
 ```
 
 Стенд целиком:
@@ -57,7 +57,33 @@ ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:517
 - **`services/serviceContainer.ts`** собирает все сервисы и раздаёт их через `services`. Сервисы не держат состояние — только запросы; данные оседают в TanStack Query.
 - **`realtime/`** — сокет и раскладка событий в инвалидации кеша. `invalidationMap.ts` связывает тип события с тем, что перечитать.
 - **`crypto/`** — сквозное шифрование целиком на клиенте: `identity` (пара ключей ECDH и ECDSA), `chatKeys` (ключ чата с эпохами, завёрнутый под каждого участника), `envelope` (AES-GCM с привязкой к контексту), `signing`. Приватные ключи неизвлекаемые, лежат в IndexedDB. Сервер видит только шифровку.
-- **Звонки** — `features/call`: модель звонка и сигналинг через общий сокет, WebRTC. Старый `call.html` в `<iframe>` удалён (#776); пока нет нового экрана разговора (#774), звонки выключены флагом `CALLS_ENABLED` (`shared/config/calls.ts`).
+- **Звонки** — `features/call`: модель звонка, WebRTC и сигналинг через общий сокет `useRealtimeSocket`. React-экран включён (`CALLS_ENABLED = true`, `shared/config/calls.ts`); `CallProvider` и `CallOverlay` находятся выше роутера в `app/App.tsx`, поэтому звонок сохраняется при переходах. Старый экран и iframe удалены (#776). Звонок из профиля передаётся пропом `startCall` от страницы, без импорта другой фичи (#863).
+
+## Приёмка звонков 1:1 (#770)
+
+Подзадачи #771–#776, #853, #854, #954, #1001 и #1002 выполнены. Для #777
+зафиксировано [решение от 09.10.2026](https://github.com/mikle89609199136-ui/CraneApp/issues/777#issuecomment-6089325311):
+отдельные Playwright-сценарии звонков не входят в MVP. Критерий эпика проверяется
+модульными и интеграционными тестами плюс живыми проверками при изменении звонков.
+
+Автоматическая проверка из корня репозитория:
+
+```bash
+npm --prefix frontend test -- src/features/call src/services/CallService.node.test.ts src/shared/api/realtime/useRealtimeSocket.test.ts src/app/layouts/AppLayout.test.tsx src/pages/chat-thread/__tests__/callButtons.test.tsx src/features/user-profile/ui/UserProfilePanel.test.tsx
+(cd backend-v2 && go test -race -tags=integration ./internal/chat -run '^TestCall' -count=1)
+npm --prefix frontend run build
+npm --prefix frontend run check:cycles
+```
+
+После изменения поведения звонков проверить на стенде с двумя пользователями:
+аудио- и видеовызов, ответ и медиа в обе стороны, отказ/отмену/таймаут/«занят»,
+переключение микрофона и камеры, сворачивание и переход между страницами,
+краткий обрыв и возвращение после перезагрузки. Эти живые проверки отдельно
+подтверждают браузерные разрешения, реальный звук и работу сети; моки в тестах
+их не заменяют. Для стенда нужен один процесс `chat`, см.
+[ограничения и восстановление](deployment.md#calls-one-chat-process-per-environment-713).
+TURN и его сетевые ограничения остаются отдельными задачами #851/#855;
+шифрование сигналинга — #852.
 
 ## Стили
 
@@ -115,3 +141,65 @@ gh api -X POST repos/{owner}/{repo}/issues/339/sub_issues -F sub_issue_id=$ID
 ```
 
 Процессы описаны в `docs/processes/` — постановка, разработка, git, код-ревью.
+
+## Образ MinIO для интеграционных тестов
+
+`TestMediaStorageContract` в `cmd/edge` по умолчанию собирает MinIO из
+`backend-v2/cmd/edge/testdata/minio.Dockerfile`. В CI готовый образ сохраняется
+отдельным кешем по ОС, архитектуре и хешу Dockerfile, загружается через
+`docker load` и передаётся тесту в `MINIO_TEST_IMAGE`. При заданной переменной
+тест использует образ напрямую, без Docker build. Тег содержит хеш Dockerfile,
+поэтому его изменение инвалидирует также кеш результатов Go-теста.
+Локально переменная необязательна; существующая сборка с Docker layer cache
+продолжает работать. Подготовленный образ можно проверить локально так:
+
+```sh
+MINIO_TEST_IMAGE=craneapp-media-minio-test:2025-10-15 \
+  go -C backend-v2 test -tags=integration -count=1 -run '^TestMediaStorageContract$' ./cmd/edge
+```
+
+Кеш образа сохраняется до тестов; Backend job имеет бюджет 20 минут, чтобы
+первичная сборка и сохранение Go-кеша успевали завершиться на холодном runner.
+
+## WebSocket через dev proxy (#499)
+
+Vite сохраняет браузерный `Origin` в `/ws`; `changeOrigin` меняет `Host`, но не
+должен подменять `Origin`. Edge и Chat получают один `ALLOWED_ORIGINS` со списком
+адресов фронтенда. Добавлять адрес proxy target (`:8080`) ради обхода 403 не нужно.
+
+Проверка настоящего Chromium → Vite → Edge → Chat:
+
+```bash
+ALLOWED_ORIGINS=http://127.0.0.1:3000 \
+  docker compose -f infrastructure/docker/docker-compose.v2.yml up -d --build
+(cd frontend && npx playwright test --config=playwright.ws-proxy.config.ts)
+```
+
+Нужны установленный Chromium (`cd frontend && npx playwright install chromium`) и
+свободный порт 3000: тест сам запускает Vite с `strictPort`, без переиспользования
+чужого процесса. Target — `http://127.0.0.1:8080`. Существующий стек нужно запускать
+с тем же allowlist; production allowlist и cookie-параметры тест не меняет.
+
+Тест создаёт отдельную тестовую учётную запись, получает HttpOnly-cookie, проверяет
+101 от разрешённого browser origin, 403 от запрещённого origin с той же cookie
+через отдельный HTTP Upgrade и повторный browser 101. В браузере Origin/Cookie
+не подменяются; его handshake считывается через Chromium DevTools. Отрицательный
+Upgrade использует обычный HTTP-клиент, чтобы SameSite/third-party policy браузера
+не маскировала серверную проверку Origin отсутствием cookie. Это отдельный локальный прогон против стека,
+в обычный Vitest/обязательный PR workflow он не входит.
+
+## Доступность звонков в ChatDTO (#1056)
+
+`canCall` — подсказка для текущего зрителя: правило `calls` получателя, его
+исключения и блокировки в обе стороны. Считается из уже загруженных отношений
+при чтении списка/одного чата; для групп и «Избранного» — false. Отсутствующее
+поле старого сервера/кеша сохраняет прежние кнопки. Значение не заменяет проверку
+при создании комнаты/invite: при гонке сервер по-прежнему возвращает 403.
+
+Миграция `0048_call_privacy_changed.sql` публикует NOTIFY только после commit
+смены `calls` или его исключений из любого writer. Chat рассылает участникам
+затронутых личных чатов только `{type: "chat_updated", chatId}`. Снимок настроек
+и списки исключений собеседникам не отправляются; `settings_updated` остаётся
+owner-only. Block/unblock используют существующий relay. Клиент перечитывает
+список/открытый чат, в том числе в открытом профиле; после reconnect применяется
+существующий refetch. Запрет звонков не закрывает переписку или общие медиа.

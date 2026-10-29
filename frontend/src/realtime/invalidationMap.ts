@@ -1,6 +1,7 @@
 import type { QueryKey } from '@tanstack/react-query';
 import { WS_EVENTS } from '@/shared/config';
 import { chatKeys } from '@/entities/chat';
+import { messageKeys } from '@/entities/message';
 import { userKeys } from '@/entities/user';
 
 /**
@@ -51,9 +52,17 @@ export const INVALIDATION_MAP: Record<string, TInvalidationRule> = {
   [WS_EVENTS.MESSAGE.RECEIPTS]: ({ chatId }) =>
     chatId ? [chatKeys.messages(chatId), chatKeys.list()] : [],
 
-  [WS_EVENTS.REACTIONS.REACTION_UPDATED]: ({ chatId }) =>
-    chatId ? [chatKeys.messages(chatId)] : [],
+  [WS_EVENTS.REACTIONS.REACTION_UPDATED]: ({ chatId, messageId }) => {
+    const keys: QueryKey[] = [];
+    if (chatId) keys.push(chatKeys.messages(chatId));
+    if (messageId) keys.push(messageKeys.reactionAuthorsPrefix(messageId));
+    return keys;
+  },
 
+  [WS_EVENTS.MESSAGE.PERSONAL_PINNED]: ({ chatId }) =>
+    chatId ? [chatKeys.personalPins(chatId)] : [],
+  [WS_EVENTS.MESSAGE.PERSONAL_UNPINNED]: ({ chatId }) =>
+    chatId ? [chatKeys.personalPins(chatId)] : [],
   [WS_EVENTS.MESSAGE.PINNED]: ({ chatId }) => (chatId ? [chatKeys.pins(chatId)] : []),
 
   [WS_EVENTS.MESSAGE.UNPINNED]: ({ chatId }) => (chatId ? [chatKeys.pins(chatId)] : []),

@@ -122,3 +122,24 @@ func TestApplyPeerPrivacyIsMutual(t *testing.T) {
 		requireHiddenStatus(t, chat, privacy.Recently)
 	})
 }
+
+func TestPeerCanCallUsesPrivacyAndBothBlocks(t *testing.T) {
+	for _, tc := range []struct {
+		raw      string
+		relation privacy.Relation
+		ownBlock bool
+		want     bool
+	}{
+		{`{"calls":"all"}`, privacy.Relation{}, false, true},
+		{`{"calls":"nobody"}`, privacy.Relation{}, false, false},
+		{`{"calls":"nobody"}`, privacy.Relation{Exceptions: map[privacy.Rule]bool{privacy.Calls: true}}, false, true},
+		{`{"calls":"all"}`, privacy.Relation{Exceptions: map[privacy.Rule]bool{privacy.Calls: false}}, false, false},
+		{`{"calls":"all"}`, privacy.Relation{Blocked: true}, false, false},
+		{`{"calls":"all"}`, privacy.Relation{}, true, false},
+		{`{broken`, privacy.Relation{}, false, false},
+	} {
+		c := Chat{Type: "private", PeerID: "peer"}
+		applyPeerPrivacy(&c, privacy.Pair{Owner: privacy.Parse([]byte(tc.raw)), OwnerToViewer: tc.relation, ViewerToOwner: privacy.Relation{Blocked: tc.ownBlock}}, peerPrivacyNow)
+		require.Equal(t, tc.want, c.CanCall)
+	}
+}

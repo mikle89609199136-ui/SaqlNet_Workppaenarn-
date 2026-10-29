@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 
 	"github.com/lib/pq"
 )
@@ -16,9 +17,9 @@ const MaxDeleteBatch = 100
 // только у себя. Всё или ничего: одно недоступное сообщение — и не
 // удаляется ни одно.
 //
-//   - У всех — только свои сообщения (как в макете; удаление чужих
-//     администратором — отдельная задача). Остальным участникам и другим
-//     устройствам удалившего уходит messages_deleted.
+//   - У всех — свои сообщения, любые сообщения владельца (owner) или
+//     администратора с permissions.can_delete_messages. Остальным
+//     участникам и другим устройствам удалившего уходит messages_deleted.
 //   - У себя — любые сообщения чата, где пользователь участник. Остальные
 //     их по-прежнему видят; другим устройствам этого пользователя уходит
 //     messages_hidden.
@@ -40,66 +41,96 @@ func (s *Service) DeleteMessages(ctx context.Context, userID, chatID string, mes
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var isMember bool
-	if err := tx.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM chats.members WHERE chat_id = $1 AND user_id = $2)`,
-		chatID, userID,
-	).Scan(&isMember); err != nil {
-		return nil, err
-	}
-	if !isMember {
+	var role string
+	var canDelete bool
+	err = tx.QueryRowContext(ctx, `
+		SELECT role, COALESCE(permissions->>'can_delete_messages', 'false') = 'true'
+		FROM chats.members
+		WHERE chat_id = $1 AND user_id = $2
+	`, chatID, userID).Scan(&role, &canDelete)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrForbidden
 	}
+	if err != nil {
+		return nil, err
+	}
 
-	// Блокировка строк: параллельное удаление тех же сообщений ждёт, а не
-	// удаляет второй раз.
+	// Блокировка строк, включая уже удалённые: повтор не должен получать 404.
+	// Параллельное удаление тех же сообщений ждёт эту транзакцию.
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id::text, COALESCE(sender_id::text, '')
+		SELECT id::text, COALESCE(sender_id::text, ''), deleted_at IS NOT NULL
 		FROM messages.messages
-		WHERE chat_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL
+		WHERE chat_id = $1 AND id = ANY($2::uuid[])
 		FOR UPDATE
 	`, chatID, pq.Array(ids))
 	if err != nil {
 		return nil, err
 	}
 	found := 0
-	allOwn := true
+	allowed := true
+	activeIDs := make([]string, 0, len(ids))
 	for rows.Next() {
 		var id, senderID string
-		if err := rows.Scan(&id, &senderID); err != nil {
+		var deleted bool
+		if err := rows.Scan(&id, &senderID, &deleted); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
 		found++
-		if senderID != userID {
-			allOwn = false
+		if senderID != userID && role != "owner" && (role != "admin" || !canDelete) {
+			allowed = false
+		}
+		if !deleted {
+			activeIDs = append(activeIDs, id)
 		}
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if found != len(ids) {
-		// Чужой чат, уже удалённое или несуществующее — для вызывающего одно
-		// и то же: такого сообщения здесь нет.
+		// Чужой чат или несуществующее — для вызывающего одно и то же.
 		return nil, ErrNotFound
 	}
+	if forEveryone && !allowed {
+		return nil, ErrForbidden
+	}
 
+	changedIDs := []string{}
 	if forEveryone {
-		if !allOwn {
-			return nil, ErrForbidden
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE messages.messages SET deleted_at = NOW()
-			WHERE chat_id = $1 AND id = ANY($2::uuid[])
-		`, chatID, pq.Array(ids)); err != nil {
-			return nil, err
+		if len(activeIDs) > 0 {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE messages.messages SET deleted_at = NOW()
+				WHERE chat_id = $1 AND id = ANY($2::uuid[])
+			`, chatID, pq.Array(activeIDs)); err != nil {
+				return nil, err
+			}
+			changedIDs = activeIDs
 		}
 	} else {
-		if _, err := tx.ExecContext(ctx, `
+		inserted, err := tx.QueryContext(ctx, `
 			INSERT INTO messages.hidden_messages (user_id, message_id)
 			SELECT $1, unnest($2::uuid[])
 			ON CONFLICT DO NOTHING
-		`, userID, pq.Array(ids)); err != nil {
+			RETURNING message_id::text
+		`, userID, pq.Array(ids))
+		if err != nil {
+			return nil, err
+		}
+		for inserted.Next() {
+			var id string
+			if err := inserted.Scan(&id); err != nil {
+				_ = inserted.Close()
+				return nil, err
+			}
+			changedIDs = append(changedIDs, id)
+		}
+		if err := inserted.Close(); err != nil {
+			return nil, err
+		}
+		if err := inserted.Err(); err != nil {
 			return nil, err
 		}
 	}
@@ -112,14 +143,17 @@ func (s *Service) DeleteMessages(ctx context.Context, userID, chatID string, mes
 		return nil, err
 	}
 
-	s.announceDeleted(chatID, userID, ids, forEveryone)
+	s.announceDeleted(chatID, userID, changedIDs, forEveryone)
+	if lastMessage == nil {
+		return nil, nil
+	}
 	return lastMessage, s.hideSenderPhotos(ctx, userID, lastMessage)
 }
 
 // announceDeleted рассылает событие после коммита. Одно событие на пачку,
 // а не по сообщению: иначе клиент перечитывал бы чат сто раз подряд.
 func (s *Service) announceDeleted(chatID, userID string, ids []string, forEveryone bool) {
-	if s.ws == nil {
+	if s.ws == nil || len(ids) == 0 {
 		return
 	}
 	eventType := "messages_hidden"

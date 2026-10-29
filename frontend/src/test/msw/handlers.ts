@@ -98,6 +98,9 @@ export const defaultHandlers = [
   ),
 
   http.get(api('/chats/:chatId/members'), () => HttpResponse.json({ members: [] })),
+  http.get(api('/messages/:messageId/reactions/users'), () =>
+    HttpResponse.json({ emoji: '', users: [], total: 0 })
+  ),
   http.get(api('/calls/history'), () =>
     HttpResponse.json({ calls: [], nextCursor: null, hasMore: false })
   ),

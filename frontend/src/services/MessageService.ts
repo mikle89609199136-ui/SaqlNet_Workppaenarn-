@@ -5,7 +5,6 @@ import { resolveChat } from '@/entities/chat/model/chatResolver';
 import type {
   IChatContext,
   IDeleteMessageResponse,
-  IEmojisResponse,
   IEncryptedMedia,
   ILastMessageDto,
   IMediaDisplayPatch,
@@ -15,6 +14,7 @@ import type {
   IMessagesResponse,
   IPinnedDto,
   IPinnedListResponse,
+  IReactionAuthorsPage,
   IReactionsResponse,
   ISuccessResponse,
   TMediaMessageType,
@@ -932,10 +932,31 @@ export class MessageService {
       .then((response) => response.data?.reactions ?? []);
   }
 
-  async listPins(chatId: string) {
-    const pins = await this.apiClient
-      .get<IPinnedListResponse>(API_ENDPOINTS.CHAT_PINS(chatId))
-      .then((response) => response.data?.pins ?? []);
+  async listReactionAuthors(messageId: string, emoji: string, cursor?: string, limit?: number) {
+    const params: Record<string, string | number> = { emoji };
+    if (cursor) params.cursor = cursor;
+    if (typeof limit === 'number') params.limit = limit;
+
+    return this.apiClient
+      .get<IReactionAuthorsPage>(API_ENDPOINTS.MESSAGE_REACTION_USERS(messageId), params)
+      .then((response) => response.data);
+  }
+
+  async listPins(chatId: string, scope: 'chat' | 'personal' = 'chat') {
+    const pins: IPinnedDto[] = [];
+    let cursor: string | undefined;
+    const seen = new Set<string>();
+    do {
+      const url =
+        scope === 'chat'
+          ? API_ENDPOINTS.CHAT_PINS(chatId)
+          : `${API_ENDPOINTS.CHAT_PINS(chatId)}?${new URLSearchParams({ scope, limit: '100', ...(cursor ? { cursor } : {}) })}`;
+      const response = await this.apiClient.get<IPinnedListResponse & { nextCursor?: string }>(url);
+      pins.push(...(response.data?.pins ?? []));
+      cursor = scope === 'personal' ? response.data?.nextCursor : undefined;
+      if (cursor && seen.has(cursor)) throw new Error('Repeated personal pins cursor');
+      if (cursor) seen.add(cursor);
+    } while (cursor);
 
     const chatContext = await this.getChatContext(chatId, 'decryption');
 
@@ -949,23 +970,25 @@ export class MessageService {
     );
   }
 
-  async pinMessage(chatId: string, messageId: string) {
+  async pinMessage(chatId: string, messageId: string, scope: 'chat' | 'personal' = 'chat') {
     const response = await this.apiClient.post<ISuccessResponse>(
-      API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId)
+      `${API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId)}?scope=${scope}`
     );
 
     return response.data;
   }
 
-  async unpinMessage(chatId: string, messageId: string) {
-    const response = await this.apiClient.delete(API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId));
+  async unpinMessage(chatId: string, messageId: string, scope: 'chat' | 'personal' = 'chat') {
+    const response = await this.apiClient.delete(
+      `${API_ENDPOINTS.CHAT_PIN_MESSAGE(chatId, messageId)}?scope=${scope}`
+    );
 
     return response.data;
   }
 
-  async reactToMessage(messageId: string, emoji: string): Promise<IEmojisResponse> {
+  async reactToMessage(messageId: string, emoji: string | null): Promise<IReactionsResponse> {
     return this.apiClient
-      .post<IEmojisResponse>(API_ENDPOINTS.MESSAGE_REACT(messageId), { emoji })
+      .put<IReactionsResponse>(API_ENDPOINTS.MESSAGE_REACT(messageId), { emoji })
       .then((response) => response.data);
   }
 }

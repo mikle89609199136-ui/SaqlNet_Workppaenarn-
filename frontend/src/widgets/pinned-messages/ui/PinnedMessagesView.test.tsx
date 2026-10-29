@@ -52,6 +52,20 @@ describe('PinnedMessagesView', () => {
     useProfileStore.getState().setUser(makeUser({ id: 'user-1' }));
   });
 
+  it('помечает личный pin в панели', () => {
+    const pin = makePin({
+      message: makeMessage({ isPinned: false, isChatPinned: false, isPersonalPinned: true }),
+    });
+    renderView({ pinnedMessages: [pin] });
+    expect(screen.getByRole('img', { name: 'Личное закрепление' })).toBeInTheDocument();
+  });
+  it('ошибка списка не маскируется закрытием пустой панели', () => {
+    const onClose = vi.fn();
+    renderView({ pinnedMessages: [], error: 'Нет доступа к закреплениям', onClose });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('Нет доступа к закреплениям')).toBeInTheDocument();
+  });
+
   it('should auto-close when no pinned messages remain', () => {
     const onClose = vi.fn();
     renderView({ pinnedMessages: [], onClose, isLoading: false });
@@ -98,7 +112,11 @@ describe('PinnedMessagesView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Открепить всё' }));
 
     expect(screen.getByText('Открепить все сообщения?')).toBeInTheDocument();
-    expect(screen.getByText('Закрепления пропадут у всех участников чата.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Личные закрепления исчезнут только у вас; общие — у всех, если у вас есть права. Собеседники сохранят свои личные закрепления.'
+      )
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
     expect(setPinnedMessagesOpen).not.toHaveBeenCalled();

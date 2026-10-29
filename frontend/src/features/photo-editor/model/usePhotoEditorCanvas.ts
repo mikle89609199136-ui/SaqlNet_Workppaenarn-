@@ -94,66 +94,77 @@ export function usePhotoEditorCanvas({
     };
   }, [isReady]);
 
-  const renderCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    const image = imageRef.current;
-    if (!canvas || !image || !isReady) return;
+  const renderCanvas = useCallback(
+    (includeOverlay = true) => {
+      const canvas = canvasRef.current;
+      const image = imageRef.current;
+      if (!canvas || !image || !isReady) return;
 
-    const rotated = Math.abs(rotation % 180) === 90;
-    const sourceWidth = image.naturalWidth;
-    const sourceHeight = image.naturalHeight;
-    const targetWidth = rotated ? sourceHeight : sourceWidth;
-    const targetHeight = rotated ? sourceWidth : sourceHeight;
-    const scale = Math.min(1, 1800 / Math.max(targetWidth, targetHeight));
-    canvas.width = Math.max(1, Math.round(targetWidth * scale));
-    canvas.height = Math.max(1, Math.round(targetHeight * scale));
+      const rotated = Math.abs(rotation % 180) === 90;
+      const sourceWidth = image.naturalWidth;
+      const sourceHeight = image.naturalHeight;
+      const targetWidth = rotated ? sourceHeight : sourceWidth;
+      const targetHeight = rotated ? sourceWidth : sourceHeight;
+      const scale = Math.min(1, 1800 / Math.max(targetWidth, targetHeight));
+      canvas.width = Math.max(1, Math.round(targetWidth * scale));
+      canvas.height = Math.max(1, Math.round(targetHeight * scale));
 
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    const drawPhoto = (filter: string) => {
-      context.save();
-      context.filter = filter;
-      context.translate(canvas.width / 2, canvas.height / 2);
-      context.rotate((rotation * Math.PI) / 180);
-      context.scale(flipX, flipY);
-      context.drawImage(
-        image,
-        (-sourceWidth * scale) / 2,
-        (-sourceHeight * scale) / 2,
-        sourceWidth * scale,
-        sourceHeight * scale
-      );
-      context.restore();
-    };
-    // Размытие на холсте затягивает края в прозрачность, а при сохранении в
-    // JPEG прозрачное становится чёрным — у снимка появлялась тёмная рамка.
-    // Поэтому под размытым слоем — тот же снимок без размытия: полупрозрачные
-    // края ложатся на фото, а не на пустоту.
-    if (blurRadius > 0) drawPhoto(toneFilter);
-    drawPhoto(blurRadius > 0 ? `${toneFilter} blur(${blurRadius}px)` : toneFilter);
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      const drawPhoto = (filter: string) => {
+        context.save();
+        context.filter = filter;
+        context.translate(canvas.width / 2, canvas.height / 2);
+        context.rotate((rotation * Math.PI) / 180);
+        context.scale(flipX, flipY);
+        context.drawImage(
+          image,
+          (-sourceWidth * scale) / 2,
+          (-sourceHeight * scale) / 2,
+          sourceWidth * scale,
+          sourceHeight * scale
+        );
+        context.restore();
+      };
+      // Размытие на холсте затягивает края в прозрачность, а при сохранении в
+      // JPEG прозрачное становится чёрным — у снимка появлялась тёмная рамка.
+      // Поэтому под размытым слоем — тот же снимок без размытия: полупрозрачные
+      // края ложатся на фото, а не на пустоту.
+      if (blurRadius > 0) drawPhoto(toneFilter);
+      drawPhoto(blurRadius > 0 ? `${toneFilter} blur(${blurRadius}px)` : toneFilter);
 
-    objects.forEach((object) => {
-      const isEditingSelectedText =
-        object.type === 'text' && object.id === editingTextId && tool === 'text';
-      if (!isEditingSelectedText) drawObject(context, object, canvas.width, canvas.height);
-    });
+      objects.forEach((object) => {
+        const isEditingSelectedText =
+          includeOverlay &&
+          object.type === 'text' &&
+          object.id === editingTextId &&
+          tool === 'text';
+        if (!isEditingSelectedText) drawObject(context, object, canvas.width, canvas.height);
+      });
 
-    if (selectedObject && tool === 'text' && editingTextId !== selectedObject.id) {
-      drawSelection(context, selectedObject, canvas.width, canvas.height);
-    }
-  }, [
-    blurRadius,
-    editingTextId,
-    flipX,
-    flipY,
-    isReady,
-    objects,
-    rotation,
-    selectedObject,
-    toneFilter,
-    tool,
-  ]);
+      if (
+        includeOverlay &&
+        selectedObject &&
+        tool === 'text' &&
+        editingTextId !== selectedObject.id
+      ) {
+        drawSelection(context, selectedObject, canvas.width, canvas.height);
+      }
+    },
+    [
+      blurRadius,
+      editingTextId,
+      flipX,
+      flipY,
+      isReady,
+      objects,
+      rotation,
+      selectedObject,
+      toneFilter,
+      tool,
+    ]
+  );
 
   useEffect(() => {
     renderCanvas();
@@ -164,6 +175,7 @@ export function usePhotoEditorCanvas({
     if (!canvas || !file || isSaving) return;
     setIsSaving(true);
     try {
+      renderCanvas(false);
       const sx = Math.round(crop.x * canvas.width);
       const sy = Math.round(crop.y * canvas.height);
       const sw = Math.max(1, Math.round(crop.width * canvas.width));
@@ -172,8 +184,11 @@ export function usePhotoEditorCanvas({
       output.width = sw;
       output.height = sh;
       const ctx = output.getContext('2d');
-      if (ctx) {
+      try {
+        if (!ctx) throw new Error('Не удалось подготовить изображение');
         ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      } finally {
+        renderCanvas();
       }
       const encode = (type: string, quality?: number) =>
         new Promise<Blob | null>((resolve) => output.toBlob(resolve, type, quality));
@@ -185,13 +200,14 @@ export function usePhotoEditorCanvas({
       // Safari до 17 не поддерживает WebP в canvas.toBlob и возвращает PNG (либо null).
       // Запасной путь (#565):
       if (!blob || blob.type !== 'image/webp') {
-        const isPng = file.type?.toLowerCase() === 'image/png';
+        const sourceType = getImageExportConfig(file).mimeType;
+        const isPng = sourceType === 'image/png' || sourceType === 'image/webp';
         if (isPng) {
-          // Если браузер уже вернул PNG на запрос WebP (Safari < 17 по спецификации W3C),
+          // PNG и WebP могут содержать альфу. Если браузер уже вернул PNG на запрос WebP (Safari < 17 по спецификации W3C),
           // берем его, иначе кодируем в PNG для сохранения прозрачности.
           blob = blob && blob.type === 'image/png' ? blob : await encode('image/png');
         } else {
-          // Для не-PNG исходников: JPEG 0.94 с белой подложкой, как в encodeOnMainThread.
+          // Для непрозрачных исходников: JPEG 0.94 с белой подложкой, как в encodeOnMainThread.
           // Иначе полупрозрачные края ложатся на чёрный фон.
           if (ctx) {
             ctx.globalCompositeOperation = 'destination-over';
@@ -204,6 +220,23 @@ export function usePhotoEditorCanvas({
 
       if (!blob) throw new Error('Не удалось подготовить изображение');
 
+      // WebP уже сжат; тяжёлый результат (включая PNG fallback) уменьшаем
+      // с сохранением формата и альфы. Это ориентир размера, не лимит загрузки.
+      while (blob.size > 2 * 1024 * 1024 && Math.max(output.width, output.height) > 640) {
+        const resized = document.createElement('canvas');
+        resized.width = Math.max(1, Math.round(output.width * 0.8));
+        resized.height = Math.max(1, Math.round(output.height * 0.8));
+        const resizedContext = resized.getContext('2d');
+        if (!resizedContext || !ctx) break;
+        resizedContext.drawImage(output, 0, 0, resized.width, resized.height);
+        output.width = resized.width;
+        output.height = resized.height;
+        ctx.drawImage(resized, 0, 0);
+        const smaller = await encode(blob.type, blob.type === 'image/png' ? undefined : 0.92);
+        if (!smaller) break;
+        blob = smaller;
+      }
+
       const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
       const extension = getImageExportConfig(blob).extension;
       onSave(
@@ -215,7 +248,7 @@ export function usePhotoEditorCanvas({
     } finally {
       setIsSaving(false);
     }
-  }, [crop, file, isSaving, onSave]);
+  }, [crop, file, isSaving, onSave, renderCanvas]);
 
   return {
     canvasRef,

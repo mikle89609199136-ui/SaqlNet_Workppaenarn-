@@ -94,6 +94,8 @@ type WSServer struct {
 	typingClock         func() time.Time  // подмена часов в тестах; nil — time.Now
 
 	push pushNotifier // push о звонках (#717); nil — выключен
+
+	disconnectGrace time.Duration // ожидание call_join после обрыва; 0 → callDisconnectGrace
 }
 
 // NewWSServer создаёт и запускает новый экземпляр WSServer.
@@ -201,6 +203,10 @@ func (ws *WSServer) ServeWS(w http.ResponseWriter, r *http.Request) {
 	claims, err := ws.crypto.VerifyToken(r.Context(), token)
 	if errors.Is(err, cryptoclient.ErrTokenGenerationProtocol) {
 		http.Error(w, "crypto token-generation protocol is not ready", http.StatusServiceUnavailable)
+		return
+	}
+	if err != nil && !errors.Is(err, cryptoclient.ErrInvalidToken) {
+		http.Error(w, "session verification is temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	if err != nil || claims.Subject == "" {
@@ -508,10 +514,22 @@ func (ws *WSServer) handleCallLeave(client *Client, msg map[string]interface{}) 
 const (
 	peerLeftByLeave      = "left"
 	peerLeftByDisconnect = "disconnected"
+	callDisconnectGrace  = 25 * time.Second
 )
 
 func (ws *WSServer) doLeaveRoom(client *Client, roomID, reason string) {
-	lr := ws.callRooms.LeaveRoom(roomID, client.UserID)
+	var lr LeaveResult
+	if reason == peerLeftByDisconnect {
+		grace := ws.disconnectGrace
+		if grace <= 0 {
+			grace = callDisconnectGrace
+		}
+		lr = ws.callRooms.DisconnectRoom(roomID, client.UserID, grace, func(snap *RoomSnapshot) {
+			ws.callRoomClosed(roomID, snap)
+		})
+	} else {
+		lr = ws.callRooms.LeaveRoom(roomID, client.UserID)
+	}
 	// Не участник (не входил, уже вышел, комната закрыта) — сообщать
 	// некому и не о чем: иначе любой, кто знает id комнаты, «выходил» бы
 	// из чужого звонка, и собеседники его завершали бы.

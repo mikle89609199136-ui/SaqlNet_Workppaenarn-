@@ -1,10 +1,11 @@
 import { makeMessage } from '@/test/fixtures';
 import { testI18n } from '@/test/harness/i18n';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { useChatUiStore } from '@/entities/chat';
 import { describe, expect, it, vi } from 'vitest';
+import { services } from '@/services/serviceContainer';
 import { MessageBubble } from './MessageBubble';
 
 function renderBubble(ui: React.ReactElement) {
@@ -655,6 +656,55 @@ describe('закреплённое сообщение (#170)', () => {
       // Анимация ложится поверх статичной, статичная остаётся до загрузки.
       expect(srcs()).toEqual(['/emoji/noto/1f44d.svg', '/emoji/noto/1f44d.webp']);
       window.matchMedia = originalMatchMedia;
+    });
+
+    it('ReactionPill показывает тултип «Вы», если реакция только своя (count: 1, mine: true)', () => {
+      const message = makeMessage({
+        senderId: 'u-1',
+        content: 'сообщение',
+        reactions: [{ emoji: '👍', count: 1, myReaction: true }] as never,
+      });
+
+      renderBubble(<MessageBubble {...base} currentUserId="me" message={message} />);
+
+      const pill = screen.getByRole('button', { name: /👍/ });
+      expect(pill).toBeInTheDocument();
+      expect(screen.getByText('Вы')).toBeInTheDocument();
+    });
+
+    it('ReactionPill запрашивает авторов после 500мс задержки при hover (#998)', async () => {
+      vi.useFakeTimers();
+      const listSpy = vi.spyOn(services.messageService, 'listReactionAuthors').mockResolvedValue({
+        emoji: '👍',
+        total: 2,
+        users: [{ id: 'u-1', firstName: 'Алексей', lastName: 'Иванов' }],
+      });
+
+      const message = makeMessage({
+        id: 'msg-test-hover',
+        senderId: 'u-1',
+        content: 'сообщение',
+        reactions: [{ emoji: '👍', count: 2, myReaction: false }] as never,
+      });
+
+      renderBubble(<MessageBubble {...base} currentUserId="me" message={message} />);
+
+      const pill = screen.getByRole('button', { name: /👍/ });
+
+      fireEvent.mouseEnter(pill);
+
+      // До 500мс запрос не отправляется
+      vi.advanceTimersByTime(200);
+      expect(listSpy).not.toHaveBeenCalled();
+
+      // После 500мс запрос инициируется
+      await act(async () => {
+        vi.advanceTimersByTime(350);
+      });
+      expect(listSpy).toHaveBeenCalledWith('msg-test-hover', '👍', undefined, 50);
+
+      listSpy.mockRestore();
+      vi.useRealTimers();
     });
   });
 });
