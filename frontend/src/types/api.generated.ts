@@ -66,7 +66,7 @@ export interface paths {
         put?: never;
         /**
          * Start a QR login or replace the code
-         * @description Called by the device that wants to log in. publicKey is a one-time ECDH public key; the signed-in device encrypts the key backup master key to it. The client draws the QR code itself. The code lives 60 seconds; the device replaces it every 30 seconds by passing the previous token and its secret. The secret is never drawn into the QR code. A scanned code cannot be replaced (409 qr_scanned).
+         * @description Called by the device that wants to log in. publicKey is a one-time ECDH public key; the signed-in device encrypts the key backup master key to it. The client draws the QR code itself. The code lives 60 seconds; the device replaces it every 30 seconds by passing the previous token and its secret. The client builds the QR URL as <frontend-origin>/link#t=<qrToken>&k=<publicKey>, with fragment values encoded by URLSearchParams and the one-time public key in base64url SPKI. /link is a frontend landing page outside the session guard, not an API endpoint. It preserves the link in tab sessionStorage while signing in when necessary, then inspects the pending request and requires explicit confirmation. The fragment is removed from the address bar; the secret must never be included in the QR URL. The secret is never drawn into the QR code. A scanned code cannot be replaced (409 qr_scanned).
          */
         post: operations["createQrToken"];
         delete?: never;
@@ -150,7 +150,7 @@ export interface paths {
         put?: never;
         /**
          * Confirm a QR login
-         * @description Only the account that captured the code with GET /auth/qr-request can confirm it (403 not_scanned). A code can be confirmed only once; a second confirmation gets 409 already_confirmed.
+         * @description Only the account that captured the code with GET /auth/qr-request can confirm it (403 not_scanned). A code can be confirmed only once; a second confirmation gets 409 already_confirmed. Called by the signed-in frontend after the person confirms a link opened at /link#t=<qrToken>&k=<publicKey>. Requires a session cookie and a JSON body; it is not a navigable GET URL and does not accept a query token. Opening the QR link must navigate to /link, never to this API operation. The client first inspects /auth/qr-request/{token} and checks its public key against the fragment.
          */
         post: operations["confirmQrLogin"];
         delete?: never;
