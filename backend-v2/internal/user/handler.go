@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -741,7 +742,13 @@ func isValidUUID(value string) bool {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(value); err != nil {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10))
+	if err := dec.Decode(value); err != nil {
+		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
+		return false
+	}
+	// Reject trailing data after the first JSON value.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		httpx.ErrorJSON(w, r, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return false
 	}
