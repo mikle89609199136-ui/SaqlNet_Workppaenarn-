@@ -137,12 +137,10 @@ describe('перевод сообщений (#1085)', () => {
     return { hook };
   }
 
-  it('запрашивает согласие ровно один раз через window.confirm перед пакетным переводом (#1085)', async () => {
+  it('запрашивает согласие через translatorConsentRequest перед пакетным переводом (#1085)', async () => {
     const { hook } = setup();
     const msg1 = makeMessage({ id: 'm1', senderId: 'peer-1', content: 'Good morning' });
     vi.spyOn(translatorConsent, 'hasTranslatorConsent').mockReturnValue(false);
-    const rememberSpy = vi.spyOn(translatorConsent, 'rememberTranslatorConsent');
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
     act(() => {
       useChatUiStore.setState({
@@ -151,22 +149,17 @@ describe('перевод сообщений (#1085)', () => {
       });
     });
 
-    // Отказ в диалоге: выделение не сбрасывается, перевод не стартует
+    // Запрос согласия: в стор выставляется translatorConsentRequest, выделение не сбрасывается
     await act(async () => {
       await hook.result.current.handleTranslateMessage();
     });
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(confirmSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Текст сообщения будет отправлен в Google')
-    );
-    expect(rememberSpy).not.toHaveBeenCalled();
+    expect(useChatUiStore.getState().translatorConsentRequest).toEqual({ targets: [msg1] });
     expect(useChatUiStore.getState().selectionMode).toBe(true);
     expect(useChatUiStore.getState().selectedMessages).toHaveLength(1);
     expect(useChatUiStore.getState().translations).toEqual({});
 
-    // Согласие в диалоге: согласие сохраняется, выбор сбрасывается, перевод выполняется
-    confirmSpy.mockReturnValue(true);
+    // Подтверждение диалога вызывает confirmTranslate: сбрасывает выделение и выполняет перевод
     vi.spyOn(translatorApi, 'translateText').mockResolvedValue({
       translatedText: 'Доброе утро',
       targetLanguage: 'ru',
@@ -174,10 +167,9 @@ describe('перевод сообщений (#1085)', () => {
     });
 
     await act(async () => {
-      await hook.result.current.handleTranslateMessage();
+      await hook.result.current.confirmTranslate([msg1]);
     });
 
-    expect(rememberSpy).toHaveBeenCalledTimes(1);
     expect(useChatUiStore.getState().selectionMode).toBe(false);
     expect(useChatUiStore.getState().translations['m1']).toBe('Доброе утро');
   });
@@ -189,7 +181,6 @@ describe('перевод сообщений (#1085)', () => {
     const callMsg = makeMessage({ id: 'call-1', type: 'call', content: '{}' });
 
     vi.spyOn(translatorConsent, 'hasTranslatorConsent').mockReturnValue(true);
-    const confirmSpy = vi.spyOn(window, 'confirm');
 
     act(() => {
       useChatUiStore.setState({
@@ -211,7 +202,7 @@ describe('перевод сообщений (#1085)', () => {
       await hook.result.current.handleTranslateMessage();
     });
 
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(useChatUiStore.getState().translatorConsentRequest).toBeNull();
     expect(translateSpy).toHaveBeenCalledTimes(2);
     expect(useChatUiStore.getState().translations).toEqual({
       m1: 'Доброе утро',
@@ -225,29 +216,34 @@ describe('перевод сообщений (#1085)', () => {
     const { hook } = setup();
     const msg = makeMessage({ id: 'msg-trans-1', senderId: 'peer-1', content: 'Hello' });
     vi.spyOn(translatorConsent, 'hasTranslatorConsent').mockReturnValue(false);
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const rememberSpy = vi.spyOn(translatorConsent, 'rememberTranslatorConsent');
     vi.spyOn(translatorApi, 'translateText').mockResolvedValue({
       translatedText: 'Привет',
       targetLanguage: 'ru',
       detectedSourceLang: 'en',
     });
 
+    // Первый вызов: нет согласия -> выставляется translatorConsentRequest
     await act(async () => {
       await hook.result.current.handleTranslateMessage(msg);
     });
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(rememberSpy).toHaveBeenCalledTimes(1);
+    expect(useChatUiStore.getState().translatorConsentRequest).toEqual({ targets: [msg] });
+    expect(useChatUiStore.getState().translations['msg-trans-1']).toBeUndefined();
+
+    // Подтверждение диалога выполняет перевод
+    await act(async () => {
+      await hook.result.current.confirmTranslate([msg]);
+    });
+
     expect(useChatUiStore.getState().translations['msg-trans-1']).toBe('Привет');
 
-    // Повторный вызов убирает перевод без вызова confirm
-    confirmSpy.mockClear();
+    // Повторный вызов убирает перевод без запроса согласия
+    useChatUiStore.setState({ translatorConsentRequest: null });
     await act(async () => {
       await hook.result.current.handleTranslateMessage(msg);
     });
 
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(useChatUiStore.getState().translatorConsentRequest).toBeNull();
     expect(useChatUiStore.getState().translations['msg-trans-1']).toBeUndefined();
   });
 

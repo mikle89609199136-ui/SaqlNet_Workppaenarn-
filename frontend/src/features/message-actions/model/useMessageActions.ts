@@ -14,7 +14,7 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
-import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
+import { hasTranslatorConsent } from '@/services/translatorConsent';
 import { canTranslateMessage } from './messageActionRules';
 import { useChatUiStore } from '@/entities/chat';
 import { sortMessagesChronologically } from '@/shared/lib';
@@ -133,6 +133,13 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     }
   };
 
+  const confirmTranslate = async (targets: IMessageDto[]) => {
+    if (selectionMode || useChatUiStore.getState().selectionMode) {
+      handleCancelSelection();
+    }
+    await executeTranslation(targets);
+  };
+
   const handleTranslateMessage = async (message?: IMessageDto) => {
     const isSelection = selectionMode || useChatUiStore.getState().selectionMode;
     if (isSelection) {
@@ -142,18 +149,11 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       if (targets.length === 0) return;
 
       if (!hasTranslatorConsent()) {
-        const agreed = window.confirm(
-          t(
-            'translatorConsent',
-            'Текст сообщения будет отправлен в Google для перевода. Продолжить?'
-          )
-        );
-        if (!agreed) return;
-        rememberTranslatorConsent();
+        useChatUiStore.getState().setTranslatorConsentRequest({ targets });
+        return;
       }
 
-      handleCancelSelection();
-      await executeTranslation(targets);
+      await confirmTranslate(targets);
       return;
     }
 
@@ -169,14 +169,11 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     }
 
     if (!hasTranslatorConsent()) {
-      const agreed = window.confirm(
-        t('translatorConsent', 'Текст сообщения будет отправлен в Google для перевода. Продолжить?')
-      );
-      if (!agreed) return;
-      rememberTranslatorConsent();
+      useChatUiStore.getState().setTranslatorConsentRequest({ targets: [message] });
+      return;
     }
 
-    await executeTranslation([message]);
+    await confirmTranslate([message]);
   };
 
   /**
@@ -423,6 +420,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   return {
     translatingIds,
     handleTranslateMessage,
+    confirmTranslate,
     handleDelete,
     confirmDelete,
     handleReact,

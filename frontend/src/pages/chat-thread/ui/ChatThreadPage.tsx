@@ -11,6 +11,7 @@ import { CALLS_ENABLED } from '@/shared/config';
 import {
   DeleteMessagesDialog,
   PinMessageDialog,
+  TranslatorConsentDialog,
   MessageActionsPopover,
   ReactionAuthorsModal,
 } from '@/features/message-actions';
@@ -101,6 +102,7 @@ export function ChatThreadPage() {
     confirmDelete,
     handleForward,
     handleTranslateMessage,
+    confirmTranslate,
     handleCloseForwardModal,
     handleRetryMessage,
     handleRetryMedia,
@@ -251,6 +253,7 @@ export function ChatThreadPage() {
             isSavedMessages={chat?.type === 'self'}
             onConfirm={confirmDelete}
           />
+          <TranslatorConsentDialog onConfirm={confirmTranslate} />
           <ReactionAuthorsModal currentUserId={currentUserId} />
           {selectionMode && (
             <ChatSelectedMessagesActions
