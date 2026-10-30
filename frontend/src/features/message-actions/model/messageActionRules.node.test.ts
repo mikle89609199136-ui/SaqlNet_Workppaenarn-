@@ -4,6 +4,7 @@ import type { IMediaItem } from '@/types';
 import {
   availableMessageActions,
   canForwardMessage,
+  canTranslateMessage,
   type IMessageActionContext,
 } from './messageActionRules';
 
@@ -164,5 +165,42 @@ describe('«Переслать» в меню сообщения (#1061)', () => 
     expect(canForwardMessage(makeMessage({ content: 'ещё в пути', status: 'pending' }))).toBe(
       false
     );
+  });
+});
+
+describe('«Перевести» и canTranslateMessage (#1085)', () => {
+  const ME = 'user-1';
+  const OTHER = 'user-2';
+
+  it('чужое сообщение с текстом переводимо', () => {
+    const msg = makeMessage({ senderId: OTHER, content: 'Hello world' }) as IMediaItem;
+    expect(canTranslateMessage(msg, ME)).toBe(true);
+  });
+
+  it('своё сообщение не переводится', () => {
+    const msg = makeMessage({ senderId: ME, content: 'Hello world' }) as IMediaItem;
+    expect(canTranslateMessage(msg, ME)).toBe(false);
+  });
+
+  it('сообщения без текста, стикеры, звонки и нерасшифрованные не переводятся', () => {
+    const cases: Partial<IMediaItem>[] = [
+      { senderId: OTHER, type: 'text', content: '   ' },
+      { senderId: OTHER, type: 'sticker', content: '' },
+      { senderId: OTHER, type: 'gif', content: '' },
+      { senderId: OTHER, type: 'voice', content: '', mediaUrl: 'blob:v' },
+      { senderId: OTHER, type: 'call', content: '{"status":"missed"}' },
+      { senderId: OTHER, type: 'text', content: '🔒', undecryptable: 'keyUnavailable' },
+      { senderId: OTHER, content: 'pending', status: 'pending' },
+    ];
+
+    for (const extra of cases) {
+      const msg = makeMessage(extra as never) as IMediaItem;
+      expect(canTranslateMessage(msg, ME)).toBe(false);
+    }
+  });
+
+  it('чужое фото/видео/файл с текстовой подписью переводимо', () => {
+    const msg = photo({ senderId: OTHER, content: 'Photo caption' });
+    expect(canTranslateMessage(msg, ME)).toBe(true);
   });
 });

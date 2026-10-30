@@ -209,4 +209,18 @@ describe('меню действий сообщения (#655)', () => {
 
     expect(useChatUiStore.getState().editingMessage?.id).toBe(message.id);
   });
+
+  it('в режиме выбора нескольких сообщений: пункт «Перевести всё» при наличии переводимых (#1085)', async () => {
+    const msg1 = makeMessage({ senderId: PEER, content: 'первое' });
+    const msg2 = makeMessage({ senderId: PEER, content: 'второе' });
+    open([msg1, msg2]);
+
+    useChatUiStore.setState({
+      selectionMode: true,
+      selectedMessages: [msg1, msg2],
+    });
+
+    const items = await menuItems('второе');
+    expect(items).toContain('Перевести всё');
+  });
 });

@@ -6,6 +6,7 @@ import { useMessageActions } from '../model/useMessageActions';
 import {
   availableMessageActions,
   canForwardMessage,
+  canTranslateMessage,
   type TMessageActionPlace,
 } from '../model/messageActionRules';
 import { canCopyImageToClipboard } from '../model/mediaActions';
@@ -178,6 +179,10 @@ export const MessageActionsPopover = ({
   // В режиме выделения пересылаются все отмеченные: одно непересылаемое
   // среди них сорвало бы всю пачку (#1061).
   const forwardsSelection = !selectionMode || selectedMessages.every(canForwardMessage);
+  // В режиме выделения перевод доступен, если хотя бы одно сообщение переводимо (#1085).
+  const canTranslateSelection = selectedMessages.some((m) =>
+    canTranslateMessage(m, currentUser?.id)
+  );
 
   // Список пересобирается только когда меняется то, от чего он зависит:
   // само сообщение, режим выделения и признак закрепления. Иначе десяток
@@ -222,10 +227,12 @@ export const MessageActionsPopover = ({
         action: () => actions.handleSaveMedia(message),
       },
       {
-        show: available.has('translate') && !selectionMode,
+        show: selectionMode ? canTranslateSelection : available.has('translate'),
         icon: 'language',
         key: 'translate',
-        def: t('action.translate', 'Перевести'),
+        def: selectionMode
+          ? t('messageActions.translateAll', 'Перевести всё')
+          : t('action.translate', 'Перевести'),
         action: () => actions.handleTranslateMessage(message),
       },
       {
@@ -288,6 +295,7 @@ export const MessageActionsPopover = ({
       available,
       canPickLocation,
       canShare,
+      canTranslateSelection,
       isChatPinned,
       isPersonalPinned,
       pinTarget,
