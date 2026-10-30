@@ -14,7 +14,7 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
-import { hasTranslatorConsent } from '@/services/translatorConsent';
+import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
 import { canTranslateMessage } from './messageActionRules';
 import { useChatUiStore } from '@/entities/chat';
 import { sortMessagesChronologically } from '@/shared/lib';
@@ -72,11 +72,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const setTranslations = useChatUiStore((state) => state.setTranslations);
   const setActionMenu = useChatUiStore((state) => state.setActionMenu);
 
-  const confirmTranslate = async (targets: IMessageDto[]) => {
-    if (selectionMode || useChatUiStore.getState().selectionMode) {
-      handleCancelSelection();
-    }
-
+  const executeTranslation = async (targets: IMessageDto[]) => {
     setTranslatingIds((prev) => new Set([...prev, ...targets.map((m) => m.id)]));
     try {
       const newTranslations: Record<string, string> = {};
@@ -146,11 +142,18 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       if (targets.length === 0) return;
 
       if (!hasTranslatorConsent()) {
-        useChatUiStore.getState().setTranslatorConsentRequest({ targets });
-        return;
+        const agreed = window.confirm(
+          t(
+            'translatorConsent',
+            'Текст сообщения будет отправлен в Google для перевода. Продолжить?'
+          )
+        );
+        if (!agreed) return;
+        rememberTranslatorConsent();
       }
 
-      await confirmTranslate(targets);
+      handleCancelSelection();
+      await executeTranslation(targets);
       return;
     }
 
@@ -166,11 +169,14 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
     }
 
     if (!hasTranslatorConsent()) {
-      useChatUiStore.getState().setTranslatorConsentRequest({ targets: [message] });
-      return;
+      const agreed = window.confirm(
+        t('translatorConsent', 'Текст сообщения будет отправлен в Google для перевода. Продолжить?')
+      );
+      if (!agreed) return;
+      rememberTranslatorConsent();
     }
 
-    await confirmTranslate([message]);
+    await executeTranslation([message]);
   };
 
   /**
@@ -417,7 +423,6 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   return {
     translatingIds,
     handleTranslateMessage,
-    confirmTranslate,
     handleDelete,
     confirmDelete,
     handleReact,

@@ -1026,7 +1026,6 @@
   "translateError": "Could not translate the message",
   "translatePartialError": "Failed to translate some messages",
   "translatorConsent": "The message text will be sent to Google for translation. Continue?",
-  "translatorConsentTitle": "Message translation",
   "typing": "typing…",
   "typingMany_few": "{{count}} members are typing…",
   "typingMany_many": "{{count}} members are typing…",

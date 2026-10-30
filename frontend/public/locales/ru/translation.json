@@ -1026,7 +1026,6 @@
   "translateError": "Не удалось перевести сообщение",
   "translatePartialError": "Не удалось перевести некоторые сообщения",
   "translatorConsent": "Текст сообщения будет отправлен в Google для перевода. Продолжить?",
-  "translatorConsentTitle": "Перевод сообщений",
   "typing": "печатает...",
   "typingMany_few": "{{count}} участника печатают…",
   "typingMany_many": "{{count}} участников печатают…",

@@ -39,9 +39,7 @@ export const ChatSelectedMessagesActions = ({
   // Перевод доступен, если среди выбранных есть хотя бы одно входящее текстовое сообщение (#1085).
   const canTranslate = selectedMessages.some((m) => canTranslateMessage(m, currentUserId));
 
-  const isConfirmOpen = useChatUiStore((state) =>
-    Boolean(state.deleteTargets || state.translatorConsentRequest)
-  );
+  const isConfirmOpen = useChatUiStore((state) => Boolean(state.deleteTargets));
 
   // Клавиша Escape сбрасывает выбор, когда диалог подтверждения закрыт
   useEscapeKey({ active: !isConfirmOpen, onClose: handleCancelSelection });
