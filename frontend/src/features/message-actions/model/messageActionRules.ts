@@ -69,6 +69,16 @@ export function canForwardMessage(message: IMediaItem): boolean {
   return messageMediaType(message) === null || hasAvailableMedia(message);
 }
 
+/**
+ * Можно ли перевести (#1085): чужое отправленное сообщение с текстом
+ * или подписью к медиа.
+ */
+export function canTranslateMessage(message: IMediaItem, currentUserId?: string | null): boolean {
+  if (isUnsent(message) || message.undecryptable) return false;
+  const isMine = currentUserId ? message.senderId === currentUserId : false;
+  return !isMine && hasCopyableText(message);
+}
+
 export function availableMessageActions(
   message: IMediaItem,
   { mine, place, isPinned, canCopyImage }: IMessageActionContext

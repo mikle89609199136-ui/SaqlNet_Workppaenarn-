@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from '@/shared/config';
+import { useProfileStore } from '@/entities/user/model/profileStore';
 
 /**
  * Согласие на перевод сообщений.
@@ -14,26 +15,32 @@ import { STORAGE_KEYS } from '@/shared/config';
 
 const CONSENT_PREFIX = 'craneapp_translator_consent:';
 
-function accountId(): string {
+function accountId(): string | null {
   try {
+    const fromStore = useProfileStore.getState().user?.id;
+    if (fromStore) return fromStore;
     const user = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || 'null');
-    return user?.id || 'unknown';
+    return user?.id || null;
   } catch {
-    return 'unknown';
+    return null;
   }
 }
 
 export function hasTranslatorConsent(): boolean {
+  const id = accountId();
+  if (!id) return false;
   try {
-    return localStorage.getItem(`${CONSENT_PREFIX}${accountId()}`) === 'yes';
+    return localStorage.getItem(`${CONSENT_PREFIX}${id}`) === 'yes';
   } catch {
     return false;
   }
 }
 
 export function rememberTranslatorConsent(): void {
+  const id = accountId();
+  if (!id) return;
   try {
-    localStorage.setItem(`${CONSENT_PREFIX}${accountId()}`, 'yes');
+    localStorage.setItem(`${CONSENT_PREFIX}${id}`, 'yes');
   } catch {
     // Хранилище может быть недоступно — тогда спросим в следующий раз.
   }
