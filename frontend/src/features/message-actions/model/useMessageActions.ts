@@ -24,7 +24,7 @@ import type { IMediaItem, IMessageDto } from '@/types';
 import { copyImageToClipboard } from './mediaActions';
 import { mediaBlobByUrl, mediaFileName, saveMedia } from '@/entities/media';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
@@ -52,7 +52,6 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const currentUser = useProfileStore((state) => state.user);
   const { chatId = '' } = useParams<{ chatId: string }>();
   const { t } = useTranslation();
-  const [translatingIds, setTranslatingIds] = useState(new Set());
 
   const queryClient = useQueryClient();
   const { data: chat } = useQuery(chatQuery(chatId));
@@ -73,7 +72,6 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const setActionMenu = useChatUiStore((state) => state.setActionMenu);
 
   const executeTranslation = async (targets: IMessageDto[]) => {
-    setTranslatingIds((prev) => new Set([...prev, ...targets.map((m) => m.id)]));
     try {
       const newTranslations: Record<string, string> = {};
       let successCount = 0;
@@ -124,12 +122,6 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       }
     } catch (_err) {
       showToast('error', t('translateError', 'Не удалось перевести сообщение'));
-    } finally {
-      setTranslatingIds((prev) => {
-        const next = new Set(prev);
-        targets.forEach((m) => next.delete(m.id));
-        return next;
-      });
     }
   };
 
@@ -418,7 +410,6 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   }
 
   return {
-    translatingIds,
     handleTranslateMessage,
     confirmTranslate,
     handleDelete,
