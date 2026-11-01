@@ -89,12 +89,15 @@ func TestAppearanceLegacyReadsPreserveChoiceWithoutBackfill(t *testing.T) {
 			require.Equal(t, "violet", canonical["accentPreset"])
 			require.NotContains(t, canonical, "fontSize")
 			require.NotContains(t, canonical, "accentColor")
-			for _, path := range []string{"all-settings", "export"} {
-				legacy := api.request(t, http.MethodGet, path, "", http.StatusOK)["settings"].(map[string]any)
-				require.Equal(t, tc.size, legacy["textSize"])
-				require.Equal(t, tc.size, legacy["fontSize"])
-				require.Equal(t, "#FF007F", legacy["accentColor"])
-			}
+			allSettings := api.request(t, http.MethodGet, "all-settings", "", http.StatusOK)["settings"].(map[string]any)
+			require.Equal(t, tc.size, allSettings["textSize"])
+			require.Equal(t, tc.size, allSettings["fontSize"])
+			require.Equal(t, "#FF007F", allSettings["accentColor"])
+			exported := api.request(t, http.MethodGet, "export", "", http.StatusOK)["settings"].(map[string]any)
+			exportedGeneral := exported["settings"].(map[string]any)
+			require.Equal(t, tc.size, exportedGeneral["textSize"])
+			require.Equal(t, tc.size, exportedGeneral["fontSize"])
+			require.Equal(t, "#FF007F", exportedGeneral["accentColor"])
 			require.Equal(t, before, api.snapshot(t), "GET не переписывает legacy data")
 		})
 	}
