@@ -185,6 +185,22 @@ describe('findActivePinnedMessageId (#1057)', () => {
       })
     ).toBe('msg-older');
   });
+
+  it('корректно выбирает ближайший пройденный пин при неотсортированном pinnedMessages (#1057)', () => {
+    // Пины в неотсортированном порядке (например, после слияния shared и personal)
+    // Pin 1 = feedIndex 10, Pin 2 = feedIndex 50, Pin 3 = feedIndex 90
+    const unsortedPins = [pin3, pin1, pin2];
+
+    // Скролл в диапазоне 65..75: пройдены pin1 (10) и pin2 (50).
+    // Ближайший к экрану — pin2 (индекс 50), независимо от позиции в массиве pinnedMessages.
+    expect(
+      findActivePinnedMessageId({
+        pinnedMessages: unsortedPins,
+        feedItems,
+        virtualItems: [{ index: 65 }, { index: 70 }, { index: 75 }],
+      })
+    ).toBe('msg-2');
+  });
 });
 
 describe('usePinnedScrollTracker (#1057)', () => {

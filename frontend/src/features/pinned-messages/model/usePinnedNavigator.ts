@@ -25,11 +25,8 @@ export function usePinnedNavigator(messages: TPinnedList) {
   }
 
   /* Синхронизация с активным закреплением из стора ленты (скролл истории переписки, #1057) */
-  const prevActivePinnedIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!activePinnedId || messages.length === 0) return;
-    if (activePinnedId === prevActivePinnedIdRef.current) return;
-    prevActivePinnedIdRef.current = activePinnedId;
 
     const targetIndex = messages.findIndex(
       (item) => item.messageId === activePinnedId || item.message?.id === activePinnedId
@@ -53,10 +50,15 @@ export function usePinnedNavigator(messages: TPinnedList) {
   const windowStart = Math.min(Math.max(safeIndex - visibleSegments + 1, 0), maxWindowStart);
 
   const handleClick = () => {
-    if (!currentMessage) return;
+    if (messages.length === 0) return;
 
-    const chatId = currentItem.chatId || currentMessage.chatId;
-    setJumpRequest({ chatId, messageId: currentMessage.id });
+    const nextIndex = safeIndex === 0 ? messages.length - 1 : safeIndex - 1;
+    const targetItem = messages[nextIndex];
+    const targetMessage = targetItem?.message;
+    if (!targetMessage) return;
+
+    const chatId = targetItem.chatId || targetMessage.chatId;
+    const targetId = targetItem.messageId || targetMessage.id;
 
     if (safeIndex === 0 && trackRef.current) {
       trackRef.current.style.transition = 'none';
@@ -65,18 +67,10 @@ export function usePinnedNavigator(messages: TPinnedList) {
       });
     }
 
-    const nextIndex = safeIndex === 0 ? messages.length - 1 : safeIndex - 1;
-
     // Временная блокировка скролл-трекера на время плавной анимации прокрутки к сообщению (#1057)
     setPinnedNavLockUntil(Date.now() + 700);
-
-    const nextItem = messages[nextIndex];
-    const nextId = nextItem ? nextItem.messageId || nextItem.message?.id : null;
-    if (nextId) {
-      prevActivePinnedIdRef.current = nextId;
-      setActivePinnedId(nextId);
-    }
-
+    setJumpRequest({ chatId, messageId: targetId });
+    setActivePinnedId(targetId);
     setCurrentPinnedMessageIndex(nextIndex);
   };
 
