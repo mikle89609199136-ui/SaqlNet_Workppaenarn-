@@ -53,6 +53,10 @@ interface IChatState {
   /** Что удалить — открытый диалог «Удалить сообщение?» (#840). */
   deleteTargets: TMessagesList | null;
   pinRequest: { targets: TMessagesList; unpin: boolean } | null;
+  /** Активное закреплённое сообщение, соответствующее текущей позиции скролла ленты (#1057). */
+  activePinnedId: string | null;
+  /** Метка времени (timestamp ms), до которой заблокировано обновление activePinnedId от скролла (#1057). */
+  pinnedNavLockUntil: number;
   /** Просмотр списка авторов реакций (#998). */
   reactionAuthorsModal: IReactionAuthorsModalState | null;
 }
@@ -72,6 +76,8 @@ interface IChatActions {
   setProfileRequest: (request: { chatId: string; userId: string } | null) => void;
   setPinRequest: (request: IChatState['pinRequest']) => void;
   setDeleteTargets: (targets: TMessagesList | null) => void;
+  setActivePinnedId: (id: string | null) => void;
+  setPinnedNavLockUntil: (untilMs: number) => void;
   setReactionAuthorsModal: (modal: IReactionAuthorsModalState | null) => void;
   resetChatState: (keepJumpForChatId?: string) => void;
 }
@@ -89,6 +95,8 @@ const initialChatState: IChatState = {
   profileRequest: null,
   deleteTargets: null,
   pinRequest: null,
+  activePinnedId: null,
+  pinnedNavLockUntil: 0,
   reactionAuthorsModal: null,
 };
 
@@ -122,6 +130,8 @@ export const useChatUiStore = create<InitialState>((set) => {
     setProfileRequest: (profileRequest) => set({ profileRequest }),
     setPinRequest: (pinRequest) => set({ pinRequest }),
     setDeleteTargets: (deleteTargets) => set({ deleteTargets }),
+    setActivePinnedId: (activePinnedId) => set({ activePinnedId }),
+    setPinnedNavLockUntil: (pinnedNavLockUntil) => set({ pinnedNavLockUntil }),
     setReactionAuthorsModal: (reactionAuthorsModal) => set({ reactionAuthorsModal }),
     // Запрос перехода, адресованный новому чату, переживает смену чата: его
     // ставят перед переходом, а выполняет лента нового чата (#1076).

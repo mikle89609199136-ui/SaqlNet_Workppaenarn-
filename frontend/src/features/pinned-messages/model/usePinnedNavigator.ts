@@ -1,12 +1,15 @@
 import { useChatUiStore } from '@/entities/chat';
 import type { TPinnedList } from '@/types';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const MAX_VISIBLE_SEGMENTS = 4;
 
 export function usePinnedNavigator(messages: TPinnedList) {
   const trackRef = useRef<HTMLDivElement>(null);
   const setJumpRequest = useChatUiStore((state) => state.setJumpRequest);
+  const activePinnedId = useChatUiStore((state) => state.activePinnedId);
+  const setActivePinnedId = useChatUiStore((state) => state.setActivePinnedId);
+  const setPinnedNavLockUntil = useChatUiStore((state) => state.setPinnedNavLockUntil);
 
   const [currentPinnedMessageIndex, setCurrentPinnedMessageIndex] = useState<number | null>(null);
 
@@ -20,6 +23,21 @@ export function usePinnedNavigator(messages: TPinnedList) {
     setSeenCount(messages.length);
     setCurrentPinnedMessageIndex(messages.length ? messages.length - 1 : null);
   }
+
+  /* Синхронизация с активным закреплением из стора ленты (скролл истории переписки, #1057) */
+  const prevActivePinnedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activePinnedId || messages.length === 0) return;
+    if (activePinnedId === prevActivePinnedIdRef.current) return;
+    prevActivePinnedIdRef.current = activePinnedId;
+
+    const targetIndex = messages.findIndex(
+      (item) => item.messageId === activePinnedId || item.message?.id === activePinnedId
+    );
+    if (targetIndex !== -1) {
+      setCurrentPinnedMessageIndex(targetIndex);
+    }
+  }, [activePinnedId, messages]);
 
   const totalSegments = messages.length;
   const safeIndex = Math.min(
@@ -47,10 +65,19 @@ export function usePinnedNavigator(messages: TPinnedList) {
       });
     }
 
-    setCurrentPinnedMessageIndex((prev) => {
-      const current = prev ?? messages.length - 1;
-      return current === 0 ? messages.length - 1 : current - 1;
-    });
+    const nextIndex = safeIndex === 0 ? messages.length - 1 : safeIndex - 1;
+
+    // Временная блокировка скролл-трекера на время плавной анимации прокрутки к сообщению (#1057)
+    setPinnedNavLockUntil(Date.now() + 700);
+
+    const nextItem = messages[nextIndex];
+    const nextId = nextItem ? nextItem.messageId || nextItem.message?.id : null;
+    if (nextId) {
+      prevActivePinnedIdRef.current = nextId;
+      setActivePinnedId(nextId);
+    }
+
+    setCurrentPinnedMessageIndex(nextIndex);
   };
 
   const currentMessageNumber = safeIndex + 1;

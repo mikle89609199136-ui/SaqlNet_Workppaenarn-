@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { useFeedKeyboardNavigation } from '../model/useFeedKeyboardNavigation';
+import { usePinnedScrollTracker } from '../model/usePinnedScrollTracker';
 import { useVirtualMessagesFeed } from '../model/useVirtualMessagesFeed';
 import type { IReadMark } from '../model/unread';
 import { useJumpToMessage } from '@/features/jump-to-message';
 import { useProfileStore, settingsQuery, normalizePreferences } from '@/entities/user';
 import { useChatUiStore } from '@/entities/chat';
-import type { IMessageDto, TMessagesList } from '@/types';
+import type { IMessageDto, TMessagesList, TPinnedList } from '@/types';
 import {
   memo,
   useCallback,
@@ -70,6 +71,8 @@ interface Props {
   chatId?: string;
   /** Сообщения истории чата для разрешения цитируемых сообщений (#1084). */
   threadMessages?: TMessagesList;
+  /** Закреплённые сообщения чата для динамического переключения навигатора (#1057). */
+  pinnedMessages?: TPinnedList;
 }
 
 export const MessagesList = memo(
@@ -99,6 +102,7 @@ export const MessagesList = memo(
     searchCurrentId,
     chatId,
     threadMessages,
+    pinnedMessages,
   }: Props) => {
     const { t } = useTranslation();
     const { data: preferences } = useQuery({ ...settingsQuery(), enabled: false });
@@ -135,6 +139,12 @@ export const MessagesList = memo(
       chatId: activeChatId,
       threadMessages,
       appearance,
+    });
+
+    usePinnedScrollTracker({
+      pinnedMessages,
+      feedItems,
+      virtualItems,
     });
 
     const scrollToFeedIndex = useCallback(
