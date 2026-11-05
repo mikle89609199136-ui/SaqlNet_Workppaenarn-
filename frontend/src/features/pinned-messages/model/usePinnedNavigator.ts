@@ -1,12 +1,15 @@
 import { useChatUiStore } from '@/entities/chat';
 import type { TPinnedList } from '@/types';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const MAX_VISIBLE_SEGMENTS = 4;
 
 export function usePinnedNavigator(messages: TPinnedList) {
   const trackRef = useRef<HTMLDivElement>(null);
   const setJumpRequest = useChatUiStore((state) => state.setJumpRequest);
+  const activePinnedId = useChatUiStore((state) => state.activePinnedId);
+  const setActivePinnedId = useChatUiStore((state) => state.setActivePinnedId);
+  const setPinnedNavLockUntil = useChatUiStore((state) => state.setPinnedNavLockUntil);
 
   const [currentPinnedMessageIndex, setCurrentPinnedMessageIndex] = useState<number | null>(null);
 
@@ -20,6 +23,18 @@ export function usePinnedNavigator(messages: TPinnedList) {
     setSeenCount(messages.length);
     setCurrentPinnedMessageIndex(messages.length ? messages.length - 1 : null);
   }
+
+  /* Синхронизация с активным закреплением из стора ленты (скролл истории переписки, #1057) */
+  useEffect(() => {
+    if (!activePinnedId || messages.length === 0) return;
+
+    const targetIndex = messages.findIndex(
+      (item) => item.messageId === activePinnedId || item.message?.id === activePinnedId
+    );
+    if (targetIndex !== -1) {
+      setCurrentPinnedMessageIndex(targetIndex);
+    }
+  }, [activePinnedId, messages]);
 
   const totalSegments = messages.length;
   const safeIndex = Math.min(
@@ -35,10 +50,15 @@ export function usePinnedNavigator(messages: TPinnedList) {
   const windowStart = Math.min(Math.max(safeIndex - visibleSegments + 1, 0), maxWindowStart);
 
   const handleClick = () => {
-    if (!currentMessage) return;
+    if (messages.length === 0) return;
 
-    const chatId = currentItem.chatId || currentMessage.chatId;
-    setJumpRequest({ chatId, messageId: currentMessage.id });
+    const nextIndex = safeIndex === 0 ? messages.length - 1 : safeIndex - 1;
+    const targetItem = messages[nextIndex];
+    const targetMessage = targetItem?.message;
+    if (!targetMessage) return;
+
+    const chatId = targetItem.chatId || targetMessage.chatId;
+    const targetId = targetItem.messageId || targetMessage.id;
 
     if (safeIndex === 0 && trackRef.current) {
       trackRef.current.style.transition = 'none';
@@ -47,10 +67,11 @@ export function usePinnedNavigator(messages: TPinnedList) {
       });
     }
 
-    setCurrentPinnedMessageIndex((prev) => {
-      const current = prev ?? messages.length - 1;
-      return current === 0 ? messages.length - 1 : current - 1;
-    });
+    // Временная блокировка скролл-трекера на время плавной анимации прокрутки к сообщению (#1057)
+    setPinnedNavLockUntil(Date.now() + 700);
+    setJumpRequest({ chatId, messageId: targetId });
+    setActivePinnedId(targetId);
+    setCurrentPinnedMessageIndex(nextIndex);
   };
 
   const currentMessageNumber = safeIndex + 1;

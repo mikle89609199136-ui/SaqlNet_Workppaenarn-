@@ -47,8 +47,8 @@ describe('usePinnedNavigator', () => {
     });
 
     expect(useChatUiStore.getState().jumpRequest).toEqual({
-      chatId: pin2.message.chatId,
-      messageId: 'msg-2',
+      chatId: pin1.message.chatId,
+      messageId: 'msg-1',
     });
     expect(result.current.safeIndex).toBe(0);
     expect(result.current.currentMessage?.id).toBe('msg-1');
@@ -58,10 +58,11 @@ describe('usePinnedNavigator', () => {
     });
 
     expect(useChatUiStore.getState().jumpRequest).toEqual({
-      chatId: pin1.message.chatId,
-      messageId: 'msg-1',
+      chatId: pin2.message.chatId,
+      messageId: 'msg-2',
     });
     expect(result.current.safeIndex).toBe(1);
+    expect(result.current.currentMessage?.id).toBe('msg-2');
   });
 
   it('стабильно отправляет jumpRequest при повторных кликах с единственным закреплением', () => {
@@ -94,5 +95,83 @@ describe('usePinnedNavigator', () => {
       messageId: 'msg-single',
     });
     expect(result.current.safeIndex).toBe(0);
+  });
+
+  it('динамически переключает активный индекс при изменении activePinnedId из стора (#1057)', () => {
+    const pin1 = makePin({ message: makeMessage({ id: 'msg-1' }) });
+    const pin2 = makePin({ message: makeMessage({ id: 'msg-2' }) });
+    const pin3 = makePin({ message: makeMessage({ id: 'msg-3' }) });
+
+    const { result } = renderHook(() => usePinnedNavigator([pin1, pin2, pin3]));
+
+    // По умолчанию показывает последний пин (индекс 2)
+    expect(result.current.safeIndex).toBe(2);
+    expect(result.current.currentMessage?.id).toBe('msg-3');
+
+    // Скролл ленты переключил активный пин на msg-1
+    act(() => {
+      useChatUiStore.getState().setActivePinnedId('msg-1');
+    });
+
+    expect(result.current.safeIndex).toBe(0);
+    expect(result.current.currentMessage?.id).toBe('msg-1');
+
+    // Скролл ленты переключил на msg-2
+    act(() => {
+      useChatUiStore.getState().setActivePinnedId('msg-2');
+    });
+
+    expect(result.current.safeIndex).toBe(1);
+    expect(result.current.currentMessage?.id).toBe('msg-2');
+  });
+
+  it('устанавливает anti-flicker lock и синхронизирует activePinnedId при handleClick (#1057)', () => {
+    const pin1 = makePin({ message: makeMessage({ id: 'msg-1' }) });
+    const pin2 = makePin({ message: makeMessage({ id: 'msg-2' }) });
+
+    const { result } = renderHook(() => usePinnedNavigator([pin1, pin2]));
+
+    const now = Date.now();
+    act(() => {
+      result.current.handleClick();
+    });
+
+    // Установлена блокировка скролл-трекера примерно на 700мс
+    const lockUntil = useChatUiStore.getState().pinnedNavLockUntil;
+    expect(lockUntil).toBeGreaterThanOrEqual(now + 600);
+    expect(lockUntil).toBeLessThanOrEqual(now + 1000);
+
+    const jumpRequest = useChatUiStore.getState().jumpRequest;
+    const activePinnedId = useChatUiStore.getState().activePinnedId;
+
+    // activePinnedId и jumpRequest.messageId строго совпадают с целевым следующим пином (msg-1)
+    expect(jumpRequest?.messageId).toBe('msg-1');
+    expect(activePinnedId).toBe('msg-1');
+    expect(jumpRequest?.messageId).toBe(activePinnedId);
+    expect(result.current.safeIndex).toBe(0);
+  });
+
+  it('восстанавливает индекс закрепления при изменении длины messages при неизменном activePinnedId (#1057)', () => {
+    const pin1 = makePin({ message: makeMessage({ id: 'msg-1' }) });
+    const pin2 = makePin({ message: makeMessage({ id: 'msg-2' }) });
+    const pin3 = makePin({ message: makeMessage({ id: 'msg-3' }) });
+
+    // Исходно 3 пина, лента на скролле выбрала msg-2 (индекс 1)
+    useChatUiStore.getState().setActivePinnedId('msg-2');
+
+    const { result, rerender } = renderHook(({ pins }) => usePinnedNavigator(pins), {
+      initialProps: { pins: [pin1, pin2, pin3] },
+    });
+
+    expect(result.current.safeIndex).toBe(1);
+    expect(result.current.currentMessage?.id).toBe('msg-2');
+
+    // Открепили pin1 — список сократился до 2 пинов [pin2, pin3].
+    // При изменении длины блок seenCount синхронно переставляет индекс на messages.length - 1 (индекс 1: msg-3),
+    // но useEffect без prevActivePinnedIdRef обязан немедленно восстановить правильный индекс 0 для актуального msg-2.
+    rerender({ pins: [pin2, pin3] });
+
+    expect(result.current.safeIndex).toBe(0);
+    expect(result.current.currentMessage?.id).toBe('msg-2');
   });
 });
