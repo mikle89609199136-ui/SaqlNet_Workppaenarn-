@@ -14,7 +14,7 @@ import {
   validateAvatarFile,
 } from '@/entities/user';
 import { describeApiError } from '@/shared/api';
-import { encodeAvatar } from '@/shared/lib';
+import { AvatarCropModal } from '@/shared/ui/AvatarCropModal/AvatarCropModal';
 import { services } from '@/services/serviceContainer';
 import type { IUserDto } from '@/types';
 import { createProfileFormSchema, type TProfileForm } from '../model/profileSchema';
@@ -52,6 +52,7 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
 
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(user.avatarUrl);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   useEffect(() => {
@@ -189,19 +190,19 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
     onBack();
   }
 
-  async function handleAvatarSelect(event: ChangeEvent<HTMLInputElement>) {
+  function handleAvatarSelect(event: ChangeEvent<HTMLInputElement>) {
     const picked = event.target.files?.[0];
     event.target.value = '';
 
     if (!picked) return;
 
-    /* Сперва пересжать, потом проверять: снимок с телефона весит 5–10 МБ и
-       не проходил ограничение в 5 МБ, хотя после пересжатия в нём десятки
-       килобайт (см. encodeImage). GIF не пересжимается — для него
-       ограничение действует как раньше. */
-    const file = await encodeAvatar(picked);
-    const validation = validateAvatarFile(file);
-    if (!validation.valid) {
+    // Crop the original so zooming does not magnify an already reduced image.
+    // Large photos become at most 640×640 on export; GIF keeps the existing input limit.
+    const validation = validateAvatarFile(picked);
+    if (
+      !validation.valid &&
+      (validation.errorCode === 'invalidType' || picked.type === 'image/gif')
+    ) {
       const errorMessage =
         validation.errorCode === 'tooLarge'
           ? t('settings.profile.avatarTooLarge', 'Файл слишком большой. Максимальный размер 5 МБ')
@@ -213,6 +214,11 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
       return;
     }
 
+    setCropFile(picked);
+  }
+
+  async function saveAvatar(file: File) {
+    setCropFile(null);
     const objectUrl = URL.createObjectURL(file);
     setPreviewUrl(objectUrl);
     setIsUploadingAvatar(true);
@@ -247,6 +253,13 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
      карточка формы, как в макете. */
   return (
     <section className="flex flex-col gap-4 rounded-dialog bg-card p-5">
+      {cropFile && (
+        <AvatarCropModal
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onComplete={saveAvatar}
+        />
+      )}
       <div className="flex items-center gap-4">
         <Avatar
           id={user.id}
@@ -263,6 +276,7 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
           type="file"
         />
         <Button
+          disabled={Boolean(cropFile)}
           loading={isUploadingAvatar}
           onClick={() => fileInputRef.current?.click()}
           type="button"

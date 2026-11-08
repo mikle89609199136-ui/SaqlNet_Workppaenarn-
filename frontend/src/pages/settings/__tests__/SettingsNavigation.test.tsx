@@ -1,9 +1,14 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { http, HttpResponse } from 'msw';
+import { api } from '@/test/msw/handlers';
+import { server } from '@/test/msw/server';
+import { useProfileStore } from '@/entities/user';
+import { clearToasts, getToasts } from '@/shared/ui';
 import { ROUTES } from '@/shared/config/routes';
 import { testI18n } from '@/test/harness/i18n';
 import { SettingsSidebar } from '../ui/SettingsSidebar';
@@ -66,5 +71,47 @@ describe('Навигация настроек — широкая зона кли
     expect(link).toHaveAccessibleName('Назад: Аккаунт: Изменить профиль');
     await userEvent.click(heading);
     expect(screen.getByText('Раздел аккаунта')).toBeInTheDocument();
+  });
+});
+
+describe('«Избранное» из настроек', () => {
+  beforeEach(() => {
+    useProfileStore.setState({ user: { id: 'me-saved' } as never, isAuth: true });
+    clearToasts();
+  });
+
+  function renderSettings() {
+    renderWithProviders(
+      <MemoryRouter initialEntries={[ROUTES.SETTINGS]}>
+        <Routes>
+          <Route path={ROUTES.SETTINGS} element={<SettingsSidebar />} />
+          <Route path="/chats/:chatId" element={<div>Открыто избранное</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+  }
+
+  it('открывает self-chat через существующий API', async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(api('/chats/private'), async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ chatId: 'saved', exists: true });
+      })
+    );
+    renderSettings();
+    await userEvent.click(screen.getByRole('button', { name: 'Избранное' }));
+    expect(await screen.findByText('Открыто избранное')).toBeInTheDocument();
+    expect(bodies).toEqual([{ userId: 'me-saved' }]);
+  });
+
+  it('показывает ошибку и оставляет настройки открытыми', async () => {
+    server.use(http.post(api('/chats/private'), () => HttpResponse.json({}, { status: 500 })));
+    renderSettings();
+    await userEvent.click(screen.getByRole('button', { name: 'Избранное' }));
+    await waitFor(() => expect(getToasts()).toHaveLength(1));
+    expect(screen.queryByText('Открыто избранное')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Избранное' })).toBeEnabled();
+    clearToasts();
   });
 });
