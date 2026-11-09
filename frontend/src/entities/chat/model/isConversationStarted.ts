@@ -17,7 +17,6 @@ import type { IChatDto } from './types';
  * числе те, кому ещё не написали.
  */
 export function isConversationStarted(chat: IChatDto): boolean {
-  // «Избранное» — как личный чат: пустое в списке не висит, его открывают
-  // кнопкой в шапке списка (#1075).
-  return (chat.type !== 'private' && chat.type !== 'self') || Boolean(chat.lastMessage);
+  // «Избранное» доступно в списке даже до первого сообщения.
+  return chat.type !== 'private' || Boolean(chat.lastMessage);
 }

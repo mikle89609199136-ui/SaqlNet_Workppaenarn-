@@ -10,7 +10,7 @@ import { saveAuthSession, uploadAvatar } from '@/services/authApi';
 import { services } from '@/services/serviceContainer';
 import { rememberLoginPassword } from '@/shared/crypto';
 import { validateAvatarFile } from '@/entities/user';
-import { encodeAvatar } from '@/shared/lib';
+import { AvatarCropModal } from '@/shared/ui/AvatarCropModal/AvatarCropModal';
 import type { IAuthResponse } from '@/types';
 import {
   createRegisterFormSchema,
@@ -39,6 +39,7 @@ export function RegisterWizard() {
      отправкой формы. Пока не пытались, пустые поля не считаются
      ошибкой: человек до них просто не дошёл. */
   const [attempted, setAttempted] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [avatar, setAvatar] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [usernameStatus, setUsernameStatus] = useState<IUsernameValidationStatus>({
@@ -121,17 +122,18 @@ export function RegisterWizard() {
     setStep(next);
   }
 
-  async function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
+  function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const picked = event.target.files?.[0];
     event.target.value = '';
     if (!picked) return;
 
-    /* Сперва пересжать, потом проверять: снимок с телефона весит 5–10 МБ и
-       не проходил ограничение в 5 МБ, хотя после пересжатия в нём десятки
-       килобайт (см. encodeImage). */
-    const file = await encodeAvatar(picked);
-    const validation = validateAvatarFile(file);
-    if (!validation.valid) {
+    // Crop the original so zooming does not magnify an already reduced image.
+    // Large photos become at most 640×640 on export; GIF keeps the existing input limit.
+    const validation = validateAvatarFile(picked);
+    if (
+      !validation.valid &&
+      (validation.errorCode === 'invalidType' || picked.type === 'image/gif')
+    ) {
       const errorMessage =
         validation.errorCode === 'tooLarge'
           ? t('settings.profile.avatarTooLarge', 'Файл слишком большой. Максимальный размер 5 МБ')
@@ -143,6 +145,11 @@ export function RegisterWizard() {
       return;
     }
 
+    setCropFile(picked);
+  }
+
+  function applyAvatarCrop(file: File) {
+    setCropFile(null);
     setAvatarFile(file);
     const reader = new FileReader();
     reader.onload = (readerEvent) => setAvatar(String(readerEvent.target?.result || ''));
@@ -267,6 +274,13 @@ export function RegisterWizard() {
       }
       title=""
     >
+      {cropFile && (
+        <AvatarCropModal
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onComplete={applyAvatarCrop}
+        />
+      )}
       <form className="grid gap-4 text-left" noValidate onSubmit={handleStepSubmit}>
         {step === 'about' ? (
           <AboutStep
