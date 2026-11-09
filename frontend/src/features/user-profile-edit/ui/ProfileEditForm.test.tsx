@@ -11,6 +11,27 @@ import { ToastStack } from '@/shared/ui';
 import type { IUserDto } from '@/types';
 import { ProfileEditForm } from './ProfileEditForm';
 
+function renderPhotoEditor({
+  file,
+  onCancel,
+  onSave,
+}: {
+  file: File;
+  onCancel: () => void;
+  onSave: (file: File) => void;
+}) {
+  return (
+    <div aria-label="Редактор фотографии" role="dialog">
+      <button onClick={onCancel}>Отмена</button>
+      <button
+        onClick={() => onSave(new File([file], 'edited-avatar.webp', { type: 'image/webp' }))}
+      >
+        Готово
+      </button>
+    </div>
+  );
+}
+
 const INITIAL_USER: IUserDto = makeUser({
   id: 'user-485',
   username: 'avatar_tester',
@@ -30,7 +51,7 @@ function renderForm(user: Partial<IUserDto> = INITIAL_USER, onBack = vi.fn()) {
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={testI18n}>
         <ToastStack />
-        <ProfileEditForm onBack={onBack} user={user} />
+        <ProfileEditForm onBack={onBack} renderPhotoEditor={renderPhotoEditor} user={user} />
       </I18nextProvider>
     </QueryClientProvider>
   );
@@ -39,6 +60,8 @@ function renderForm(user: Partial<IUserDto> = INITIAL_USER, onBack = vi.fn()) {
 }
 
 async function confirmCrop() {
+  const editor = await screen.findByRole('dialog', { name: 'Редактор фотографии' });
+  await userEvent.click(within(editor).getByRole('button', { name: 'Готово' }));
   const dialog = await screen.findByRole('dialog', { name: 'Обрезка фото' });
   const image = dialog.querySelector('img')!;
   Object.defineProperties(image, {
@@ -102,31 +125,37 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
     expect(uploadSpy).not.toHaveBeenCalled();
   });
 
-  it('открывает оригинальное фото более 5 МБ для обрезки без предварительной загрузки', async () => {
+  it('открывает фото более 5 МБ в редакторе без предварительной загрузки', async () => {
     const uploadSpy = vi.spyOn(services.mediaService, 'upload');
     renderForm();
     const file = new File([new Uint8Array(MAX_AVATAR_SIZE_BYTES + 10)], 'phone.jpg', {
       type: 'image/jpeg',
     });
     await userEvent.upload(screen.getByTestId('avatar-file-input'), file);
-    expect(await screen.findByRole('dialog', { name: 'Обрезка фото' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Редактор фотографии' })).toBeInTheDocument();
     expect(uploadSpy).not.toHaveBeenCalled();
   });
 
-  it('отмена обрезки сохраняет фото и не отправляет запросы; файл можно выбрать повторно', async () => {
+  it('отмена редактора или обрезки сохраняет фото; файл можно выбрать повторно', async () => {
     const uploadSpy = vi.spyOn(services.mediaService, 'upload');
     const { container } = renderForm();
     const input = screen.getByTestId('avatar-file-input');
     const file = new File(['photo'], 'photo.jpg', { type: 'image/jpeg' });
     await userEvent.upload(input, file);
-    const dialog = await screen.findByRole('dialog', { name: 'Обрезка фото' });
-    expect(within(dialog).getByRole('button', { name: 'Готово' })).toBeDisabled();
+    const editor = await screen.findByRole('dialog', { name: 'Редактор фотографии' });
     expect(uploadSpy).not.toHaveBeenCalled();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Отмена' }));
+    await userEvent.click(within(editor).getByRole('button', { name: 'Отмена' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(container.querySelector('img')).toHaveAttribute('src', INITIAL_USER.avatarUrl);
     await userEvent.upload(input, file);
-    expect(await screen.findByRole('dialog', { name: 'Обрезка фото' })).toBeInTheDocument();
+    const reopenedEditor = await screen.findByRole('dialog', { name: 'Редактор фотографии' });
+    await userEvent.click(within(reopenedEditor).getByRole('button', { name: 'Готово' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Обрезка фото' });
+    expect(within(dialog).getByRole('button', { name: 'Готово' })).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Отмена' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await userEvent.upload(input, file);
+    expect(await screen.findByRole('dialog', { name: 'Редактор фотографии' })).toBeInTheDocument();
     expect(uploadSpy).not.toHaveBeenCalled();
   });
 
@@ -159,6 +188,10 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
 
     await userEvent.upload(fileInput, validFile);
     await confirmCrop();
+
+    expect(URL.createObjectURL).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'edited-avatar.webp', type: 'image/webp' })
+    );
 
     await waitFor(() => {
       expect(uploadSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'image/webp' }));
