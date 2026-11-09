@@ -392,15 +392,16 @@ func (h *Handler) Folders(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusOK, map[string]any{"folders": folders})
 	case http.MethodPut:
 		var input struct {
-			Folders []any `json:"folders"`
+			Folders *[]any `json:"folders"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
 		if input.Folders == nil {
-			input.Folders = []any{}
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "folders is required")
+			return
 		}
-		if err := h.service.UpdateFolders(r.Context(), current.ID, input.Folders); err != nil {
+		if err := h.service.UpdateFolders(r.Context(), current.ID, *input.Folders); err != nil {
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "folders update failed")
 			return
 		}
