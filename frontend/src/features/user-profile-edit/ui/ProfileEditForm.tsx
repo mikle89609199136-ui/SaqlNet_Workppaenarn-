@@ -23,6 +23,11 @@ interface Props {
   user: Partial<IUserDto>;
   onBack: () => void;
   onUserChange?: (user: IUserDto) => void;
+  renderPhotoEditor: (props: {
+    file: File;
+    onCancel: () => void;
+    onSave: (file: File) => void;
+  }) => ReactNode;
 }
 
 function getUsernameErrorMessage(err: unknown, t: TFunction): string {
@@ -42,7 +47,7 @@ function getUsernameErrorMessage(err: unknown, t: TFunction): string {
   return describeApiError(apiErr, t, t('profileSaveError', 'Не удалось сохранить профиль'));
 }
 
-export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
+export function ProfileEditForm({ user, onBack, onUserChange, renderPhotoEditor }: Props) {
   const { t } = useTranslation();
   /* Сообщения схемы — на языке интерфейса: сменился язык — новая схема. */
   const schema = useMemo(() => createProfileFormSchema(t), [t]);
@@ -52,6 +57,7 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
 
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(user.avatarUrl);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [editorFile, setEditorFile] = useState<File | null>(null);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
@@ -214,7 +220,7 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
       return;
     }
 
-    setCropFile(picked);
+    setEditorFile(picked);
   }
 
   async function saveAvatar(file: File) {
@@ -253,6 +259,15 @@ export function ProfileEditForm({ user, onBack, onUserChange }: Props) {
      карточка формы, как в макете. */
   return (
     <section className="flex flex-col gap-4 rounded-dialog bg-card p-5">
+      {editorFile &&
+        renderPhotoEditor({
+          file: editorFile,
+          onCancel: () => setEditorFile(null),
+          onSave: (file) => {
+            setEditorFile(null);
+            setCropFile(file);
+          },
+        })}
       {cropFile && (
         <AvatarCropModal
           file={cropFile}
