@@ -2066,7 +2066,7 @@ PasscodeState:
       type: boolean
     timeout:
       type: integer
-      description: Seconds. Current runtime defaults nonpositive writes to 60; target 0 means disabled auto-lock, positive values are delays (#442).
+      description: Seconds; 0 disables automatic re-lock, positive values are delays. Missing, null or invalid input is rejected by PUT /users/passcode/timeout with 400 and no write.
 
 PasscodeRequest:
   type: object
@@ -2095,7 +2095,7 @@ PasscodeTimeoutRequest:
     timeout:
       type: integer
       minimum: 0
-      description: Seconds; 0 disables automatic re-lock. Required; negatives are rejected without writes. Runtime currently substitutes 60 for missing/zero/negative (#442).
+      description: Required integer seconds >=0; 0 disables automatic re-lock, positive values are delays. Missing, null, negative or non-integer input returns 400 without a write.
 
 DeviceRegistrationRequest:
   type: object

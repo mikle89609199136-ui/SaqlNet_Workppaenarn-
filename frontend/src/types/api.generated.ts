@@ -1006,7 +1006,7 @@ export interface paths {
         get?: never;
         /**
          * Update passcode timeout
-         * @description Chosen contract: required integer seconds >=0; 0 disables automatic re-lock, positive values are delays. Invalid input must fail without a write. Current missing/zero/negative values are replaced with 60 (#442).
+         * @description Required integer seconds >=0; 0 disables automatic re-lock, positive values are delays. Invalid input (missing, null, negative, non-integer) fails with 400 without a write.
          */
         put: operations["updatePasscodeTimeout"];
         post?: never;
@@ -3710,7 +3710,7 @@ export interface components {
         };
         PasscodeState: {
             enabled: boolean;
-            /** @description Seconds. Current runtime defaults nonpositive writes to 60; target 0 means disabled auto-lock, positive values are delays (#442). */
+            /** @description Seconds; 0 disables automatic re-lock, positive values are delays. Missing, null or invalid input is rejected by PUT /users/passcode/timeout with 400 and no write. */
             timeout: number;
         };
         SetPasscodeRequest: {
@@ -3730,7 +3730,7 @@ export interface components {
             code?: "invalid_token" | "missing_token" | "token_revoked" | "wrong_passcode";
         };
         PasscodeTimeoutRequest: {
-            /** @description Seconds; 0 disables automatic re-lock. Required; negatives are rejected without writes. Runtime currently substitutes 60 for missing/zero/negative (#442). */
+            /** @description Required integer seconds >=0; 0 disables automatic re-lock, positive values are delays. Missing, null, negative or non-integer input returns 400 without a write. */
             timeout: number;
         };
         DeviceSession: {
