@@ -713,12 +713,20 @@ func (h *Handler) Passcode(w http.ResponseWriter, r *http.Request) {
 		respondPasscode(w, r, h.service.DisablePasscode(r.Context(), current.ID, input.Passcode))
 	case path == "/api/v2/users/passcode/timeout" && r.Method == http.MethodPut:
 		var input struct {
-			Timeout int `json:"timeout"`
+			Timeout *int `json:"timeout"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
-		respondPasscode(w, r, h.service.UpdatePasscodeTimeout(r.Context(), current.ID, input.Timeout))
+		if input.Timeout == nil {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "timeout is required")
+			return
+		}
+		if *input.Timeout < 0 {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "validation_failed", "timeout must be greater than or equal to 0")
+			return
+		}
+		respondPasscode(w, r, h.service.UpdatePasscodeTimeout(r.Context(), current.ID, *input.Timeout))
 	default:
 		var allowed string
 		switch path {
