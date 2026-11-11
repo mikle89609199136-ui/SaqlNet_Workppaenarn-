@@ -1,6 +1,6 @@
 {
   "name": "craneapp",
-  "version": "0.16.0",
+  "version": "0.17.1",
   "description": "CraneApp Messenger",
   "private": true,
   "engines": {
