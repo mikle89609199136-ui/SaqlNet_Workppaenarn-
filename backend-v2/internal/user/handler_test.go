@@ -875,3 +875,128 @@ func TestSettingsUnknownFieldReturnsValidationFailedNotInvalidJSON(t *testing.T)
 		t.Fatal(err)
 	}
 }
+
+// TestPasscodeTimeoutRejectsInvalidInputWithoutServiceCall verifies the timeout
+// handler rejects a missing, null and negative value with 400 validation_failed.
+// ExpectationsWereMet() with no expectations asserts the service was not called.
+func TestPasscodeTimeoutRejectsInvalidInputWithoutServiceCall(t *testing.T) {
+	cases := []struct{ name, body, message string }{
+		{name: "missing", body: `{}`, message: "timeout is required"},
+		{name: "null", body: `{"timeout": null}`, message: "timeout is required"},
+		{name: "negative", body: `{"timeout":-1}`, message: "timeout must be greater than or equal to 0"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+
+			req := httptest.NewRequest(http.MethodPut, "/api/v2/users/passcode/timeout", strings.NewReader(tc.body))
+			req = req.WithContext(authctx.WithUser(req.Context(), authctx.User{ID: "11111111-1111-4111-8111-111111111111"}))
+			rr := httptest.NewRecorder()
+			NewHandler(NewService(db), nil).Passcode(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d, want 400; body=%s", rr.Code, rr.Body.String())
+			}
+			code, msg := decodeErrorBody(t, rr)
+			if code != "validation_failed" || msg != tc.message {
+				t.Fatalf("code/msg = %q/%q, want validation_failed/%q", code, msg, tc.message)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// TestPasscodeTimeoutRejectsTypeMismatch verifies a non-integer timeout (string,
+// float, overflow, broken JSON) is rejected by the decoder with 400 invalid_json.
+// ExpectationsWereMet() with no expectations asserts the service was not called.
+func TestPasscodeTimeoutRejectsTypeMismatch(t *testing.T) {
+	cases := []struct{ name, body string }{
+		{name: "string", body: `{"timeout":"60"}`},
+		{name: "float", body: `{"timeout":1.5}`},
+		{name: "overflow", body: `{"timeout":99999999999999999999}`},
+		{name: "broken_json", body: `невалидный JSON`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+
+			req := httptest.NewRequest(http.MethodPut, "/api/v2/users/passcode/timeout", strings.NewReader(tc.body))
+			req = req.WithContext(authctx.WithUser(req.Context(), authctx.User{ID: "11111111-1111-4111-8111-111111111111"}))
+			rr := httptest.NewRecorder()
+			NewHandler(NewService(db), nil).Passcode(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d, want 400; body=%s", rr.Code, rr.Body.String())
+			}
+			code, msg := decodeErrorBody(t, rr)
+			if code != "invalid_json" || msg != "invalid JSON body" {
+				t.Fatalf("code/msg = %q/%q, want invalid_json/%q", code, msg, "invalid JSON body")
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// TestPasscodeTimeoutPersistsZero verifies {"timeout":0} is accepted, persisted to
+// users.settings and answered with 200 {"success":true}. Covers AC-4.
+func TestPasscodeTimeoutPersistsZero(t *testing.T) {
+	assertPasscodeTimeoutPersists(t, `{"timeout":0}`, 0)
+}
+
+// TestPasscodeTimeoutPersistsPositive verifies {"timeout":60} keeps the previous
+// behaviour: 200 plus an UPDATE carrying 60. Covers AC-5.
+func TestPasscodeTimeoutPersistsPositive(t *testing.T) {
+	assertPasscodeTimeoutPersists(t, `{"timeout":60}`, 60)
+}
+
+// assertPasscodeTimeoutPersists drives the handler and asserts both statements of
+// UpdatePasscodeTimeout (the ensureSettings upsert, then the UPDATE) ran in order.
+func assertPasscodeTimeoutPersists(t *testing.T, body string, wantTimeout int) {
+	t.Helper()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	const userID = "11111111-1111-4111-8111-111111111111"
+	mock.ExpectExec(`INSERT INTO users\.settings`).WithArgs(userID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE users\.settings SET passcode_timeout`).
+		WithArgs(userID, wantTimeout).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v2/users/passcode/timeout", strings.NewReader(body))
+	req = req.WithContext(authctx.WithUser(req.Context(), authctx.User{ID: userID}))
+	rr := httptest.NewRecorder()
+	NewHandler(NewService(db), nil).Passcode(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Success bool `json:"success"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Success {
+		t.Fatalf("success=%v, want true; body=%s", resp.Success, rr.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
