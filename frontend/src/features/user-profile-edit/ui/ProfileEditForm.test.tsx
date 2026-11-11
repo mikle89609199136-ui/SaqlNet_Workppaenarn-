@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
@@ -10,6 +10,27 @@ import { makeUser } from '@/test/fixtures';
 import { ToastStack } from '@/shared/ui';
 import type { IUserDto } from '@/types';
 import { ProfileEditForm } from './ProfileEditForm';
+
+function renderPhotoEditor({
+  file,
+  onCancel,
+  onSave,
+}: {
+  file: File;
+  onCancel: () => void;
+  onSave: (file: File) => void;
+}) {
+  return (
+    <div aria-label="Редактор фотографии" role="dialog">
+      <button onClick={onCancel}>Отмена</button>
+      <button
+        onClick={() => onSave(new File([file], 'edited-avatar.webp', { type: 'image/webp' }))}
+      >
+        Готово
+      </button>
+    </div>
+  );
+}
 
 const INITIAL_USER: IUserDto = makeUser({
   id: 'user-485',
@@ -30,12 +51,31 @@ function renderForm(user: Partial<IUserDto> = INITIAL_USER, onBack = vi.fn()) {
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={testI18n}>
         <ToastStack />
-        <ProfileEditForm onBack={onBack} user={user} />
+        <ProfileEditForm onBack={onBack} renderPhotoEditor={renderPhotoEditor} user={user} />
       </I18nextProvider>
     </QueryClientProvider>
   );
 
   return { ...result, queryClient };
+}
+
+async function confirmCrop() {
+  const editor = await screen.findByRole('dialog', { name: 'Редактор фотографии' });
+  await userEvent.click(within(editor).getByRole('button', { name: 'Готово' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Обрезка фото' });
+  const image = dialog.querySelector('img')!;
+  Object.defineProperties(image, {
+    naturalWidth: { configurable: true, value: 1200 },
+    naturalHeight: { configurable: true, value: 800 },
+  });
+  fireEvent.load(image);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    drawImage: vi.fn(),
+  } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) =>
+    callback(new Blob(['cropped avatar'], { type: 'image/webp' }))
+  );
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Готово' }));
 }
 
 describe('ProfileEditForm: загрузка фото профиля (#485)', () => {
@@ -69,13 +109,13 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
     expect(uploadSpy).not.toHaveBeenCalled();
   });
 
-  it('отклоняет файл более 5 МБ и не отправляет сетевые запросы', async () => {
+  it('отклоняет GIF более 5 МБ и не отправляет сетевые запросы', async () => {
     const uploadSpy = vi.spyOn(services.mediaService, 'upload');
     renderForm();
 
     const fileInput = screen.getByTestId('avatar-file-input');
     const largeBlob = new Uint8Array(MAX_AVATAR_SIZE_BYTES + 10);
-    const largeFile = new File([largeBlob], 'huge.png', { type: 'image/png' });
+    const largeFile = new File([largeBlob], 'huge.gif', { type: 'image/gif' });
 
     fireEvent.change(fileInput, { target: { files: [largeFile] } });
 
@@ -85,15 +125,53 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
     expect(uploadSpy).not.toHaveBeenCalled();
   });
 
+  it('открывает фото более 5 МБ в редакторе без предварительной загрузки', async () => {
+    const uploadSpy = vi.spyOn(services.mediaService, 'upload');
+    renderForm();
+    const file = new File([new Uint8Array(MAX_AVATAR_SIZE_BYTES + 10)], 'phone.jpg', {
+      type: 'image/jpeg',
+    });
+    await userEvent.upload(screen.getByTestId('avatar-file-input'), file);
+    expect(await screen.findByRole('dialog', { name: 'Редактор фотографии' })).toBeInTheDocument();
+    expect(uploadSpy).not.toHaveBeenCalled();
+  });
+
+  it('отмена редактора или обрезки сохраняет фото; файл можно выбрать повторно', async () => {
+    const uploadSpy = vi.spyOn(services.mediaService, 'upload');
+    const { container } = renderForm();
+    const input = screen.getByTestId('avatar-file-input');
+    const file = new File(['photo'], 'photo.jpg', { type: 'image/jpeg' });
+    await userEvent.upload(input, file);
+    const editor = await screen.findByRole('dialog', { name: 'Редактор фотографии' });
+    expect(uploadSpy).not.toHaveBeenCalled();
+    await userEvent.click(within(editor).getByRole('button', { name: 'Отмена' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(container.querySelector('img')).toHaveAttribute('src', INITIAL_USER.avatarUrl);
+    await userEvent.upload(input, file);
+    const reopenedEditor = await screen.findByRole('dialog', { name: 'Редактор фотографии' });
+    await userEvent.click(within(reopenedEditor).getByRole('button', { name: 'Готово' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Обрезка фото' });
+    expect(within(dialog).getByRole('button', { name: 'Готово' })).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Отмена' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await userEvent.upload(input, file);
+    expect(await screen.findByRole('dialog', { name: 'Редактор фотографии' })).toBeInTheDocument();
+    expect(uploadSpy).not.toHaveBeenCalled();
+  });
+
   it('выполняет полный сценарий загрузки: предпросмотр, отправка, сохранение и обновление кеша', async () => {
     const mockCreatedBlobUrl = 'blob:http://localhost:3000/avatar-preview-id';
     vi.spyOn(URL, 'createObjectURL').mockReturnValue(mockCreatedBlobUrl);
     const revokeSpy = vi.spyOn(URL, 'revokeObjectURL');
 
     const uploadedMediaUrl = '/api/v2/media/uploaded-avatar-uuid';
-    const uploadSpy = vi
-      .spyOn(services.mediaService, 'upload')
-      .mockResolvedValue({ url: uploadedMediaUrl, success: true });
+    const uploadSpy = vi.spyOn(services.mediaService, 'upload').mockResolvedValue({
+      url: uploadedMediaUrl,
+      success: true,
+      fileName: 'avatar.webp',
+      sizeBytes: 128,
+      contentType: 'image/webp',
+    });
 
     const updatedUser: IUserDto = {
       ...INITIAL_USER,
@@ -109,9 +187,15 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
     const validFile = new File(['avatar binary'], 'new-avatar.png', { type: 'image/png' });
 
     await userEvent.upload(fileInput, validFile);
+    await confirmCrop();
+
+    expect(URL.createObjectURL).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'edited-avatar.webp', type: 'image/webp' })
+    );
 
     await waitFor(() => {
-      expect(uploadSpy).toHaveBeenCalledWith(validFile);
+      expect(uploadSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'image/webp' }));
+      expect(uploadSpy.mock.calls[0][0]).not.toBe(validFile);
     });
 
     await waitFor(() => {
@@ -138,6 +222,7 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
     const validFile = new File(['avatar binary'], 'avatar.jpg', { type: 'image/jpeg' });
 
     await userEvent.upload(fileInput, validFile);
+    await confirmCrop();
 
     expect(await screen.findByText('Не удалось загрузить фото профиля')).toBeInTheDocument();
     expect(updateAvatarSpy).not.toHaveBeenCalled();
@@ -155,6 +240,10 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
     const uploadedMediaUrl = '/api/v2/media/mock-new-avatar';
     vi.spyOn(services.mediaService, 'upload').mockResolvedValue({
       url: uploadedMediaUrl,
+      success: true,
+      fileName: 'avatar.webp',
+      sizeBytes: 128,
+      contentType: 'image/webp',
     });
     vi.spyOn(services.userService, 'updateAvatar').mockRejectedValue(new Error('Update failed'));
 
@@ -164,6 +253,7 @@ describe('ProfileEditForm: загрузка фото профиля (#485)', () 
     const validFile = new File(['avatar binary'], 'avatar.jpg', { type: 'image/jpeg' });
 
     await userEvent.upload(fileInput, validFile);
+    await confirmCrop();
 
     expect(await screen.findByText('Не удалось загрузить фото профиля')).toBeInTheDocument();
 

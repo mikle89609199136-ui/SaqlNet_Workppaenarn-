@@ -23,9 +23,8 @@ describe('началась ли переписка', () => {
     expect(isConversationStarted(makeChat({ type: 'group' }))).toBe(true);
   });
 
-  // «Избранное» — как личный: пустое в списке не висит (#1075).
-  it('пустое «Избранное» — не в списке, с сообщением — в списке', () => {
-    expect(isConversationStarted(makeChat({ type: 'self' }))).toBe(false);
+  it('«Избранное» остаётся в списке с сообщениями и без них', () => {
+    expect(isConversationStarted(makeChat({ type: 'self' }))).toBe(true);
     expect(
       isConversationStarted(
         makeChat({ type: 'self', lastMessage: { content: 'заметка' } as never })
