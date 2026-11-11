@@ -470,8 +470,16 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	current := authctx.MustUser(r)
-	data, err := h.service.Export(r.Context(), current.ID)
+	token, _ := authctx.TokenFromRequest(r)
+
+	data, err := h.service.Export(r.Context(), current.ID, token)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to export user data",
+			"layer", "handler",
+			"method", "Export",
+			"user_id", current.ID,
+			"error", err,
+		)
 		httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "export failed")
 		return
 	}

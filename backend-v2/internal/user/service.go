@@ -86,11 +86,33 @@ type StorageUsage struct {
 }
 
 type ExportData struct {
-	User       Profile        `json:"user"`
-	Chats      []ExportChat   `json:"chats"`
-	Settings   map[string]any `json:"settings"`
-	Privacy    map[string]any `json:"privacy"`
-	ExportedAt string         `json:"exportedAt"`
+	User          Profile         `json:"user"`
+	Chats         []ExportChat    `json:"chats"`
+	Messages      []ExportMessage `json:"messages"`
+	Media         []ExportMedia   `json:"media"`
+	Devices       []Session       `json:"devices"`
+	Blocked       []BlockedUser   `json:"blocked"`
+	Settings      AllSettings     `json:"settings"`
+	Privacy       map[string]any  `json:"privacy"`
+	ExportedAt    string          `json:"exportedAt"`
+	SchemaVersion int             `json:"schemaVersion"`
+}
+
+type ExportMessage struct {
+	ID        string `json:"id"`
+	ChatID    string `json:"chatId"`
+	Content   string `json:"content"`
+	Type      string `json:"type"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+type ExportMedia struct {
+	ID          string `json:"id"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"contentType"`
+	SizeBytes   int64  `json:"sizeBytes"`
+	CreatedAt   string `json:"createdAt"`
 }
 
 type ExportChat struct {
@@ -99,6 +121,8 @@ type ExportChat struct {
 	Type      string `json:"type"`
 	CreatedAt string `json:"createdAt"`
 }
+
+const exportSchemaVersion = 2
 
 type AllSettings struct {
 	Settings             map[string]any `json:"settings"`
@@ -839,15 +863,16 @@ func (s *Service) DeleteAllData(ctx context.Context, userID string) error {
 	return tx.Commit()
 }
 
-func (s *Service) Export(ctx context.Context, userID string) (ExportData, error) {
+func (s *Service) Export(ctx context.Context, userID, currentToken string) (ExportData, error) {
 	profile, err := s.Me(ctx, userID)
 	if err != nil {
 		return ExportData{}, err
 	}
-	settings, privacy, err := s.readSettings(ctx, userID, "legacy_settings")
+	all, err := s.AllSettings(ctx, userID)
 	if err != nil {
 		return ExportData{}, err
 	}
+	privacy := all.PrivacySettings
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.id::text, c.title, c.type, c.created_at::text
 		FROM chats.chats c
@@ -872,7 +897,89 @@ func (s *Service) Export(ctx context.Context, userID string) (ExportData, error)
 	if chats == nil {
 		chats = []ExportChat{}
 	}
-	return ExportData{User: profile, Chats: chats, Settings: settings, Privacy: privacy, ExportedAt: time.Now().UTC().Format(time.RFC3339)}, rows.Err()
+	if err := rows.Err(); err != nil {
+		return ExportData{}, err
+	}
+	_ = rows.Close()
+	msgRows, err := s.db.QueryContext(ctx, `
+		SELECT m.id::text, m.chat_id::text, m.content, m.type, m.created_at::text, m.updated_at::text
+		FROM messages.messages m
+		WHERE m.sender_id = $1 AND m.deleted_at IS NULL
+		ORDER BY m.created_at ASC
+	`, userID)
+	if err != nil {
+		return ExportData{}, err
+	}
+	defer func() {
+		msgRows.Close()
+	}()
+	var messages []ExportMessage
+	for msgRows.Next() {
+		var msg ExportMessage
+		if err := msgRows.Scan(&msg.ID, &msg.ChatID, &msg.Content, &msg.Type, &msg.CreatedAt, &msg.UpdatedAt); err != nil {
+			return ExportData{}, err
+		}
+		messages = append(messages, msg)
+	}
+	if err := msgRows.Err(); err != nil {
+		return ExportData{}, err
+	}
+	if messages == nil {
+		messages = []ExportMessage{}
+	}
+	devices, err := s.Devices(ctx, userID, currentToken)
+	if err != nil {
+		return ExportData{}, err
+	}
+	if devices == nil {
+		devices = []Session{}
+	}
+	blocked, err := s.Blocked(ctx, userID)
+	if err != nil {
+		return ExportData{}, err
+	}
+	if blocked == nil {
+		blocked = []BlockedUser{}
+	}
+	mediaRows, err := s.db.QueryContext(ctx, `
+		SELECT id::text, filename, content_type, size_bytes, created_at::text
+		FROM media.uploads
+		WHERE uploader_id = $1
+		ORDER BY created_at ASC
+	`, userID)
+	if err != nil {
+		return ExportData{}, err
+	}
+	defer func() {
+		mediaRows.Close()
+	}()
+	var mediaFiles []ExportMedia
+	for mediaRows.Next() {
+		var file ExportMedia
+		if err := mediaRows.Scan(&file.ID, &file.Filename, &file.ContentType, &file.SizeBytes, &file.CreatedAt); err != nil {
+			return ExportData{}, err
+		}
+		mediaFiles = append(mediaFiles, file)
+	}
+	if err := mediaRows.Err(); err != nil {
+		return ExportData{}, err
+	}
+	if mediaFiles == nil {
+		mediaFiles = []ExportMedia{}
+	}
+
+	return ExportData{
+		User:          profile,
+		Chats:         chats,
+		Messages:      messages,
+		Media:         mediaFiles,
+		Devices:       devices,
+		Blocked:       blocked,
+		Settings:      all,
+		Privacy:       privacy,
+		ExportedAt:    time.Now().UTC().Format(time.RFC3339),
+		SchemaVersion: exportSchemaVersion,
+	}, nil
 }
 
 func (s *Service) Blocked(ctx context.Context, userID string) ([]BlockedUser, error) {

@@ -3676,21 +3676,93 @@ export interface components {
             type: "private" | "group" | "channel" | "self";
             createdAt: components["schemas"]["DatabaseTimestamp"];
         };
-        /** @description Current partial export: profile, chat membership metadata, general settings and privacy. Excludes message bodies, attachments, private keys and other account resources. A full archive is separate #447. Empty chats are [], never null. */
+        UserExportMessage: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            chatId: string;
+            /** @description Stored message text as-is. */
+            content: string;
+            /** @description Message type; free-form string because the set of types grows over time. */
+            type: string;
+            createdAt: components["schemas"]["DatabaseTimestamp"];
+            updatedAt: components["schemas"]["DatabaseTimestamp"];
+        };
+        UserExportMedia: {
+            /** Format: uuid */
+            id: string;
+            /** @description Original file name; may be an empty string when unknown. */
+            filename: string;
+            contentType: string;
+            /** Format: int64 */
+            sizeBytes: number;
+            createdAt: components["schemas"]["DatabaseTimestamp"];
+        };
+        DeviceSession: {
+            /**
+             * Format: uuid
+             * @description Same stable ID as AuthSession.id.
+             */
+            id: string;
+            deviceName: string;
+            deviceType: string;
+            ipAddress: string;
+            location: string;
+            userAgent: string;
+            /** Format: date-time */
+            lastActive: string;
+            /**
+             * Format: date-time
+             * @description Alias of AuthSession.createdAt.
+             */
+            firstLogin: string;
+            /** @description True only for the session cookie used by this request. */
+            isCurrent: boolean;
+        };
+        UserBlockedItem: components["schemas"]["UserSearchItem"] & {
+            blockedAt: components["schemas"]["DatabaseTimestamp"];
+        };
+        /** @description Complete snapshot of account settings at export time; every section is always present. */
+        UserExportSettings: {
+            settings: components["schemas"]["LegacyGeneralSettings"];
+            privacySettings: components["schemas"]["PrivacySettings"];
+            notificationSettings: components["schemas"]["LegacyNotificationSettings"];
+            soundSettings: components["schemas"]["LegacySoundSettings"];
+            storageSettings: components["schemas"]["LegacyStorageSettings"];
+            advancedSettings: components["schemas"]["LegacyAdvancedSettings"];
+            folders: components["schemas"]["LegacyFolders"];
+            passcodeEnabled: boolean;
+            passcodeTimeout: number;
+        };
+        /** @description Full account data export: profile, chat membership, sent messages, uploaded files, devices, blocks and a complete settings snapshot. Every collection is always an array - empty ones are [], never null. The response is not paginated and its size is not capped; that is deliberate for an account export. */
         UserExport: {
             user: components["schemas"]["UserProfile"];
             /** @description Always an array; no memberships give [], never null. */
             chats: components["schemas"]["UserExportChat"][];
-            settings: components["schemas"]["LegacyGeneralSettings"];
+            /** @description Always an array; no sent messages give [], never null; ordered by createdAt ascending. */
+            messages: components["schemas"]["UserExportMessage"][];
+            /** @description Always an array; no uploads give [], never null; ordered by createdAt ascending; uploads are the caller's own files. */
+            media: components["schemas"]["UserExportMedia"][];
+            /** @description Always an array; isCurrent marks the session that issued this request. */
+            devices: components["schemas"]["DeviceSession"][];
+            /** @description Always an array; empty block list is [], never null. */
+            blocked: components["schemas"]["UserBlockedItem"][];
+            settings: components["schemas"]["UserExportSettings"];
+            /**
+             * @deprecated
+             * @description Retained for backward compatibility; the full privacy snapshot now lives in settings.privacySettings.
+             */
             privacy: components["schemas"]["PrivacySettings"];
             /**
              * Format: date-time
              * @description UTC RFC 3339 generation time.
              */
             exportedAt: string;
-        };
-        UserBlockedItem: components["schemas"]["UserSearchItem"] & {
-            blockedAt: components["schemas"]["DatabaseTimestamp"];
+            /**
+             * @description Export contract version; currently 2.
+             * @example 2
+             */
+            schemaVersion: number;
         };
         UserBlockedResponse: {
             /** @description Always an array; empty block list is [], never null. */
@@ -3732,27 +3804,6 @@ export interface components {
         PasscodeTimeoutRequest: {
             /** @description Seconds; 0 disables automatic re-lock. Required; negatives are rejected without writes. Runtime currently substitutes 60 for missing/zero/negative (#442). */
             timeout: number;
-        };
-        DeviceSession: {
-            /**
-             * Format: uuid
-             * @description Same stable ID as AuthSession.id.
-             */
-            id: string;
-            deviceName: string;
-            deviceType: string;
-            ipAddress: string;
-            location: string;
-            userAgent: string;
-            /** Format: date-time */
-            lastActive: string;
-            /**
-             * Format: date-time
-             * @description Alias of AuthSession.createdAt.
-             */
-            firstLogin: string;
-            /** @description True only for the session cookie used by this request. */
-            isCurrent: boolean;
         };
         DevicesResponse: {
             devices: components["schemas"]["DeviceSession"][];

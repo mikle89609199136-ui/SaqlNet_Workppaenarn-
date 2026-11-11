@@ -312,12 +312,29 @@ describe('Исполнимый контракт User API (#453)', () => {
   });
 
   it('различает PostgreSQL timestamps и RFC 3339 exportedAt', () => {
+    // Полный экспорт (v2) всегда содержит снимок всех разделов настроек (#447).
+    const exportSettings = {
+      settings: {},
+      privacySettings: {},
+      notificationSettings: {},
+      soundSettings: {},
+      storageSettings: {},
+      advancedSettings: {},
+      folders: [],
+      passcodeEnabled: false,
+      passcodeTimeout: 0,
+    } satisfies components['schemas']['UserExportSettings'];
     const exported = {
       user: profile,
       chats: [{ id: profile.id, title: 'Чат', type: 'group', createdAt: '2026-10-16 18:00:00+00' }],
-      settings: {},
+      messages: [],
+      media: [],
+      devices: [],
+      blocked: [],
+      settings: exportSettings,
       privacy: {},
       exportedAt: '2026-10-16T18:00:00Z',
+      schemaVersion: 2,
     } satisfies components['schemas']['UserExport'];
     expect(accepts('UserExport', exported)).toBe(true);
     expect(accepts('UserExport', { ...exported, exportedAt: '2026-10-16 18:00:00+00' })).toBe(
@@ -325,6 +342,7 @@ describe('Исполнимый контракт User API (#453)', () => {
     );
     expect(accepts('UserExport', { ...exported, chats: null })).toBe(false);
     expect(accepts('UserExport', { ...exported, chats: [] })).toBe(true);
+    expect(accepts('UserExport', { ...exported, settings: {} })).toBe(false);
   });
 
   it('фиксирует timeout=0 и обязательность endpoint/keys без изменения Go', () => {
