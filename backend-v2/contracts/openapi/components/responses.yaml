@@ -145,6 +145,14 @@ UserInvalidParameter:
     application/json:
       schema: {$ref: ./schemas.yaml#/UserInvalidParameterBody}
 
+UserConfirmationRequired:
+  description: >-
+    HTTP 400; code is confirmation_required. Sent when confirm is missing, not a string or not equal to
+    DELETE_ALL_DATA; an empty or malformed JSON body yields the same code, not invalid_json.
+  content:
+    application/json:
+      schema: {$ref: ./schemas.yaml#/UserConfirmationRequiredBody}
+
 UserUnauthorized:
   description: >-
     HTTP 401; code is invalid_token or missing_token or token_revoked. See docs/user-api-contract.md for

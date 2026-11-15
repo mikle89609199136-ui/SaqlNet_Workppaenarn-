@@ -864,8 +864,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete all user data
-         * @description Current transaction deletes authored messages, chat memberships, settings, and both directions of blocklist rows. It does not delete the auth account/profile, sessions, uploads/object storage, private keys or all other resources. This is not a complete account erasure endpoint; #448 tracks the declared wider scope. Any SQL failure rolls back this transaction.
+         * Permanently delete the current account and all its data
+         * @description Deletes the whole account in one transaction: the auth.users row and every row cascading from it. Sessions are deleted and active sockets are closed by that revocation (pg_notify runs in the same transaction, so delivery happens only after commit). Chats owned by the caller (owner_id = $1) are deleted with their content, so other participants lose those chats. The caller's messages in other chats are deleted and reply_to references to them are cleared. Physical objects are removed asynchronously by a worker through media.object_cleanup_jobs; shared media that other users still reference is kept. The operation is idempotent at the service level: when the account is already gone nothing is deleted and the handler finishes successfully. The HTTP request itself is not repeatable with the same bearer: the deleted account no longer has a row in auth.sessions, so the middleware rejects a repeat before the handler with 401 token_revoked, and a 200 answer to a repeated call is unreachable over HTTP. Any SQL failure rolls back the whole transaction.
          */
         delete: operations["deleteAllUserData"];
         options?: never;
@@ -3663,6 +3663,15 @@ export interface components {
             success: true;
             settings: components["schemas"]["LegacyStorageSettings"];
         };
+        /** @description Explicit acknowledgement required by DELETE /users/storage/all; the literal value must be DELETE_ALL_DATA, anything else is HTTP 400 confirmation_required. */
+        UserDeleteAllBody: {
+            /** @enum {string} */
+            confirm: "DELETE_ALL_DATA";
+        };
+        UserConfirmationRequiredBody: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "confirmation_required";
+        };
         /**
          * @description Current PostgreSQL timestamptz::text serialization, including date, time and numeric offset; not guaranteed RFC 3339. Consumers must not assume format date-time. UTC RFC 3339 normalization requires a runtime change.
          * @example 2026-10-16 18:00:00+00
@@ -4550,6 +4559,15 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["UserInvalidExceptionBody"];
+            };
+        };
+        /** @description HTTP 400; code is confirmation_required. Sent when confirm is missing, not a string or not equal to DELETE_ALL_DATA; an empty or malformed JSON body yields the same code, not invalid_json. */
+        UserConfirmationRequired: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["UserConfirmationRequiredBody"];
             };
         };
         /** @description HTTP 400; code is invalid_json or self_block or validation_failed. See docs/user-api-contract.md for current behavior and marked runtime gaps. */
@@ -8175,7 +8193,12 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        /** @description At most 128 KiB JSON body; a larger body is rejected with 400 confirmation_required. Exactly one JSON value with no trailing data. A missing confirm field, a non-string value, an empty or malformed body, or anything other than DELETE_ALL_DATA returns 400 confirmation_required. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserDeleteAllBody"];
+            };
+        };
         responses: {
             /** @description Data deleted */
             200: {
@@ -8186,6 +8209,7 @@ export interface operations {
                     "application/json": components["schemas"]["Success"];
                 };
             };
+            400: components["responses"]["UserConfirmationRequired"];
             401: components["responses"]["UserUnauthorized"];
             403: components["responses"]["UserForbidden"];
             /** @description Method not allowed; Allow identifies the supported method. */
