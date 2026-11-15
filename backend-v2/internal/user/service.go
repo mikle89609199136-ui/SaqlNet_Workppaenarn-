@@ -824,17 +824,112 @@ func (s *Service) DeleteAllData(ctx context.Context, userID string) error {
 	defer func() {
 		_ = tx.Rollback()
 	}()
+	if _, err := tx.ExecContext(ctx, `SET LOCAL lock_timeout = '5s'`); err != nil {
+		return fmt.Errorf("delete all data: set lock timeout: %w", err)
+	}
+
+	// Serialize with logout-all and issuance's generation check; a repeat call
+	// for an already deleted user is a no-op.
+	var generation int64
+	err = tx.QueryRowContext(ctx, `SELECT token_generation FROM auth.users WHERE id = $1 FOR UPDATE`, userID).Scan(&generation)
+	if errors.Is(err, sql.ErrNoRows) {
+		return tx.Commit()
+	}
+	if err != nil {
+		return fmt.Errorf("delete all data: lock user: %w", err)
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT access_token_hash FROM auth.sessions
+		WHERE user_id = $1 AND access_token_hash IS NOT NULL
+		FOR UPDATE
+	`, userID)
+	if err != nil {
+		return fmt.Errorf("delete all data: collect session hashes: %w", err)
+	}
+	var hashes []string
+	for rows.Next() {
+		var hash string
+		if err := rows.Scan(&hash); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("delete all data: scan session hash: %w", err)
+		}
+		hashes = append(hashes, hash)
+	}
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return fmt.Errorf("delete all data: iterate session hashes: %w", err)
+	}
+	// Clear inbound reply links first: a foreign user may reply to a message of
+	// an owned chat, and messages_messages_reply_to_fkey would then block the
+	// chat cascade with 23503.
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE messages.messages SET reply_to = NULL
+		WHERE reply_to IS NOT NULL
+		  AND reply_to IN (
+			SELECT id FROM messages.messages
+			WHERE sender_id = $1
+			   OR chat_id IN (SELECT id FROM chats.chats WHERE owner_id = $1)
+		  )
+	`, userID); err != nil {
+		return fmt.Errorf("delete all data: clear reply links: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM messages.messages WHERE sender_id = $1`, userID); err != nil {
-		return err
+		return fmt.Errorf("delete all data: delete messages: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM chats.members WHERE user_id = $1`, userID); err != nil {
-		return err
+	// Owned chats cascade: members, chat messages, media refs (queue_removed_ref);
+	// user settings and blocks go with the auth.users cascade.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM chats.chats WHERE owner_id = $1`, userID); err != nil {
+		return fmt.Errorf("delete all data: delete owned chats: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM users.settings WHERE user_id = $1`, userID); err != nil {
-		return err
+	// NO ACTION foreign keys to auth.users would block DELETE FROM auth.users
+	// with 23503; bans of owned chats are already gone with the chat cascade.
+	if _, err := tx.ExecContext(ctx, `UPDATE chats.bans SET banned_by = NULL WHERE banned_by = $1`, userID); err != nil {
+		return fmt.Errorf("delete all data: clear chat bans: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM users.blocked_users WHERE user_id = $1 OR blocked_user_id = $1`, userID); err != nil {
-		return err
+	// Call rooms are kept (other participants see the history); callee_id is
+	// cleared by its own ON DELETE SET NULL.
+	if _, err := tx.ExecContext(ctx, `UPDATE calls.rooms SET initiator_id = NULL WHERE initiator_id = $1`, userID); err != nil {
+		return fmt.Errorf("delete all data: clear call room initiators: %w", err)
+	}
+	// Resolved reports stay for the audit trail; only the resolver is detached.
+	if _, err := tx.ExecContext(ctx, `UPDATE admin.reports SET resolved_by = NULL WHERE resolved_by = $1`, userID); err != nil {
+		return fmt.Errorf("delete all data: clear report resolvers: %w", err)
+	}
+	// MLS sender columns are NOT NULL, so sender rows are deleted, not detached.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM crypto.group_mls_proposals WHERE sender_id = $1`, userID); err != nil {
+		return fmt.Errorf("delete all data: delete mls proposals: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM crypto.group_mls_welcome WHERE sender_id = $1`, userID); err != nil {
+		return fmt.Errorf("delete all data: delete mls welcome: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM crypto.group_mls_commits WHERE sender_id = $1`, userID); err != nil {
+		return fmt.Errorf("delete all data: delete mls commits: %w", err)
+	}
+	// Revoked tokens are user-scoped and must not outlive the account.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM auth.revoked_tokens WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("delete all data: delete revoked tokens: %w", err)
+	}
+	// Revocation events ride the deleting transaction: pg_notify is delivered
+	// only on commit, so sockets of withdrawn sessions close with the account.
+	// The generation event is emitted only when no active session remains
+	// (len(hashes) == 0); sockets with an already revoked session are closed by
+	// their own periodic token check.
+	events := make([]authctx.RevocationEvent, 0, len(hashes)+1)
+	for _, hash := range hashes {
+		events = append(events, authctx.RevocationEvent{UserID: userID, TokenHash: hash})
+	}
+	if len(hashes) == 0 {
+		events = append(events, authctx.RevocationEvent{UserID: userID, Generation: &generation})
+	}
+	for _, event := range events {
+		if err := authctx.NotifyRevocation(ctx, tx, event); err != nil {
+			return fmt.Errorf("delete all data: notify revocation: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM auth.users WHERE id = $1`, userID); err != nil {
+		return fmt.Errorf("delete all data: delete user: %w", err)
 	}
 	return tx.Commit()
 }
