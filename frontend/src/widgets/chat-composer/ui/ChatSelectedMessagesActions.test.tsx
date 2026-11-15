@@ -97,6 +97,41 @@ describe('ChatSelectedMessagesActions', () => {
     expect(screen.getByRole('button', { name: 'Переслать' })).toBeEnabled();
   });
 
+  it('отображает кнопку «Перевести», если есть переводимые сообщения и передан onTranslateMessage', async () => {
+    const user = userEvent.setup();
+    const onTranslateMessage = vi.fn();
+    useChatUiStore.setState({
+      selectedMessages: [makeMessage({ id: 'msg-1', content: 'Привет' })],
+    });
+    renderActions({ ...defaultProps, onTranslateMessage });
+
+    const translateBtn = screen.getByRole('button', { name: 'Перевести' });
+    expect(translateBtn).toBeInTheDocument();
+    expect(translateBtn).toBeEnabled();
+
+    await user.click(translateBtn);
+    expect(onTranslateMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('не отображает кнопку «Перевести», если нет переводимых сообщений', () => {
+    const onTranslateMessage = vi.fn();
+    useChatUiStore.setState({
+      selectedMessages: [makeMessage({ id: 'call-1', type: 'call', content: '{}' })],
+    });
+    renderActions({ ...defaultProps, onTranslateMessage });
+
+    expect(screen.queryByRole('button', { name: 'Перевести' })).not.toBeInTheDocument();
+  });
+
+  it('не отображает кнопку «Перевести», если onTranslateMessage не передан', () => {
+    useChatUiStore.setState({
+      selectedMessages: [makeMessage({ id: 'msg-1', content: 'Привет' })],
+    });
+    renderActions(defaultProps);
+
+    expect(screen.queryByRole('button', { name: 'Перевести' })).not.toBeInTheDocument();
+  });
+
   // Подтверждение — общий диалог чата (#840): панель только открывает его.
   it('«Удалить» открывает подтверждение, а не удаляет сразу', async () => {
     const user = userEvent.setup();

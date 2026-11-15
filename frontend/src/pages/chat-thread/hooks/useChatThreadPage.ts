@@ -138,6 +138,8 @@ export function useChatThreadPage({
     handleForward,
     handleCloseForwardModal,
     handleReact,
+    handleTranslateMessage,
+    confirmTranslate,
   } = useMessageActions({ draftRef, setIsForwardModalOpen: modals.setIsForwardModalOpen });
 
   const queryClient = useQueryClient();
@@ -263,6 +265,8 @@ export function useChatThreadPage({
     handleDelete,
     confirmDelete,
     handleForward,
+    handleTranslateMessage,
+    confirmTranslate,
     handleCloseForwardModal,
     handleRetryMessage,
     handleRetryMedia,

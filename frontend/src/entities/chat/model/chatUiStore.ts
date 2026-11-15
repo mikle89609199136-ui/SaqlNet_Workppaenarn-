@@ -15,6 +15,8 @@ export interface IReactionAuthorsModalState {
 }
 
 type TTranslations = Record<string, string>;
+/** Сообщения, перевод которых сейчас запрошен (#1085). */
+type TTranslatingIds = Record<string, true>;
 
 /**
  * Состояние интерфейса открытого чата.
@@ -38,6 +40,7 @@ interface IChatState {
   selectedMessages: TMessagesList;
   selectionMode: boolean;
   translations: TTranslations;
+  translatingIds: TTranslatingIds;
   actionMenu: IActionMenu | null;
   highlightedMessageId: string | null;
   /**
@@ -53,6 +56,8 @@ interface IChatState {
   /** Что удалить — открытый диалог «Удалить сообщение?» (#840). */
   deleteTargets: TMessagesList | null;
   pinRequest: { targets: TMessagesList; unpin: boolean } | null;
+  /** Запрос подтверждения согласия на перевод сообщений во внешний сервис (#1085). */
+  translatorConsentRequest: { targets: TMessagesList } | null;
   /** Активное закреплённое сообщение, соответствующее текущей позиции скролла ленты (#1057). */
   activePinnedId: string | null;
   /** Метка времени (timestamp ms), до которой заблокировано обновление activePinnedId от скролла (#1057). */
@@ -70,12 +75,14 @@ interface IChatActions {
   setSelectedMessages: Updater<TMessagesList>;
   setSelectionMode: (mode: boolean) => void;
   setTranslations: Updater<TTranslations>;
+  setTranslatingIds: Updater<TTranslatingIds>;
   setActionMenu: (menu: IActionMenu | null) => void;
   setHighlightedMessageId: (id: string | null) => void;
   setJumpRequest: (request: { chatId: string; messageId: string } | null) => void;
   setProfileRequest: (request: { chatId: string; userId: string } | null) => void;
   setPinRequest: (request: IChatState['pinRequest']) => void;
   setDeleteTargets: (targets: TMessagesList | null) => void;
+  setTranslatorConsentRequest: (request: { targets: TMessagesList } | null) => void;
   setActivePinnedId: (id: string | null) => void;
   setPinnedNavLockUntil: (untilMs: number) => void;
   setReactionAuthorsModal: (modal: IReactionAuthorsModalState | null) => void;
@@ -89,12 +96,14 @@ const initialChatState: IChatState = {
   selectedMessages: [],
   selectionMode: false,
   translations: {},
+  translatingIds: {},
   actionMenu: null,
   highlightedMessageId: null,
   jumpRequest: null,
   profileRequest: null,
   deleteTargets: null,
   pinRequest: null,
+  translatorConsentRequest: null,
   activePinnedId: null,
   pinnedNavLockUntil: 0,
   reactionAuthorsModal: null,
@@ -124,12 +133,14 @@ export const useChatUiStore = create<InitialState>((set) => {
     setSelectedMessages: withUpdater('selectedMessages'),
     setSelectionMode: (selectionMode) => set({ selectionMode }),
     setTranslations: withUpdater('translations'),
+    setTranslatingIds: withUpdater('translatingIds'),
     setActionMenu: (actionMenu) => set({ actionMenu }),
     setHighlightedMessageId: (highlightedMessageId) => set({ highlightedMessageId }),
     setJumpRequest: (jumpRequest) => set({ jumpRequest }),
     setProfileRequest: (profileRequest) => set({ profileRequest }),
     setPinRequest: (pinRequest) => set({ pinRequest }),
     setDeleteTargets: (deleteTargets) => set({ deleteTargets }),
+    setTranslatorConsentRequest: (translatorConsentRequest) => set({ translatorConsentRequest }),
     setActivePinnedId: (activePinnedId) => set({ activePinnedId }),
     setPinnedNavLockUntil: (pinnedNavLockUntil) => set({ pinnedNavLockUntil }),
     setReactionAuthorsModal: (reactionAuthorsModal) => set({ reactionAuthorsModal }),

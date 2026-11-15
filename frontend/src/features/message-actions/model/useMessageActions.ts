@@ -14,7 +14,8 @@ import {
 import { useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
-import { hasTranslatorConsent, rememberTranslatorConsent } from '@/services/translatorConsent';
+import { hasTranslatorConsent } from '@/services/translatorConsent';
+import { selectionTranslationTargets } from './messageActionRules';
 import { useChatUiStore } from '@/entities/chat';
 import { sortMessagesChronologically } from '@/shared/lib';
 import { copyRichTextToClipboard, richTextToHtml } from '@/shared/lib/richText';
@@ -23,7 +24,7 @@ import type { IMediaItem, IMessageDto } from '@/types';
 import { copyImageToClipboard } from './mediaActions';
 import { mediaBlobByUrl, mediaFileName, saveMedia } from '@/entities/media';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
@@ -51,7 +52,6 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const currentUser = useProfileStore((state) => state.user);
   const { chatId = '' } = useParams<{ chatId: string }>();
   const { t } = useTranslation();
-  const [translatingIds, setTranslatingIds] = useState(new Set());
 
   const queryClient = useQueryClient();
   const { data: chat } = useQuery(chatQuery(chatId));
@@ -69,9 +69,113 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const setSelectionMode = useChatUiStore((state) => state.setSelectionMode);
   const translations = useChatUiStore((state) => state.translations);
   const setTranslations = useChatUiStore((state) => state.setTranslations);
+  const setTranslatingIds = useChatUiStore((state) => state.setTranslatingIds);
   const setActionMenu = useChatUiStore((state) => state.setActionMenu);
 
-  const handleTranslateMessage = async (message: IMessageDto) => {
+  const markTranslating = (ids: string[], pending: boolean) =>
+    setTranslatingIds((prev) => {
+      const next = { ...prev };
+      for (const id of ids) {
+        if (pending) next[id] = true;
+        else delete next[id];
+      }
+      return next;
+    });
+
+  const executeTranslation = async (targets: IMessageDto[]) => {
+    // Пузыри показывают «Перевожу…», пока ответ не пришёл: пакет из двадцати
+    // сообщений — это четыре запроса подряд, без отклика это выглядит как зависание.
+    const targetIds = targets.map((item) => item.id);
+    markTranslating(targetIds, true);
+    try {
+      const newTranslations: Record<string, string> = {};
+      let successCount = 0;
+      let sameLanguageCount = 0;
+      let failCount = 0;
+
+      // Чанки по 5 для защиты от rate limit (HTTP 429) при большом выборе (#1085)
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+        const chunk = targets.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+          chunk.map(async (item) => {
+            const res = await translateText(item.content);
+            return { id: item.id, ...res };
+          })
+        );
+
+        results.forEach((res) => {
+          if (res.status === 'fulfilled') {
+            const { id, translatedText, targetLanguage, detectedSourceLang } = res.value;
+            if (detectedSourceLang && detectedSourceLang === targetLanguage) {
+              sameLanguageCount++;
+              return;
+            }
+            if (translatedText) {
+              newTranslations[id] = translatedText;
+              successCount++;
+              return;
+            }
+          }
+          failCount++;
+        });
+        markTranslating(
+          chunk.map((item) => item.id),
+          false
+        );
+      }
+
+      if (Object.keys(newTranslations).length > 0) {
+        setTranslations((prev) => ({ ...prev, ...newTranslations }));
+      }
+
+      if (sameLanguageCount === targets.length) {
+        showToast('success', t('alreadySameLanguage', 'Сообщение уже на вашем языке'));
+      } else if (failCount > 0 && successCount > 0) {
+        showToast(
+          'warning',
+          t('translatePartialError', 'Не удалось перевести некоторые сообщения')
+        );
+      } else if (failCount > 0 && successCount === 0) {
+        showToast('error', t('translateError', 'Не удалось перевести сообщение'));
+      }
+    } catch (_err) {
+      showToast('error', t('translateError', 'Не удалось перевести сообщение'));
+    } finally {
+      markTranslating(targetIds, false);
+    }
+  };
+
+  const confirmTranslate = async (targets: IMessageDto[]) => {
+    if (selectionMode || useChatUiStore.getState().selectionMode) {
+      handleCancelSelection();
+    }
+    await executeTranslation(targets);
+  };
+
+  const handleTranslateMessage = async (message?: IMessageDto) => {
+    const isSelection = selectionMode || useChatUiStore.getState().selectionMode;
+    if (isSelection) {
+      const state = useChatUiStore.getState();
+      const targets = selectionTranslationTargets(
+        state.selectedMessages,
+        currentUser?.id,
+        state.translations,
+        state.translatingIds
+      );
+      if (targets.length === 0) return;
+
+      if (!hasTranslatorConsent()) {
+        useChatUiStore.getState().setTranslatorConsentRequest({ targets });
+        return;
+      }
+
+      await confirmTranslate(targets);
+      return;
+    }
+
+    if (!message || useChatUiStore.getState().translatingIds[message.id]) return;
+
     if (translations[message.id]) {
       setTranslations((prev) => {
         const next = { ...prev };
@@ -81,40 +185,12 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       return;
     }
 
-    // Перевод отправляет расшифрованный текст в Google. Обещать сквозное
-    // шифрование и молча делать это — обман, поэтому спрашиваем. Один раз
-    // на аккаунт: вопрос на каждое сообщение приучил бы жать «да» не читая.
     if (!hasTranslatorConsent()) {
-      const agreed = window.confirm(
-        t('translatorConsent', 'Текст сообщения будет отправлен в Google для перевода. Продолжить?')
-      );
-
-      if (!agreed) return;
-
-      rememberTranslatorConsent();
+      useChatUiStore.getState().setTranslatorConsentRequest({ targets: [message] });
+      return;
     }
 
-    setTranslatingIds((prev) => new Set(prev).add(message.id));
-    try {
-      const { translatedText, targetLanguage, detectedSourceLang } = await translateText(
-        message.content
-      );
-
-      if (detectedSourceLang && detectedSourceLang === targetLanguage) {
-        showToast('success', t('alreadySameLanguage', 'Сообщение уже на вашем языке'));
-        return;
-      }
-
-      setTranslations((prev) => ({ ...prev, [message.id]: translatedText }));
-    } catch (err) {
-      showToast('error', t('translateError', 'Не удалось перевести сообщение'));
-    } finally {
-      setTranslatingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(message.id);
-        return next;
-      });
-    }
+    await confirmTranslate([message]);
   };
 
   /**
@@ -359,8 +435,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   }
 
   return {
-    translatingIds,
     handleTranslateMessage,
+    confirmTranslate,
     handleDelete,
     confirmDelete,
     handleReact,
