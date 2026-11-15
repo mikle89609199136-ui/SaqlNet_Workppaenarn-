@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatUiStore } from '@/entities/chat';
 import { makeMessage, makePin } from '@/test/fixtures';
@@ -87,7 +87,7 @@ describe('findActivePinnedMessageId (#1057)', () => {
       findActivePinnedMessageId({
         pinnedMessages: [],
         feedItems,
-        virtualItems: [{ index: 0 }],
+        visibleRange: { startIndex: 0, endIndex: 0 },
       })
     ).toBeNull();
 
@@ -95,18 +95,18 @@ describe('findActivePinnedMessageId (#1057)', () => {
       findActivePinnedMessageId({
         pinnedMessages: [pin1],
         feedItems: [],
-        virtualItems: [],
+        visibleRange: null,
       })
     ).toBe('msg-1');
   });
 
-  it('возвращает видимый пин, если он находится в пределах virtualItems', () => {
+  it('возвращает видимый пин, если он находится в видимой области', () => {
     // Видна область 8..15 (содержит msg-1 на индексе 10)
     expect(
       findActivePinnedMessageId({
         pinnedMessages: [pin1, pin2, pin3],
         feedItems,
-        virtualItems: [{ index: 8 }, { index: 10 }, { index: 15 }],
+        visibleRange: { startIndex: 8, endIndex: 15 },
       })
     ).toBe('msg-1');
 
@@ -115,17 +115,60 @@ describe('findActivePinnedMessageId (#1057)', () => {
       findActivePinnedMessageId({
         pinnedMessages: [pin1, pin2, pin3],
         feedItems,
-        virtualItems: [{ index: 48 }, { index: 50 }, { index: 55 }],
+        visibleRange: { startIndex: 48, endIndex: 55 },
       })
     ).toBe('msg-2');
   });
 
-  it('выбирает верхний видимый пин, если на экране видно несколько пинов', () => {
+  it('выбирает нижний видимый пин, если на экране видно несколько пинов', () => {
     expect(
       findActivePinnedMessageId({
         pinnedMessages: [pin1, pin2, pin3],
         feedItems,
-        virtualItems: [{ index: 10 }, { index: 50 }],
+        visibleRange: { startIndex: 10, endIndex: 50 },
+      })
+    ).toBe('msg-2');
+
+    // Низ чата: видны pin2 и pin3 — показывается самое свежее
+    expect(
+      findActivePinnedMessageId({
+        pinnedMessages: [pin1, pin2, pin3],
+        feedItems,
+        visibleRange: { startIndex: 45, endIndex: 110 },
+      })
+    ).toBe('msg-3');
+  });
+
+  it('удерживает показанное закрепление, пока оно на экране', () => {
+    // После клика по плашке лента встала на pin2, в том же кадре виден pin3
+    expect(
+      findActivePinnedMessageId({
+        pinnedMessages: [pin1, pin2, pin3],
+        feedItems,
+        visibleRange: { startIndex: 40, endIndex: 95 },
+        currentId: 'msg-2',
+      })
+    ).toBe('msg-2');
+
+    // pin2 ушёл с экрана — плашка переходит на видимый pin3
+    expect(
+      findActivePinnedMessageId({
+        pinnedMessages: [pin1, pin2, pin3],
+        feedItems,
+        visibleRange: { startIndex: 55, endIndex: 95 },
+        currentId: 'msg-2',
+      })
+    ).toBe('msg-3');
+  });
+
+  it('не считает видимым закрепление сразу за краем экрана', () => {
+    // pin2 (50) в пяти строках ниже окна 20..45 — в overscan виртуализатора,
+    // но не на экране: активен пройденный pin1
+    expect(
+      findActivePinnedMessageId({
+        pinnedMessages: [pin1, pin2, pin3],
+        feedItems,
+        visibleRange: { startIndex: 20, endIndex: 45 },
       })
     ).toBe('msg-1');
   });
@@ -136,7 +179,7 @@ describe('findActivePinnedMessageId (#1057)', () => {
       findActivePinnedMessageId({
         pinnedMessages: [pin1, pin2, pin3],
         feedItems,
-        virtualItems: [{ index: 25 }, { index: 30 }, { index: 35 }],
+        visibleRange: { startIndex: 25, endIndex: 35 },
       })
     ).toBe('msg-1');
 
@@ -145,7 +188,7 @@ describe('findActivePinnedMessageId (#1057)', () => {
       findActivePinnedMessageId({
         pinnedMessages: [pin1, pin2, pin3],
         feedItems,
-        virtualItems: [{ index: 65 }, { index: 70 }, { index: 75 }],
+        visibleRange: { startIndex: 65, endIndex: 75 },
       })
     ).toBe('msg-2');
 
@@ -154,7 +197,7 @@ describe('findActivePinnedMessageId (#1057)', () => {
       findActivePinnedMessageId({
         pinnedMessages: [pin1, pin2, pin3],
         feedItems,
-        virtualItems: [{ index: 100 }, { index: 105 }, { index: 110 }],
+        visibleRange: { startIndex: 100, endIndex: 110 },
       })
     ).toBe('msg-3');
   });
@@ -165,7 +208,7 @@ describe('findActivePinnedMessageId (#1057)', () => {
       findActivePinnedMessageId({
         pinnedMessages: [pin1, pin2, pin3],
         feedItems,
-        virtualItems: [{ index: 0 }, { index: 2 }, { index: 5 }],
+        visibleRange: { startIndex: 0, endIndex: 5 },
       })
     ).toBe('msg-1');
   });
@@ -181,7 +224,7 @@ describe('findActivePinnedMessageId (#1057)', () => {
       findActivePinnedMessageId({
         pinnedMessages: [olderPin, pin2],
         feedItems,
-        virtualItems: [{ index: 20 }], // до pin2 (50)
+        visibleRange: { startIndex: 20, endIndex: 20 }, // до pin2 (50)
       })
     ).toBe('msg-older');
   });
@@ -197,9 +240,19 @@ describe('findActivePinnedMessageId (#1057)', () => {
       findActivePinnedMessageId({
         pinnedMessages: unsortedPins,
         feedItems,
-        virtualItems: [{ index: 65 }, { index: 70 }, { index: 75 }],
+        visibleRange: { startIndex: 65, endIndex: 75 },
       })
     ).toBe('msg-2');
+  });
+
+  it('выше всех закреплений удерживает самое раннее в истории, а не первое в массиве', () => {
+    expect(
+      findActivePinnedMessageId({
+        pinnedMessages: [pin3, pin2, pin1],
+        feedItems,
+        visibleRange: { startIndex: 0, endIndex: 5 },
+      })
+    ).toBe('msg-1');
   });
 });
 
@@ -233,18 +286,18 @@ describe('usePinnedScrollTracker (#1057)', () => {
 
   it('устанавливает activePinnedId при скролле', () => {
     const { rerender } = renderHook(
-      ({ virtualItems }) =>
+      ({ visibleRange }) =>
         usePinnedScrollTracker({
           pinnedMessages: [pin1, pin2],
           feedItems,
-          virtualItems,
+          visibleRange,
         }),
-      { initialProps: { virtualItems: [{ index: 0 }] } }
+      { initialProps: { visibleRange: { startIndex: 0, endIndex: 0 } } }
     );
 
     expect(useChatUiStore.getState().activePinnedId).toBe('m-1');
 
-    rerender({ virtualItems: [{ index: 1 }] });
+    rerender({ visibleRange: { startIndex: 1, endIndex: 1 } });
     expect(useChatUiStore.getState().activePinnedId).toBe('m-2');
   });
 
@@ -256,12 +309,60 @@ describe('usePinnedScrollTracker (#1057)', () => {
       usePinnedScrollTracker({
         pinnedMessages: [pin1, pin2],
         feedItems,
-        virtualItems: [{ index: 1 }],
+        visibleRange: { startIndex: 1, endIndex: 1 },
       })
     );
 
     // activePinnedId остался 'm-1', так как лок заблокировал изменение
     expect(useChatUiStore.getState().activePinnedId).toBe('m-1');
+  });
+
+  it('после клика ждёт, пока цель окажется на экране, и затем удерживает её', () => {
+    const pin3 = makePin({ messageId: 'm-3', message: makeMessage({ id: 'm-3' }) });
+    const filler = (id: string): TFeedItem => ({
+      id,
+      type: 'message',
+      message: makeMessage({ id }),
+      isFirstInGroup: true,
+      isLastInGroup: true,
+      isDifferentAuthor: false,
+    });
+    // m-1 (0), m-2 (1), пять строк, m-3 (7)
+    const items: TFeedItem[] = [
+      ...feedItems,
+      ...['f-1', 'f-2', 'f-3', 'f-4', 'f-5'].map(filler),
+      {
+        id: 'm-3',
+        type: 'message',
+        message: pin3.message,
+        isFirstInGroup: true,
+        isLastInGroup: true,
+        isDifferentAuthor: false,
+      },
+    ];
+    // Клик по плашке выбрал m-3, лента только начала ехать
+    useChatUiStore.getState().setActivePinnedId('m-3');
+    useChatUiStore.getState().setPinnedNavLockUntil(Date.now() + 5000);
+
+    const { rerender } = renderHook(
+      ({ visibleRange }) =>
+        usePinnedScrollTracker({
+          pinnedMessages: [pin1, pin2, pin3],
+          feedItems: items,
+          visibleRange,
+        }),
+      { initialProps: { visibleRange: { startIndex: 0, endIndex: 3 } } }
+    );
+    // По пути видны m-1 и m-2 — плашка остаётся на цели
+    expect(useChatUiStore.getState().activePinnedId).toBe('m-3');
+
+    // Доехали: цель и m-2 в одном кадре — удерживается цель
+    rerender({ visibleRange: { startIndex: 1, endIndex: 7 } });
+    expect(useChatUiStore.getState().activePinnedId).toBe('m-3');
+
+    // Человек прокрутил вверх, цель ушла с экрана — трекер снова ведёт плашку
+    rerender({ visibleRange: { startIndex: 0, endIndex: 4 } });
+    expect(useChatUiStore.getState().activePinnedId).toBe('m-2');
   });
 
   it('сбрасывает activePinnedId в null при пустом списке пинов', () => {
@@ -271,7 +372,7 @@ describe('usePinnedScrollTracker (#1057)', () => {
       usePinnedScrollTracker({
         pinnedMessages: [],
         feedItems,
-        virtualItems: [{ index: 0 }],
+        visibleRange: { startIndex: 0, endIndex: 0 },
       })
     );
 

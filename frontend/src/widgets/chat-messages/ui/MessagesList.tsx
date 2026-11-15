@@ -144,7 +144,7 @@ export const MessagesList = memo(
     usePinnedScrollTracker({
       pinnedMessages,
       feedItems,
-      virtualItems,
+      visibleRange: virtualizer.range,
     });
 
     const scrollToFeedIndex = useCallback(
