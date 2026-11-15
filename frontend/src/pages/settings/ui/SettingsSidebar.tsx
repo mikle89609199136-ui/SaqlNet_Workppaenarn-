@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { meQuery } from '@/entities/user';
+import { useOpenSavedMessages } from '@/features/chat-actions';
 import { ROUTES, SETTINGS_SECTIONS, type TSettingsSection } from '@/shared/config/routes';
 import { Avatar, Icon } from '@/shared/ui';
 import type { TIconTypes } from '@/types';
@@ -26,6 +27,7 @@ const SECTION_ICONS: Record<TSettingsSection, TIconTypes> = {
  */
 export function SettingsSidebar() {
   const { t } = useTranslation();
+  const openSaved = useOpenSavedMessages();
   const { data: me } = useQuery(meQuery());
   const name = [me?.firstName, me?.lastName].filter(Boolean).join(' ') || me?.username || '';
 
@@ -69,6 +71,23 @@ export function SettingsSidebar() {
       <SettingsSearch />
 
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-3 [scrollbar-width:thin]">
+        <button
+          className="flex min-h-13 shrink-0 items-center gap-3.5 rounded-button px-3 py-2 text-left hover:layer-hover focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand"
+          disabled={openSaved.isPending}
+          onClick={() => openSaved.mutate()}
+          type="button"
+        >
+          <span
+            aria-hidden="true"
+            className="flex size-8.5 shrink-0 items-center justify-center text-brand"
+          >
+            <Icon className="size-4.5 stroke-[1.8px]" name="bookmark" />
+          </span>
+          <span className="min-w-0 grow truncate text-body text-ink">
+            {t('savedMessages.title', 'Избранное')}
+          </span>
+          <Icon aria-hidden="true" className="size-4.5 shrink-0 text-ink-3" name="chevronRight" />
+        </button>
         {SETTINGS_SECTIONS.map((section) => (
           <SettingsMenuItem
             icon={SECTION_ICONS[section]}

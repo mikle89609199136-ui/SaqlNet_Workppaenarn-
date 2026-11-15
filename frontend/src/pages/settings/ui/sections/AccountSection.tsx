@@ -12,6 +12,7 @@ import {
 import { meQuery, sessionsQuery } from '@/entities/user';
 import { clearAuthSession, signOut } from '@/features/auth';
 import { ProfileEditForm } from '@/features/user-profile-edit';
+import { PhotoEditorModal } from '@/features/photo-editor';
 import { ChangePasswordForm } from '@/features/change-password';
 import { SessionsManager } from '@/features/session-management';
 import { KeyBackupSettings } from '@/features/key-backup';
@@ -70,7 +71,13 @@ export function AccountSection() {
     }
 
     if (view === 'profile') {
-      return <ProfileEditForm onBack={() => openView('overview')} user={user} />;
+      return (
+        <ProfileEditForm
+          onBack={() => openView('overview')}
+          renderPhotoEditor={(props) => <PhotoEditorModal {...props} />}
+          user={user}
+        />
+      );
     }
 
     if (view === 'password') {

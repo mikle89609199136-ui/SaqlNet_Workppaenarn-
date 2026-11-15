@@ -101,7 +101,7 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
   );
 
   const renderRows = (list: IChatDto[]) => (
-    <VirtualChatList chats={list} renderRow={renderRow} scrollRef={panelRef} />
+    <VirtualChatList key={tab} chats={list} renderRow={renderRow} scrollRef={panelRef} />
   );
 
   const selectTab = (value: TListTab) => {
@@ -187,7 +187,22 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
   } else {
     /* Закреплённые — просто первыми, без отдельного раздела: порядок
        держат сервер и chatsQuery, строку отмечает булавка. */
-    content = visibleChats.length > 0 ? renderRows(visibleChats) : <EmptyChatListPlaceholder />;
+    content = (
+      <>
+        {!visibleChats.some((chat) => chat.type === 'self') && (
+          <button
+            className="flex w-full shrink-0 items-center gap-3 rounded-bubble px-3 py-2.25 text-left hover:layer-hover active:layer-press focus-visible:outline-2 focus-visible:outline-brand focus-visible:-outline-offset-2"
+            disabled={openSaved.isPending}
+            onClick={() => openSaved.mutate()}
+            type="button"
+          >
+            <Avatar icon="bookmark" name={t('savedMessages.title', 'Избранное')} size="lg" />
+            <span className="text-body font-semibold">{t('savedMessages.title', 'Избранное')}</span>
+          </button>
+        )}
+        {visibleChats.length > 0 ? renderRows(visibleChats) : <EmptyChatListPlaceholder />}
+      </>
+    );
   }
 
   /* Заголовок говорит и о связи (#819): пока её нет, «Сообщения» меняются
@@ -215,21 +230,6 @@ export function ChatsList({ onOpenCreateGroup }: Props) {
           {connection !== 'connected' && <Spinner className="size-3.5 border-2" tone="current" />}
           <span className="truncate">{title}</span>
         </h1>
-        {/* Вход в «Избранное» (#1075): себя в поиске людей не найти. */}
-        <button
-          aria-label={t('savedMessages.title', 'Избранное')}
-          className={buttonStyles({
-            variant: 'secondary',
-            iconOnly: true,
-            className: 'text-ink-2',
-          })}
-          disabled={openSaved.isPending}
-          onClick={() => openSaved.mutate()}
-          title={t('savedMessages.title', 'Избранное')}
-          type="button"
-        >
-          <Icon name="bookmark" size="md" />
-        </button>
         <Link
           aria-label={t('settings.menu.title', 'Настройки')}
           className={buttonStyles({

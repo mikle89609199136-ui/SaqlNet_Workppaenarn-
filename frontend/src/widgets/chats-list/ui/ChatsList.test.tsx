@@ -83,6 +83,12 @@ describe('ChatsList widget', () => {
     renderChatsList(vi.fn(), queryClient);
 
     expect(screen.getByText('Чатов пока нет')).toBeInTheDocument();
+    const saved = screen.getByRole('button', { name: 'Избранное' });
+    expect(screen.getByRole('tabpanel')).toContainElement(saved);
+    for (const tab of ['Группы', 'Звонки', 'Архив']) {
+      fireEvent.click(screen.getByRole('tab', { name: tab }));
+      expect(screen.queryByRole('button', { name: 'Избранное' })).toBeNull();
+    }
   });
 
   it('отображает список чатов, если чаты начаты', () => {
@@ -474,14 +480,15 @@ describe('«Избранное» из шапки списка', () => {
     expect(screen.queryByText('открыт чат')).toBeNull();
   });
 
-  it('пустое «Избранное» в списке не показано, с сообщением — показано', () => {
+  it('«Избранное» показано один раз и без сообщений, и с сообщением', () => {
     const empty = makeChat({ id: 'chat-self', type: 'self', title: 'Избранное' } as never);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     queryClient.setQueryData(chatKeys.list(), [empty]);
     queryClient.setQueryData(chatKeys.archived(), []);
 
     const { unmount } = renderAt(queryClient);
-    expect(screen.queryByRole('link', { name: /Избранное/ })).toBeNull();
+    expect(screen.getAllByRole('link', { name: /Избранное/ })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Избранное' })).toBeNull();
     unmount();
 
     queryClient.setQueryData(chatKeys.list(), [

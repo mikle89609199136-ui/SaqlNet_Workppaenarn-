@@ -246,15 +246,8 @@ export function CreateGroupModal({ onClose }: Props) {
         </div>
 
         <ul className="flex flex-col overflow-y-auto overflow-x-hidden styled-scrollbar">
-          {people.length === 0 ? (
-            <li className="mx-auto py-2 opacity-70">
-              {isSearching
-                ? t('usersNotFound', 'Никого не нашлось')
-                : t(
-                    'noChatsYet',
-                    'Участников можно найти поиском — или создать группу только для себя'
-                  )}
-            </li>
+          {people.length === 0 && isSearching ? (
+            <li className="mx-auto py-2 opacity-70">{t('usersNotFound', 'Никого не нашлось')}</li>
           ) : (
             people.map((user) => {
               const isChosen = selected.some((member) => member.id === user.id);
