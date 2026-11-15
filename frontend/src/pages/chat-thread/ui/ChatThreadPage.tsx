@@ -169,6 +169,7 @@ export function ChatThreadPage() {
             loadOlder={loadOlder}
             messages={messages}
             threadMessages={messages}
+            pinnedMessages={pinnedMessages}
             messagesRef={messagesRef}
             onCancelMessage={handleCancelMessage}
             onMessagesSeen={markMessagesAsRead}
