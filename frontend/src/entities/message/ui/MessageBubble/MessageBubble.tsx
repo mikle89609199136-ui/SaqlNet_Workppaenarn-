@@ -90,6 +90,8 @@ interface Props {
   tabIndex?: number;
   searchQuery?: string;
   isSearchCurrent?: boolean;
+  /** Перевод запрошен и ещё не пришёл (#1085). */
+  isTranslating?: boolean;
 }
 
 /* Цвет имени автора — из его идентификатора: соседние реплики разных
@@ -304,6 +306,7 @@ export const MessageBubble = memo(
     tabIndex,
     searchQuery,
     isSearchCurrent = false,
+    isTranslating = false,
   }: Props) => {
     const setActionMenu = useChatUiStore((state) => state.setActionMenu);
     const actionMenu = useChatUiStore((state) => state.actionMenu);
@@ -676,6 +679,19 @@ export const MessageBubble = memo(
                 }
                 trailing={hasInlineMeta ? cornerMeta : undefined}
               />
+            )}
+
+            {isTranslating && (
+              <p
+                aria-live="polite"
+                className={cn(
+                  'mt-1 flex items-center gap-1 text-meta motion-safe:animate-pulse',
+                  mine ? 'text-out-meta' : 'text-ink-3'
+                )}
+              >
+                <Icon className="size-3.5 shrink-0" name="language" />
+                {t('translating', 'Перевожу…')}
+              </p>
             )}
 
             {hasMeta && !hasInlineMeta && !isCall && !isVoice && (

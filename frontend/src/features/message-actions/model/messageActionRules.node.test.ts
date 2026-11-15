@@ -5,6 +5,7 @@ import {
   availableMessageActions,
   canForwardMessage,
   canTranslateMessage,
+  selectionTranslationTargets,
   type IMessageActionContext,
 } from './messageActionRules';
 
@@ -202,5 +203,21 @@ describe('«Перевести» и canTranslateMessage (#1085)', () => {
   it('чужое фото/видео/файл с текстовой подписью переводимо', () => {
     const msg = photo({ senderId: OTHER, content: 'Photo caption' });
     expect(canTranslateMessage(msg, ME)).toBe(true);
+  });
+
+  it('из выделенного переводятся только ещё не переведённые и не переводящиеся', () => {
+    const fresh = makeMessage({ id: 'fresh', senderId: OTHER, content: 'Hi' });
+    const translated = makeMessage({ id: 'done', senderId: OTHER, content: 'Hi' });
+    const inFlight = makeMessage({ id: 'busy', senderId: OTHER, content: 'Hi' });
+    const own = makeMessage({ id: 'own', senderId: ME, content: 'Hi' });
+
+    const targets = selectionTranslationTargets(
+      [fresh, translated, inFlight, own],
+      ME,
+      { done: 'Привет' },
+      { busy: true }
+    );
+
+    expect(targets.map((m) => m.id)).toEqual(['fresh']);
   });
 });

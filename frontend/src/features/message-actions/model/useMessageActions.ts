@@ -15,7 +15,7 @@ import { useProfileStore } from '@/entities/user';
 import { services } from '@/services/serviceContainer';
 import { translateText } from '@/services/translatorApi';
 import { hasTranslatorConsent } from '@/services/translatorConsent';
-import { canTranslateMessage } from './messageActionRules';
+import { selectionTranslationTargets } from './messageActionRules';
 import { useChatUiStore } from '@/entities/chat';
 import { sortMessagesChronologically } from '@/shared/lib';
 import { copyRichTextToClipboard, richTextToHtml } from '@/shared/lib/richText';
@@ -69,9 +69,24 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const setSelectionMode = useChatUiStore((state) => state.setSelectionMode);
   const translations = useChatUiStore((state) => state.translations);
   const setTranslations = useChatUiStore((state) => state.setTranslations);
+  const setTranslatingIds = useChatUiStore((state) => state.setTranslatingIds);
   const setActionMenu = useChatUiStore((state) => state.setActionMenu);
 
+  const markTranslating = (ids: string[], pending: boolean) =>
+    setTranslatingIds((prev) => {
+      const next = { ...prev };
+      for (const id of ids) {
+        if (pending) next[id] = true;
+        else delete next[id];
+      }
+      return next;
+    });
+
   const executeTranslation = async (targets: IMessageDto[]) => {
+    // Пузыри показывают «Перевожу…», пока ответ не пришёл: пакет из двадцати
+    // сообщений — это четыре запроса подряд, без отклика это выглядит как зависание.
+    const targetIds = targets.map((item) => item.id);
+    markTranslating(targetIds, true);
     try {
       const newTranslations: Record<string, string> = {};
       let successCount = 0;
@@ -104,6 +119,10 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
           }
           failCount++;
         });
+        markTranslating(
+          chunk.map((item) => item.id),
+          false
+        );
       }
 
       if (Object.keys(newTranslations).length > 0) {
@@ -122,6 +141,8 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       }
     } catch (_err) {
       showToast('error', t('translateError', 'Не удалось перевести сообщение'));
+    } finally {
+      markTranslating(targetIds, false);
     }
   };
 
@@ -135,9 +156,13 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
   const handleTranslateMessage = async (message?: IMessageDto) => {
     const isSelection = selectionMode || useChatUiStore.getState().selectionMode;
     if (isSelection) {
-      const targets = useChatUiStore
-        .getState()
-        .selectedMessages.filter((m) => canTranslateMessage(m, currentUser?.id));
+      const state = useChatUiStore.getState();
+      const targets = selectionTranslationTargets(
+        state.selectedMessages,
+        currentUser?.id,
+        state.translations,
+        state.translatingIds
+      );
       if (targets.length === 0) return;
 
       if (!hasTranslatorConsent()) {
@@ -149,7 +174,7 @@ export const useMessageActions = ({ setIsForwardModalOpen, draftRef }: Props) =>
       return;
     }
 
-    if (!message) return;
+    if (!message || useChatUiStore.getState().translatingIds[message.id]) return;
 
     if (translations[message.id]) {
       setTranslations((prev) => {

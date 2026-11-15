@@ -2,7 +2,7 @@ import { Button, Icon } from '@/shared/ui';
 import { useEscapeKey } from '@/shared/lib';
 import { useChatUiStore } from '@/entities/chat';
 import { useProfileStore } from '@/entities/user';
-import { canForwardMessage, canTranslateMessage } from '@/features/message-actions';
+import { canForwardMessage, selectionTranslationTargets } from '@/features/message-actions';
 import { useTranslation } from 'react-i18next';
 import { ComposerRow } from './ComposerRow';
 import { ComposerWrapper } from './ComposerWrapper';
@@ -36,8 +36,17 @@ export const ChatSelectedMessagesActions = ({
   // Пересылается всё отмеченное одной пачкой: если среди него звонок или
   // вложение, которое не открылось, кнопки нет (#1061).
   const canForward = selectedMessages.every(canForwardMessage);
-  // Перевод доступен, если среди выбранных есть хотя бы одно входящее текстовое сообщение (#1085).
-  const canTranslate = selectedMessages.some((m) => canTranslateMessage(m, currentUserId));
+  // Перевод доступен, если среди выбранных есть входящее сообщение с текстом,
+  // которое ещё не переведено и не переводится (#1085).
+  const canTranslate = useChatUiStore(
+    (state) =>
+      selectionTranslationTargets(
+        state.selectedMessages,
+        currentUserId,
+        state.translations,
+        state.translatingIds
+      ).length > 0
+  );
 
   const isConfirmOpen = useChatUiStore((state) => Boolean(state.deleteTargets));
 

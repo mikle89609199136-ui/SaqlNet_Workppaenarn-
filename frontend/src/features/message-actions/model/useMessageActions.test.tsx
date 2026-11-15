@@ -275,5 +275,78 @@ describe('перевод сообщений (#1085)', () => {
     expect(useChatUiStore.getState().translations['m1']).toBe('Доброе утро');
     expect(useChatUiStore.getState().translations['m2']).toBeUndefined();
     expect(getToasts().some((t) => t.type === 'warning')).toBe(true);
+    expect(useChatUiStore.getState().translatingIds).toEqual({});
+  });
+
+  it('пакетный перевод: уже переведённые сообщения повторно не отправляются', async () => {
+    const { hook } = setup();
+    const translated = makeMessage({ id: 'm1', senderId: 'peer-1', content: 'Good morning' });
+    const fresh = makeMessage({ id: 'm2', senderId: 'peer-1', content: 'Good evening' });
+    vi.spyOn(translatorConsent, 'hasTranslatorConsent').mockReturnValue(true);
+
+    act(() => {
+      useChatUiStore.setState({
+        selectedMessages: [translated, fresh],
+        selectionMode: true,
+        translations: { m1: 'Доброе утро' },
+      });
+    });
+
+    const translateSpy = vi.spyOn(translatorApi, 'translateText').mockResolvedValue({
+      translatedText: 'Добрый вечер',
+      targetLanguage: 'ru',
+      detectedSourceLang: 'en',
+    });
+
+    await act(async () => {
+      await hook.result.current.handleTranslateMessage();
+    });
+
+    expect(translateSpy).toHaveBeenCalledTimes(1);
+    expect(translateSpy).toHaveBeenCalledWith('Good evening');
+    expect(useChatUiStore.getState().translations).toEqual({
+      m1: 'Доброе утро',
+      m2: 'Добрый вечер',
+    });
+  });
+
+  it('помечает сообщения как переводимые, пока ответ не пришёл', async () => {
+    const { hook } = setup();
+    const msg = makeMessage({ id: 'm1', senderId: 'peer-1', content: 'Good morning' });
+    vi.spyOn(translatorConsent, 'hasTranslatorConsent').mockReturnValue(true);
+
+    let resolveTranslation: (
+      value: Awaited<ReturnType<typeof translatorApi.translateText>>
+    ) => void = () => {};
+    const translateSpy = vi.spyOn(translatorApi, 'translateText').mockReturnValue(
+      new Promise((resolve) => {
+        resolveTranslation = resolve;
+      })
+    );
+
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = hook.result.current.handleTranslateMessage(msg);
+    });
+
+    expect(useChatUiStore.getState().translatingIds).toEqual({ m1: true });
+
+    // Повторное нажатие во время запроса второй запрос не отправляет
+    await act(async () => {
+      await hook.result.current.handleTranslateMessage(msg);
+    });
+    expect(translateSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveTranslation({
+        translatedText: 'Доброе утро',
+        targetLanguage: 'ru',
+        detectedSourceLang: 'en',
+      });
+      await pending;
+    });
+
+    expect(useChatUiStore.getState().translatingIds).toEqual({});
+    expect(useChatUiStore.getState().translations['m1']).toBe('Доброе утро');
   });
 });

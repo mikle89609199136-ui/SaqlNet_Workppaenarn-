@@ -15,6 +15,8 @@ export interface IReactionAuthorsModalState {
 }
 
 type TTranslations = Record<string, string>;
+/** Сообщения, перевод которых сейчас запрошен (#1085). */
+type TTranslatingIds = Record<string, true>;
 
 /**
  * Состояние интерфейса открытого чата.
@@ -38,6 +40,7 @@ interface IChatState {
   selectedMessages: TMessagesList;
   selectionMode: boolean;
   translations: TTranslations;
+  translatingIds: TTranslatingIds;
   actionMenu: IActionMenu | null;
   highlightedMessageId: string | null;
   /**
@@ -68,6 +71,7 @@ interface IChatActions {
   setSelectedMessages: Updater<TMessagesList>;
   setSelectionMode: (mode: boolean) => void;
   setTranslations: Updater<TTranslations>;
+  setTranslatingIds: Updater<TTranslatingIds>;
   setActionMenu: (menu: IActionMenu | null) => void;
   setHighlightedMessageId: (id: string | null) => void;
   setJumpRequest: (request: { chatId: string; messageId: string } | null) => void;
@@ -86,6 +90,7 @@ const initialChatState: IChatState = {
   selectedMessages: [],
   selectionMode: false,
   translations: {},
+  translatingIds: {},
   actionMenu: null,
   highlightedMessageId: null,
   jumpRequest: null,
@@ -120,6 +125,7 @@ export const useChatUiStore = create<InitialState>((set) => {
     setSelectedMessages: withUpdater('selectedMessages'),
     setSelectionMode: (selectionMode) => set({ selectionMode }),
     setTranslations: withUpdater('translations'),
+    setTranslatingIds: withUpdater('translatingIds'),
     setActionMenu: (actionMenu) => set({ actionMenu }),
     setHighlightedMessageId: (highlightedMessageId) => set({ highlightedMessageId }),
     setJumpRequest: (jumpRequest) => set({ jumpRequest }),

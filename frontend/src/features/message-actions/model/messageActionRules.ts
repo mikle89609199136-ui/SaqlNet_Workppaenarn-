@@ -79,6 +79,22 @@ export function canTranslateMessage(message: IMediaItem, currentUserId?: string 
   return !isMine && hasCopyableText(message);
 }
 
+/**
+ * Что переводить из выделенного (#1085): переводимые сообщения без готового
+ * перевода и без запроса в пути. Повторный перевод показанного только
+ * отправил бы текст в Google ещё раз ради того же результата.
+ */
+export function selectionTranslationTargets<T extends IMediaItem>(
+  messages: T[],
+  currentUserId: string | null | undefined,
+  translations: Record<string, string>,
+  translatingIds: Record<string, true>
+): T[] {
+  return messages.filter(
+    (m) => canTranslateMessage(m, currentUserId) && !translations[m.id] && !translatingIds[m.id]
+  );
+}
+
 export function availableMessageActions(
   message: IMediaItem,
   { mine, place, isPinned, canCopyImage }: IMessageActionContext

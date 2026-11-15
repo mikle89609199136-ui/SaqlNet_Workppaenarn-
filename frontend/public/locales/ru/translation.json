@@ -1025,6 +1025,7 @@
   "transferAndLeave": "Передать и выйти",
   "translateError": "Не удалось перевести сообщение",
   "translatePartialError": "Не удалось перевести некоторые сообщения",
+  "translating": "Перевожу…",
   "translatorConsent": "Текст сообщения будет отправлен в Google для перевода. Продолжить?",
   "translatorConsentTitle": "Перевод сообщений",
   "typing": "печатает...",

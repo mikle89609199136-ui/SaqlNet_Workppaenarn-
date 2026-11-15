@@ -6,7 +6,7 @@ import { useMessageActions } from '../model/useMessageActions';
 import {
   availableMessageActions,
   canForwardMessage,
-  canTranslateMessage,
+  selectionTranslationTargets,
   type TMessageActionPlace,
 } from '../model/messageActionRules';
 import { canCopyImageToClipboard } from '../model/mediaActions';
@@ -179,9 +179,17 @@ export const MessageActionsPopover = ({
   // В режиме выделения пересылаются все отмеченные: одно непересылаемое
   // среди них сорвало бы всю пачку (#1061).
   const forwardsSelection = !selectionMode || selectedMessages.every(canForwardMessage);
-  // В режиме выделения перевод доступен, если хотя бы одно сообщение переводимо (#1085).
-  const canTranslateSelection = selectedMessages.some((m) =>
-    canTranslateMessage(m, currentUser?.id)
+  // В режиме выделения перевод доступен, если есть что переводить: переводимое
+  // и ещё не переведённое (#1085). Селектор отдаёт признак, а не словари
+  // переводов, чтобы меню не перерисовывалось на каждый пришедший перевод.
+  const canTranslateSelection = useChatUiStore(
+    (state) =>
+      selectionTranslationTargets(
+        state.selectedMessages,
+        currentUser?.id,
+        state.translations,
+        state.translatingIds
+      ).length > 0
   );
 
   // Список пересобирается только когда меняется то, от чего он зависит:

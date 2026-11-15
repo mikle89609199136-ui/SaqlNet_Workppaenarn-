@@ -105,6 +105,7 @@ export const MessagesList = memo(
     const appearance = normalizePreferences(preferences?.settings);
     const user = useProfileStore((state) => state.user);
     const translations = useChatUiStore((state) => state.translations);
+    const translatingIds = useChatUiStore((state) => state.translatingIds);
 
     // Чат ленты — по переданному пропу или сообщениям
     const activeChatId = chatId || messages.find((message) => message.chatId)?.chatId;
@@ -273,6 +274,7 @@ export const MessagesList = memo(
                         searchQuery={searchQuery}
                         tabIndex={item.id === tabStopId ? 0 : -1}
                         translations={translations}
+                        isTranslating={Boolean(translatingIds[item.message.id])}
                       />
                     )}
                   </div>
