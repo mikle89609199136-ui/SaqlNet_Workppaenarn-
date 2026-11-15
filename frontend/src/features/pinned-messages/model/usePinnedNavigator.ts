@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 
 const MAX_VISIBLE_SEGMENTS = 4;
 
+/**
+ * Сколько миллисекунд после клика по плашке скролл-трекер не перезаписывает
+ * активное закрепление: столько длится плавная прокрутка к сообщению (#1057).
+ */
+export const PINNED_NAV_LOCK_MS = 700;
+
 export function usePinnedNavigator(messages: TPinnedList) {
   const trackRef = useRef<HTMLDivElement>(null);
   const setJumpRequest = useChatUiStore((state) => state.setJumpRequest);
@@ -67,8 +73,7 @@ export function usePinnedNavigator(messages: TPinnedList) {
       });
     }
 
-    // Временная блокировка скролл-трекера на время плавной анимации прокрутки к сообщению (#1057)
-    setPinnedNavLockUntil(Date.now() + 700);
+    setPinnedNavLockUntil(Date.now() + PINNED_NAV_LOCK_MS);
     setJumpRequest({ chatId, messageId: targetId });
     setActivePinnedId(targetId);
     setCurrentPinnedMessageIndex(nextIndex);

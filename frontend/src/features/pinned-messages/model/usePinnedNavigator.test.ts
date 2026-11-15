@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { makeMessage, makePin } from '@/test/fixtures';
 import { useChatUiStore } from '@/entities/chat';
-import { usePinnedNavigator } from './usePinnedNavigator';
+import { PINNED_NAV_LOCK_MS, usePinnedNavigator } from './usePinnedNavigator';
 
 describe('usePinnedNavigator', () => {
   beforeEach(() => {
@@ -131,15 +131,16 @@ describe('usePinnedNavigator', () => {
 
     const { result } = renderHook(() => usePinnedNavigator([pin1, pin2]));
 
-    const now = Date.now();
+    const before = Date.now();
     act(() => {
       result.current.handleClick();
     });
+    const after = Date.now();
 
-    // Установлена блокировка скролл-трекера примерно на 700мс
+    // Скролл-трекер заблокирован ровно на PINNED_NAV_LOCK_MS от момента клика
     const lockUntil = useChatUiStore.getState().pinnedNavLockUntil;
-    expect(lockUntil).toBeGreaterThanOrEqual(now + 600);
-    expect(lockUntil).toBeLessThanOrEqual(now + 1000);
+    expect(lockUntil).toBeGreaterThanOrEqual(before + PINNED_NAV_LOCK_MS);
+    expect(lockUntil).toBeLessThanOrEqual(after + PINNED_NAV_LOCK_MS);
 
     const jumpRequest = useChatUiStore.getState().jumpRequest;
     const activePinnedId = useChatUiStore.getState().activePinnedId;
