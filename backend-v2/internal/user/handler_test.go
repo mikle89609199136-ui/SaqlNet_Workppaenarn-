@@ -2,6 +2,7 @@ package user
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"craneapp/backend-v2/internal/platform/authctx"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/skip2/go-qrcode"
 )
 
 func TestMeRejectsUnsupportedMethodWithoutServiceCall(t *testing.T) {
@@ -873,5 +875,270 @@ func TestSettingsUnknownFieldReturnsValidationFailedNotInvalidJSON(t *testing.T)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// qrLookupExactSQL pins the exact-match lookup: a fuzzy (ILIKE) query must not
+// satisfy it. qrProfileByIDSQL mirrors the columns of service.go:967-974.
+const qrLookupExactSQL = `(?s)^\s*SELECT id::text\s+FROM auth\.users\s+WHERE lower\(username\) = \$1 AND disabled_at IS NULL\s*$`
+const qrProfileByIDSQL = `(?s)^\s*SELECT au\.id::text, au\.username, COALESCE\(up\.first_name, au\.first_name\), COALESCE\(up\.last_name, au\.last_name\), COALESCE\(up\.bio, ''\), COALESCE\(up\.avatar_url, ''\), COALESCE\(up\.badges, '\{\}'\), COALESCE\(up\.is_premium, FALSE\)\s+FROM auth\.users au\s+LEFT JOIN users\.profiles up ON up\.user_id = au\.id\s+WHERE au\.id = \$1 AND au\.disabled_at IS NULL\s*$`
+
+// TestQRCode_ExactMatchMissReturnsNotFound is the regression test for #431:
+// /api/v2/users/qr-code must resolve the username exactly, not fuzzily, so a
+// lookup miss yields 404 user_not_found instead of 200 + a QR for a neighbour
+// account such as usr_audit_260831a.
+func TestQRCode_ExactMatchMissReturnsNotFound(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	// Only the exact lookup is expected: a fuzzy query would not match this
+	// pattern and the follow-up profileByID call has no expectation at all.
+	mock.ExpectQuery(qrLookupExactSQL).
+		WithArgs("usr_audit_260831").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	handler := NewHandler(NewService(db), nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v2/users/qr-code?username=usr_audit_260831", nil)
+	response := httptest.NewRecorder()
+
+	handler.QRCode(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", response.Code, response.Body.String())
+	}
+	rawBody := response.Body.String()
+	code, _ := decodeErrorBody(t, response)
+	if code != "user_not_found" {
+		t.Fatalf("expected user_not_found, got %q", code)
+	}
+	if strings.Contains(rawBody, "qrCode") || strings.Contains(rawBody, "data:image/png") {
+		t.Fatalf("response must not contain a QR payload: %s", rawBody)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestQRCode_ExactMatchReturnsOK covers the positive half of #431: an exact username hit returns a PNG QR data URL.
+func TestQRCode_ExactMatchReturnsOK(t *testing.T) {
+	const userID = "11111111-1111-4111-8111-111111111111"
+	const dataURLPrefix = "data:image/png;base64,"
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	mock.ExpectQuery(qrLookupExactSQL).WithArgs("usr_audit_260831").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(userID))
+	mock.ExpectQuery(qrProfileByIDSQL).WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "bio", "avatar_url", "badges", "is_premium"}).
+			AddRow(userID, "usr_audit_260831", "Audit", "User", "", "", "{}", false))
+
+	handler := NewHandler(NewService(db), nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v2/users/qr-code?username=usr_audit_260831", nil)
+	response := httptest.NewRecorder()
+
+	handler.QRCode(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var body map[string]string
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	dataURL := body["qrCode"]
+	if !strings.HasPrefix(dataURL, dataURLPrefix) {
+		t.Fatalf("expected qrCode to start with %q, got %.40q", dataURLPrefix, dataURL)
+	}
+	png, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(dataURL, dataURLPrefix))
+	if err != nil {
+		t.Fatalf("decode qr base64: %v", err)
+	}
+	if !bytes.HasPrefix(png, []byte("\x89PNG\r\n\x1a\n")) {
+		t.Fatalf("expected PNG payload, got %.8q", png)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestQRCode_UsesCanonicalUsername covers AC-2: the QR encodes the stored username; scheme is "http" (no X-Forwarded-Proto) and host is r.Host.
+func TestQRCode_UsesCanonicalUsername(t *testing.T) {
+	const userID, host = "11111111-1111-4111-8111-111111111111", "crane.example"
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	mock.ExpectQuery(qrLookupExactSQL).WithArgs("usr_audit_260831a").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(userID))
+	mock.ExpectQuery(qrProfileByIDSQL).WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "bio", "avatar_url", "badges", "is_premium"}).
+			AddRow(userID, "usr_audit_260831a", "Audit", "User", "", "", "{}", false))
+
+	handler := NewHandler(NewService(db), nil)
+	request := httptest.NewRequest(http.MethodGet, "http://"+host+"/api/v2/users/qr-code?username=USR_AUDIT_260831A", nil)
+	response := httptest.NewRecorder()
+
+	handler.QRCode(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var body map[string]string
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	wantURL := "http://" + host + "/user/@usr_audit_260831a"
+	wantPNG, err := qrcode.Encode(wantURL, qrcode.Medium, 256)
+	if err != nil {
+		t.Fatalf("encode reference qr: %v", err)
+	}
+	gotPNG, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(body["qrCode"], "data:image/png;base64,"))
+	if err != nil {
+		t.Fatalf("decode qr base64: %v", err)
+	}
+	if !bytes.Equal(gotPNG, wantPNG) {
+		t.Fatalf("qr payload does not encode the canonical username (%q)", wantURL)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestQRCode_WildcardsAreLiteral covers AC-4: LIKE metacharacters are data, not query syntax.
+func TestQRCode_WildcardsAreLiteral(t *testing.T) {
+	for _, username := range []string{"usr_audit_260831*", "usr_audit_260831%"} {
+		t.Run(username, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+
+			// The wildcard must reach the lookup verbatim: it is an equality
+			// lookup, so no %…% wrapper and no LIKE escape is applied.
+			mock.ExpectQuery(qrLookupExactSQL).
+				WithArgs(username).
+				WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+			query := url.Values{"username": {username}}.Encode()
+			request := httptest.NewRequest(http.MethodGet, "/api/v2/users/qr-code?"+query, nil)
+			response := httptest.NewRecorder()
+
+			NewHandler(NewService(db), nil).QRCode(response, request)
+
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("expected 404, got %d: %s", response.Code, response.Body.String())
+			}
+			rawBody := response.Body.String()
+			code, _ := decodeErrorBody(t, response)
+			if code != "user_not_found" {
+				t.Fatalf("expected user_not_found, got %q", code)
+			}
+			if strings.Contains(rawBody, "qrCode") {
+				t.Fatalf("response must not contain a QR payload: %s", rawBody)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// TestQRCode_BlankUsernameReturnsValidationFailed covers AC-5: blank usernames are rejected before any SQL.
+func TestQRCode_BlankUsernameReturnsValidationFailed(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		msg  string
+	}{
+		{"empty value", "/api/v2/users/qr-code?username=", "username is required"},
+		{"missing parameter", "/api/v2/users/qr-code", "username is required"},
+		{"spaces only", "/api/v2/users/qr-code?username=%20%20%20", "username is invalid"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+
+			request := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			response := httptest.NewRecorder()
+
+			NewHandler(NewService(db), nil).QRCode(response, request)
+
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
+			}
+			code, msg := decodeErrorBody(t, response)
+			if code != "validation_failed" {
+				t.Fatalf("expected validation_failed, got %q", code)
+			}
+			if msg != tt.msg {
+				t.Fatalf("expected message %q, got %q", tt.msg, msg)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unexpected database call: %v", err)
+			}
+		})
+	}
+}
+
+// TestQRCode_UsernameLengthBoundaryAndDisabled covers the rest of AC-5: the
+// 64/65 length boundary and the disabled_at predicate. sqlmock pins only the
+// query text; real Postgres behaviour for disabled_at IS NOT NULL stays
+// unverified under the accepted sqlmock-only decision.
+func TestQRCode_UsernameLengthBoundaryAndDisabled(t *testing.T) {
+	const valid = "usr_audit_260831a"
+	tests := []struct {
+		name     string
+		username string
+		lookup   bool // true: the exact lookup is expected to run
+	}{
+		{"64 chars is looked up", strings.Repeat("a", 64), true},
+		{"65 chars is rejected before SQL", strings.Repeat("a", 65), false},
+		{"lookup returns no row (miss or disabled)", valid, true}, // disabled is proven by qrLookupExactSQL's disabled_at IS NULL, not by Postgres here
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+			if tt.lookup {
+				mock.ExpectQuery(qrLookupExactSQL).WithArgs(tt.username).
+					WillReturnRows(sqlmock.NewRows([]string{"id"}))
+			}
+
+			request := httptest.NewRequest(http.MethodGet, "/api/v2/users/qr-code?"+url.Values{"username": {tt.username}}.Encode(), nil)
+			response := httptest.NewRecorder()
+
+			NewHandler(NewService(db), nil).QRCode(response, request)
+
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("expected 404, got %d: %s", response.Code, response.Body.String())
+			}
+			code, _ := decodeErrorBody(t, response)
+			if code != "user_not_found" {
+				t.Fatalf("expected user_not_found, got %q", code)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unexpected database call: %v", err)
+			}
+		})
 	}
 }

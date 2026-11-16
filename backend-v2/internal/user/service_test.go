@@ -395,7 +395,7 @@ func TestProfileByUsername_AllowsLegacyDiscriminator(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id::text\s+FROM auth\.users\s+WHERE lower\(username\) = \$1`).
+	mock.ExpectQuery(`(?s)^\s*SELECT id::text\s+FROM auth\.users\s+WHERE lower\(username\) = \$1 AND disabled_at IS NULL\s*$`).
 		WithArgs("ivan.123").
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("user-id"))
 	mock.ExpectQuery(`SELECT au\.id::text, au\.username`).
@@ -412,6 +412,99 @@ func TestProfileByUsername_AllowsLegacyDiscriminator(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+
+	// #431: the input is lowercased and trimmed before the lookup, but the
+	// returned username comes from the database row, not from the input.
+	t.Run("canonicalizes case and surrounding spaces (#431)", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+
+		mock.ExpectQuery(`(?s)^\s*SELECT id::text\s+FROM auth\.users\s+WHERE lower\(username\) = \$1 AND disabled_at IS NULL\s*$`).
+			WithArgs("usr_audit_260831a").
+			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("user-id"))
+		mock.ExpectQuery(`SELECT au\.id::text, au\.username`).
+			WithArgs("user-id").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "bio", "avatar_url", "badges", "is_premium"}).
+				AddRow("user-id", "usr_audit_260831a", "Audit", "User", "", "", "{}", false))
+
+		canonical, err := user.NewService(db).ProfileByUsername(context.Background(), "  USR_AUDIT_260831A  ")
+		if err != nil {
+			t.Fatalf("lookup canonical username: %v", err)
+		}
+		if canonical.Username != "usr_audit_260831a" {
+			t.Fatalf("expected canonical username usr_audit_260831a, got %q", canonical.Username)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// TestProfileByUsername_ExactMatchOnly is the #431 service-level regression: a
+// prefix or substring of an existing username must not resolve to a profile.
+func TestProfileByUsername_ExactMatchOnly(t *testing.T) {
+	const exactLookup = `(?s)^\s*SELECT id::text\s+FROM auth\.users\s+WHERE lower\(username\) = \$1 AND disabled_at IS NULL\s*$`
+
+	for _, username := range []string{"usr_audit_260831", "audit_2608"} {
+		t.Run(username, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+
+			mock.ExpectQuery(exactLookup).
+				WithArgs(username).
+				WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+			profile, err := user.NewService(db).ProfileByUsername(context.Background(), username)
+			if !errors.Is(err, user.ErrNotFound) {
+				t.Fatalf("expected ErrNotFound, got %v", err)
+			}
+			if profile.ID != "" || profile.Username != "" {
+				t.Fatalf("expected zero profile, got %+v", profile)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unexpected database call: %v", err)
+			}
+		})
+	}
+}
+
+// TestProfileByUsername_RejectsBlankInput covers AC-8: blank input fails before any SQL.
+func TestProfileByUsername_RejectsBlankInput(t *testing.T) {
+	tests := []struct {
+		name     string
+		username string
+	}{
+		{"empty", ""},
+		{"spaces", "   "},
+		{"other whitespace", "\t\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+
+			profile, err := user.NewService(db).ProfileByUsername(context.Background(), tt.username)
+			if !errors.Is(err, user.ErrInvalidInput) {
+				t.Fatalf("expected ErrInvalidInput, got %v", err)
+			}
+			if profile.ID != "" || profile.Username != "" {
+				t.Fatalf("expected zero profile, got %+v", profile)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unexpected database call: %v", err)
+			}
+		})
 	}
 }
 
@@ -840,6 +933,95 @@ func TestSearch(t *testing.T) {
 				t.Errorf("unmet expectations: %v", err)
 			}
 		})
+	}
+}
+
+// TestSearch_LikePatternEscapesUnderscores covers AC-10: '_' must reach SQL as
+// a literal, so every underscore in the pattern is escaped.
+func TestSearch_LikePatternEscapesUnderscores(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	pattern := "%" + user.EscapeLike("usr_audit_260831") + "%"
+	for i := 0; i < len(pattern); i++ {
+		if pattern[i] == '_' && (i == 0 || pattern[i-1] != '\\') {
+			t.Fatalf("underscore at index %d is not escaped in %q", i, pattern)
+		}
+	}
+	if pattern != "%usr\\_audit\\_260831%" {
+		t.Fatalf("expected argument %q, got %q", "%usr\\_audit\\_260831%", pattern)
+	}
+	if pattern == "%usr_audit_260831%" {
+		t.Fatalf("pattern %q must not be the unescaped form", pattern)
+	}
+
+	rows := sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "avatar_url"}).
+		AddRow("user-a", "usr_audit_260831a", "", "", "").
+		AddRow("user-b", "usr_audit_260831b", "", "", "").
+		AddRow("user-c", "usr_audit_260831c", "", "", "")
+	mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
+		WithArgs(pattern, "viewer-1").
+		WillReturnRows(rows)
+
+	got, err := user.NewService(db).Search(context.Background(), "viewer-1", "usr_audit_260831")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	wantUsernames := []string{"usr_audit_260831a", "usr_audit_260831b", "usr_audit_260831c"}
+	if len(got) != len(wantUsernames) {
+		t.Fatalf("expected %d results, got %d: %+v", len(wantUsernames), len(got), got)
+	}
+	for i, username := range wantUsernames {
+		if got[i].Username != username {
+			t.Fatalf("result %d: expected username %q, got %+v", i, username, got[i])
+		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSearch_LikePatternEscapesPercent covers AC-11: '%' from the input must be
+// escaped, so only the two wrapper wildcards stay active.
+func TestSearch_LikePatternEscapesPercent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	pattern := "%" + user.EscapeLike("usr_audit_260831%") + "%"
+	if pattern != "%usr\\_audit\\_260831\\%%" {
+		t.Fatalf("expected argument %q, got %q", "%usr\\_audit\\_260831\\%%", pattern)
+	}
+	if pattern == "%%" || pattern == "%usr_audit_260831%%" {
+		t.Fatalf("pattern %q must not be an unescaped match-all form", pattern)
+	}
+	body := pattern[1 : len(pattern)-1]
+	for i := 0; i < len(body); i++ {
+		if body[i] == '%' && (i == 0 || body[i-1] != '\\') {
+			t.Fatalf("percent at index %d is not escaped in %q", i, pattern)
+		}
+	}
+
+	rows := sqlmock.NewRows([]string{"id", "username", "first_name", "last_name", "avatar_url"}).
+		AddRow("user-a", "usr_audit_260831a", "", "", "")
+	mock.ExpectQuery(regexp.QuoteMeta(searchSQL)).
+		WithArgs(pattern, "viewer-1").
+		WillReturnRows(rows)
+
+	got, err := user.NewService(db).Search(context.Background(), "viewer-1", "usr_audit_260831%")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(got) != 1 || got[0].Username != "usr_audit_260831a" {
+		t.Fatalf("expected exactly one result, got %+v", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
