@@ -119,7 +119,7 @@ func TestNotificationAliasesAcrossHTTPReadersAndWriters(t *testing.T) {
 		require.Equal(t, c, sound["callsSound"])
 		require.Equal(t, float64(0), sound["mediaVolume"])
 		require.Equal(t, "old", sound["ringtone"])
-		exported := api.request(t, "GET", "export", "", 200)["settings"].(map[string]any)
+		exported := api.request(t, "GET", "export", "", 200)["settings"].(map[string]any)["settings"].(map[string]any)
 		require.Equal(t, s, exported["sounds"])
 		require.NotContains(t, canonical, "notification_model_version")
 		require.Equal(t, before, api.snapshot(t), "GET не повторяет миграцию/не обновляет marker")

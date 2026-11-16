@@ -2028,14 +2028,105 @@ UserExportChat:
     createdAt:
       $ref: '#/DatabaseTimestamp'
 
+UserExportMessage:
+  type: object
+  required:
+    - id
+    - chatId
+    - content
+    - type
+    - createdAt
+    - updatedAt
+  additionalProperties: false
+  properties:
+    id:
+      type: string
+      format: uuid
+    chatId:
+      type: string
+      format: uuid
+    content:
+      type: string
+      description: Stored message text as-is.
+    type:
+      type: string
+      description: Message type; free-form string because the set of types grows over time.
+    createdAt:
+      $ref: '#/DatabaseTimestamp'
+    updatedAt:
+      $ref: '#/DatabaseTimestamp'
+
+UserExportMedia:
+  type: object
+  required:
+    - id
+    - filename
+    - contentType
+    - sizeBytes
+    - createdAt
+  additionalProperties: false
+  properties:
+    id:
+      type: string
+      format: uuid
+    filename:
+      type: string
+      description: Original file name; may be an empty string when unknown.
+    contentType:
+      type: string
+    sizeBytes:
+      type: integer
+      format: int64
+    createdAt:
+      $ref: '#/DatabaseTimestamp'
+
+UserExportSettings:
+  type: object
+  required:
+    - settings
+    - privacySettings
+    - notificationSettings
+    - soundSettings
+    - storageSettings
+    - advancedSettings
+    - folders
+    - passcodeEnabled
+    - passcodeTimeout
+  additionalProperties: false
+  description: Complete snapshot of account settings at export time; every section is always present.
+  properties:
+    settings:
+      $ref: '#/LegacyGeneralSettings'
+    privacySettings:
+      $ref: '#/PrivacySettings'
+    notificationSettings:
+      $ref: '#/LegacyNotificationSettings'
+    soundSettings:
+      $ref: '#/LegacySoundSettings'
+    storageSettings:
+      $ref: '#/LegacyStorageSettings'
+    advancedSettings:
+      $ref: '#/LegacyAdvancedSettings'
+    folders:
+      $ref: '#/LegacyFolders'
+    passcodeEnabled:
+      type: boolean
+    passcodeTimeout:
+      type: integer
+
 UserExport:
   type: object
   required:
     - user
     - chats
+    - messages
+    - media
+    - devices
+    - blocked
     - settings
     - privacy
     - exportedAt
+    - schemaVersion
   properties:
     user:
       $ref: '#/UserProfile'
@@ -2043,18 +2134,41 @@ UserExport:
       type: array
       items: {$ref: '#/UserExportChat'}
       description: Always an array; no memberships give [], never null.
+    messages:
+      type: array
+      items: {$ref: '#/UserExportMessage'}
+      description: Always an array; no sent messages give [], never null; ordered by createdAt ascending.
+    media:
+      type: array
+      items: {$ref: '#/UserExportMedia'}
+      description: Always an array; no uploads give [], never null; ordered by createdAt ascending; uploads are the caller's own files.
+    devices:
+      type: array
+      items: {$ref: '#/DeviceSession'}
+      description: Always an array; isCurrent marks the session that issued this request.
+    blocked:
+      type: array
+      items: {$ref: '#/UserBlockedItem'}
+      description: Always an array; empty block list is [], never null.
     settings:
-      $ref: '#/LegacyGeneralSettings'
+      $ref: '#/UserExportSettings'
     privacy:
-      $ref: '#/PrivacySettings'
+      deprecated: true
+      allOf:
+        - $ref: '#/PrivacySettings'
+      description: Retained for backward compatibility; the full privacy snapshot now lives in settings.privacySettings.
     exportedAt:
       type: string
       format: date-time
       description: UTC RFC 3339 generation time.
+    schemaVersion:
+      type: integer
+      example: 2
+      description: Export contract version; currently 2.
   description: >-
-    Current partial export: profile, chat membership metadata, general settings and privacy. Excludes message
-    bodies, attachments, private keys and other account resources. A full archive is separate #447. Empty chats
-    are [], never null.
+    Full account data export: profile, chat membership, sent messages, uploaded files, devices, blocks and a
+    complete settings snapshot. Every collection is always an array - empty ones are [], never null. The
+    response is not paginated and its size is not capped; that is deliberate for an account export.
 
 PasscodeState:
   type: object

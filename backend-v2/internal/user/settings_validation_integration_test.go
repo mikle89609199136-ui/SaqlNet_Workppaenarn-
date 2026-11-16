@@ -103,9 +103,10 @@ func TestSettingsValidationHTTPRoundTripOnRealSchema(t *testing.T) {
 	canonical := api.request(t, http.MethodGet, "settings", "", http.StatusOK)
 	require.NotContains(t, canonical["settings"], "accentColor")
 	require.NotContains(t, canonical["settings"], "fontSize")
-	exported := api.request(t, http.MethodGet, "export", "", http.StatusOK)
-	require.Equal(t, "#123abc", exported["settings"].(map[string]any)["accentColor"])
-	require.Equal(t, "large", exported["settings"].(map[string]any)["fontSize"])
+	exported := api.request(t, http.MethodGet, "export", "", http.StatusOK)["settings"].(map[string]any)
+	exportedGeneral := exported["settings"].(map[string]any)
+	require.Equal(t, "#123abc", exportedGeneral["accentColor"])
+	require.Equal(t, "large", exportedGeneral["fontSize"])
 	// Partial update сохраняет соседние flags и поля — в том числе false/0.
 	api.request(t, http.MethodPut, "settings", `{"theme":"dark"}`, http.StatusOK)
 	read := api.request(t, http.MethodGet, "settings", "", http.StatusOK)["settings"].(map[string]any)
