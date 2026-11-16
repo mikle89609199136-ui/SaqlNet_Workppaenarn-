@@ -1250,8 +1250,9 @@ func (s *Service) DisablePasscode(ctx context.Context, userID, passcode string) 
 }
 
 func (s *Service) UpdatePasscodeTimeout(ctx context.Context, userID string, timeout int) error {
-	if timeout <= 0 {
-		timeout = 60
+	if timeout < 0 {
+		// Handler валидирует timeout раньше; через API отрицательное значение недостижимо.
+		return ErrInvalidInput
 	}
 	if err := s.ensureSettings(ctx, userID); err != nil {
 		return err

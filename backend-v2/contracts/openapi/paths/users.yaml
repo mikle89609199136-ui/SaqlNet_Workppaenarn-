@@ -1260,9 +1260,8 @@
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
       '503': {$ref: ../components/responses.yaml#/UserUnavailable}
     description: >-
-      Chosen contract: required integer seconds >=0; 0 disables automatic re-lock, positive values are delays.
-      Invalid input must fail without a write. Current missing/zero/negative values are replaced with 60
-      (#442).
+      Required integer seconds >=0; 0 disables automatic re-lock, positive values are delays. Invalid input
+      (missing, null, negative, non-integer) fails with 400 without a write.
     x-error-codes:
       '400': [invalid_json, validation_failed]
       '401': [missing_token, invalid_token, token_revoked]
@@ -1272,8 +1271,6 @@
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
-    x-contract-gaps:
-      - '#442'
 
 /users/devices:
   get:

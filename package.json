@@ -1,6 +1,6 @@
 {
   "name": "craneapp",
-  "version": "0.16.0",
+  "version": "0.17.2",
   "description": "CraneApp Messenger",
   "private": true,
   "engines": {
@@ -30,8 +30,8 @@
     "morgan": "^1.10.0",
     "pg": "^8.11.3",
     "qrcode": "^1.5.4",
-    "sharp": "^0.33.2",
-    "uuid": "^9.0.1",
+    "sharp": "^0.35.5",
+    "uuid": "^14.0.3",
     "ws": "^8.14.2"
   },
   "devDependencies": {

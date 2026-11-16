@@ -1148,3 +1148,49 @@ func TestUpdateProfile_AllNilArgs_DoesNotFallOver(t *testing.T) {
 		t.Fatalf("UpdateProfile with nil args: %v", err)
 	}
 }
+
+// TestUpdatePasscodeTimeout_PersistsZero is a regression guard: 0 is a valid
+// timeout value and must reach the UPDATE unchanged (no `<= 0 -> 60` coercion).
+func TestUpdatePasscodeTimeout_PersistsZero(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet sqlmock expectations: %v", err)
+		}
+		_ = db.Close()
+	})
+
+	mock.ExpectExec(`INSERT INTO users\.settings`).
+		WithArgs("user-id").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE users\.settings SET passcode_timeout`).
+		WithArgs("user-id", 0).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := user.NewService(db).UpdatePasscodeTimeout(context.Background(), "user-id", 0); err != nil {
+		t.Fatalf("UpdatePasscodeTimeout(0): %v", err)
+	}
+}
+
+// TestUpdatePasscodeTimeout_RejectsNegativeBeforeEnsure proves the defensive
+// check wins over ensureSettings: -1 is rejected without a single DB call.
+func TestUpdatePasscodeTimeout_RejectsNegativeBeforeEnsure(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet sqlmock expectations: %v", err)
+		}
+		_ = db.Close()
+	})
+
+	err = user.NewService(db).UpdatePasscodeTimeout(context.Background(), "user-id", -1)
+	if !errors.Is(err, user.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
