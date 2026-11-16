@@ -15,12 +15,16 @@ var compositeUserRoutes = []struct{ path, method, body string }{
 	{"storage", http.MethodGet, ""},
 	{"storage/settings", http.MethodPut, `{"autoDownloadWifi":false}`},
 	{"storage/cache", http.MethodDelete, ""},
-	{"storage/all", http.MethodDelete, ""},
 	{"passcode", http.MethodGet, ""},
 	{"passcode/set", http.MethodPost, `{"passcode":"1234"}`},
 	{"passcode/verify", http.MethodPost, `{"passcode":"1234"}`},
 	{"passcode/disable", http.MethodPost, `{"passcode":"1234"}`},
 	{"passcode/timeout", http.MethodPut, `{"timeout":30}`},
+	// Тело обязательно: без {"confirm":"DELETE_ALL_DATA"} DELETE /users/storage/all
+	// отвечает 400 confirmation_required, а integration-тест ждёт 200.
+	// Строка идёт последней: она удаляет фикстурного пользователя settingsOwner,
+	// и следующие строки таблицы упали бы на отсутствии пользователя.
+	{"storage/all", http.MethodDelete, `{"confirm":"DELETE_ALL_DATA"}`},
 }
 
 func compositeUserMux(h *Handler) http.Handler {

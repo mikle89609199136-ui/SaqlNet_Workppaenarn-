@@ -947,12 +947,17 @@
   delete:
     tags:
       - Users
-    summary: Delete all user data
+    summary: Permanently delete the current account and all its data
     operationId: deleteAllUserData
     security:
       - {sessionCookie: []}
+    requestBody:
+      required: true
+      description: 'At most 128 KiB JSON body; a larger body is rejected with 400 confirmation_required. Exactly one JSON value with no trailing data. A missing confirm field, a non-string value, an empty or malformed body, or anything other than DELETE_ALL_DATA returns 400 confirmation_required.'
+      content: {application/json: {schema: {$ref: ../components/schemas.yaml#/UserDeleteAllBody}}}
     responses:
       '200': {description: Data deleted, content: {application/json: {schema: {$ref: ../components/schemas.yaml#/Success}}}}
+      '400': {$ref: ../components/responses.yaml#/UserConfirmationRequired}
       '401': {$ref: ../components/responses.yaml#/UserUnauthorized}
       '403': {$ref: ../components/responses.yaml#/UserForbidden}
       '405':
@@ -966,11 +971,19 @@
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
       '503': {$ref: ../components/responses.yaml#/UserUnavailable}
     description: >-
-      Current transaction deletes authored messages, chat memberships, settings, and both directions of
-      blocklist rows. It does not delete the auth account/profile, sessions, uploads/object storage, private
-      keys or all other resources. This is not a complete account erasure endpoint; #448 tracks the declared
-      wider scope. Any SQL failure rolls back this transaction.
+      Deletes the whole account in one transaction: the auth.users row and every row cascading from it.
+      Sessions are deleted and active sockets are closed by that revocation (pg_notify runs in the same
+      transaction, so delivery happens only after commit). Chats owned by the caller (owner_id = $1) are
+      deleted with their content, so other participants lose those chats. The caller's messages in other
+      chats are deleted and reply_to references to them are cleared. Physical objects are removed
+      asynchronously by a worker through media.object_cleanup_jobs; shared media that other users still
+      reference is kept. The operation is idempotent at the service level: when the account is already gone
+      nothing is deleted and the handler finishes successfully. The HTTP request itself is not repeatable
+      with the same bearer: the deleted account no longer has a row in auth.sessions, so the middleware
+      rejects a repeat before the handler with 401 token_revoked, and a 200 answer to a repeated call is
+      unreachable over HTTP. Any SQL failure rolls back the whole transaction.
     x-error-codes:
+      '400': [confirmation_required]
       '401': [missing_token, invalid_token, token_revoked]
       '403': [cross_site_request]
       '405': [method_not_allowed]

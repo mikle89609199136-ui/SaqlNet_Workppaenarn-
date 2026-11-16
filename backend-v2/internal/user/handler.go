@@ -443,7 +443,20 @@ func (h *Handler) Storage(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
 	case path == "/api/v2/users/storage/all" && r.Method == http.MethodDelete:
+		var body struct {
+			Confirm string `json:"confirm"`
+		}
+		if !decodeSingleJSON(w, r, &body, 128<<10) || body.Confirm != "DELETE_ALL_DATA" {
+			httpx.ErrorJSON(w, r, http.StatusBadRequest, "confirmation_required", "confirm must equal DELETE_ALL_DATA")
+			return
+		}
 		if err := h.service.DeleteAllData(r.Context(), current.ID); err != nil {
+			slog.ErrorContext(r.Context(), "delete all data failed",
+				"layer", "handler",
+				"method", "DELETE /api/v2/users/storage/all",
+				"user_id", current.ID,
+				"err", err,
+			)
 			httpx.ErrorJSON(w, r, http.StatusInternalServerError, "internal_error", "data delete failed")
 			return
 		}
