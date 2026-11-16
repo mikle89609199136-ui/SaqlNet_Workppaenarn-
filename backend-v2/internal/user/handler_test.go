@@ -875,3 +875,159 @@ func TestSettingsUnknownFieldReturnsValidationFailedNotInvalidJSON(t *testing.T)
 		t.Fatal(err)
 	}
 }
+
+// TestFolders_MissingFoldersRejected verifies PUT /users/folders with an empty
+// JSON object is rejected with 400 validation_failed before any service call.
+func TestFolders_MissingFoldersRejected(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	request := httptest.NewRequest(http.MethodPut, "/api/v2/users/folders", strings.NewReader(`{}`))
+	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
+	response := httptest.NewRecorder()
+
+	NewHandler(NewService(db), nil).Folders(response, request)
+
+	code, message := decodeErrorBody(t, response)
+	if response.Code != http.StatusBadRequest || code != "validation_failed" || message == "" {
+		t.Fatalf("expected 400 validation_failed, got status=%d code=%q message=%q", response.Code, code, message)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestFolders_NullFoldersRejected verifies that an explicit "folders":null is
+// rejected exactly like a missing key: 400 validation_failed, no service call.
+func TestFolders_NullFoldersRejected(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	request := httptest.NewRequest(http.MethodPut, "/api/v2/users/folders", strings.NewReader(`{"folders":null}`))
+	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
+	response := httptest.NewRecorder()
+
+	NewHandler(NewService(db), nil).Folders(response, request)
+
+	code, message := decodeErrorBody(t, response)
+	if response.Code != http.StatusBadRequest || code != "validation_failed" || message == "" {
+		t.Fatalf("expected 400 validation_failed, got status=%d code=%q message=%q", response.Code, code, message)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// putFoldersExpectingJSON drives PUT /users/folders and asserts the two SQL
+// calls: first ensureSettings (INSERT), then the UPDATE whose folders argument
+// must serialize to expectedFolders (raw JSON compared as driver bytes).
+func putFoldersExpectingJSON(t *testing.T, requestBody, expectedFolders string) {
+	t.Helper()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectExec(`INSERT INTO users\.settings`).
+		WithArgs("user-id").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`UPDATE users\.settings`).
+		WithArgs("user-id", []byte(expectedFolders)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	request := httptest.NewRequest(http.MethodPut, "/api/v2/users/folders", strings.NewReader(requestBody))
+	request = request.WithContext(authctx.WithUser(request.Context(), authctx.User{ID: "user-id"}))
+	response := httptest.NewRecorder()
+
+	NewHandler(NewService(db), nil).Folders(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v (body=%q)", err, response.Body.String())
+	}
+	if body["success"] != true {
+		t.Fatalf("expected success=true, got %v", body["success"])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestFolders_EmptyArrayClears covers AC-3: an explicit "folders":[] clears the
+// stored list (200 {"success":true}; INSERT then UPDATE with the JSON value []).
+func TestFolders_EmptyArrayClears(t *testing.T) {
+	putFoldersExpectingJSON(t, `{"folders":[]}`, `[]`)
+}
+
+// TestFolders_OpaqueElementsReplaced covers AC-4: opaque items are stored
+// verbatim, without per-element validation, keeping their order and types.
+func TestFolders_OpaqueElementsReplaced(t *testing.T) {
+	putFoldersExpectingJSON(t, `{"folders":[{"id":"one"},42,"x",true]}`, `[{"id":"one"},42,"x",true]`)
+}
+
+// TestFolders_MissingFieldPreservesStoredList covers AC-5 (#441): PUT {"folders":[...]}
+// stores the list, a later PUT {} is rejected with 400 and performs no UPDATE, so a
+// follow-up GET still returns the stored value.
+func TestFolders_MissingFieldPreservesStoredList(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	handler := NewHandler(NewService(db), nil)
+	do := func(method, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/v2/users/folders", strings.NewReader(body))
+		req = req.WithContext(authctx.WithUser(req.Context(), authctx.User{ID: "user-id"}))
+		rec := httptest.NewRecorder()
+		handler.Folders(rec, req)
+		return rec
+	}
+
+	// Step 1: storing the list goes through (INSERT users.settings, then UPDATE folders).
+	mock.ExpectExec(`INSERT INTO users\.settings`).WithArgs("user-id").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`UPDATE users\.settings`).WithArgs("user-id", []byte(`[{"id":"one"}]`)).WillReturnResult(sqlmock.NewResult(0, 1))
+	rec := do(http.MethodPut, `{"folders":[{"id":"one"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("step 1: status=%d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Step 2: no UPDATE expectation exists, so any write would fail the call and turn
+	// the 400 into a 500 — the 400 below therefore proves nothing was written.
+	rec = do(http.MethodPut, `{}`)
+	code, message := decodeErrorBody(t, rec)
+	if rec.Code != http.StatusBadRequest || code != "validation_failed" || message == "" {
+		t.Fatalf("step 2: expected 400 validation_failed, got status=%d code=%q message=%q", rec.Code, code, message)
+	}
+
+	// Step 3: the read-back returns exactly what step 1 stored.
+	mock.ExpectExec(`INSERT INTO users\.settings`).WithArgs("user-id").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`SELECT folders FROM users\.settings`).WithArgs("user-id").
+		WillReturnRows(sqlmock.NewRows([]string{"folders"}).AddRow([]byte(`[{"id":"one"}]`)))
+	rec = do(http.MethodGet, ``)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("step 3: status=%d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Folders []map[string]any `json:"folders"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("step 3: decode response: %v (body=%q)", err, rec.Body.String())
+	}
+	if len(body.Folders) != 1 || body.Folders[0]["id"] != "one" {
+		t.Fatalf("step 3: folders=%v, want exactly [{\"id\":\"one\"}]", body.Folders)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
