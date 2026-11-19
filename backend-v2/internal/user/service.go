@@ -795,10 +795,15 @@ func (s *Service) Storage(ctx context.Context, userID string) (StorageUsage, map
 	}
 	var usage StorageUsage
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(LENGTH(content)), 0)::bigint
-		FROM messages.messages
-		WHERE sender_id = $1 AND deleted_at IS NULL
-	`, userID).Scan(&usage.Messages); err != nil {
+		SELECT
+			(SELECT COALESCE(SUM(LENGTH(content)), 0)::bigint
+			   FROM messages.messages
+			  WHERE sender_id = $1 AND deleted_at IS NULL) AS messages,
+			COALESCE(SUM(u.size_bytes) FILTER (WHERE lower(u.content_type) LIKE 'application/%'), 0)::bigint AS files,
+			COALESCE(SUM(u.size_bytes) FILTER (WHERE lower(u.content_type) NOT LIKE 'application/%'), 0)::bigint AS media
+		FROM media.uploads u
+		WHERE u.uploader_id = $1 AND u.purpose <> 'avatar'
+	`, userID).Scan(&usage.Messages, &usage.Files, &usage.Media); err != nil {
 		return StorageUsage{}, nil, err
 	}
 	settings, err := s.jsonColumn(ctx, userID, "storage_settings")
