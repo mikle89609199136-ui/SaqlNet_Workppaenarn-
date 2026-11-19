@@ -801,7 +801,7 @@ export interface paths {
         };
         /**
          * Get storage usage
-         * @description Current usage reports own nondeleted stored message content character count; media/files/cache are zero placeholders (#445), not verified physical bytes. Returns legacy storage preferences separately from canonical account settings.
+         * @description Current usage is a logical content size, not physical bytes in object storage: messages is the character count of own non-deleted content (LENGTH), media is size_bytes of own uploads with purpose <> 'avatar' and content_type other than application/*, files is size_bytes of the same uploads with content_type LIKE 'application/*'. Both patterns are matched case-insensitively and the sums are computed from media.uploads at request time. cache is always 0 (no source; #446). Returns legacy storage preferences separately from canonical account settings.
          */
         get: operations["getStorage"];
         put?: never;
@@ -3635,22 +3635,22 @@ export interface components {
         StorageUsage: {
             /**
              * Format: int64
-             * @description Currently SUM(LENGTH(content)) for own nondeleted messages: character count of stored content, not physical bytes. #445.
+             * @description SUM of LENGTH(content) over the author's own non-deleted messages (sender_id, deleted_at IS NULL). Character count, not bytes: a logical size, not the physical object size in the bucket.
              */
             messages: number;
             /**
              * Format: int64
-             * @description Currently always zero; actual storage accounting requires #445.
+             * @description SUM of size_bytes over the user's own uploads (uploader_id, purpose <> 'avatar') whose content_type is not application/* — every other type counts, including unknown ones; content_type is matched case-insensitively. Bytes; computed from media.uploads at request time.
              */
             media: number;
             /**
              * Format: int64
-             * @description Currently always zero; actual storage accounting requires #445.
+             * @description SUM of size_bytes over the user's own uploads (uploader_id, purpose <> 'avatar') with content_type LIKE 'application/*', matched case-insensitively. Bytes; computed from media.uploads at request time.
              */
             files: number;
             /**
              * Format: int64
-             * @description Currently always zero; actual storage accounting requires #445.
+             * @description Always 0: not a measured value; do not display as used space. There is no source in the database and DELETE /users/storage/cache is a no-op. Bytes; the gap is tracked in #446.
              */
             cache: number;
         };

@@ -856,9 +856,12 @@
       '502': {$ref: ../components/responses.yaml#/UserBadGateway}
       '503': {$ref: ../components/responses.yaml#/UserUnavailable}
     description: >-
-      Current usage reports own nondeleted stored message content character count; media/files/cache are zero
-      placeholders (#445), not verified physical bytes. Returns legacy storage preferences separately from
-      canonical account settings.
+      Current usage is a logical content size, not physical bytes in object storage: messages is the character
+      count of own non-deleted content (LENGTH), media is size_bytes of own uploads with purpose <> 'avatar'
+      and content_type other than application/*, files is size_bytes of the same uploads with content_type
+      LIKE 'application/*'. Both patterns are matched case-insensitively and the sums are computed from
+      media.uploads at request time. cache is always 0 (no source; #446). Returns legacy storage preferences
+      separately from canonical account settings.
     x-error-codes:
       '401': [missing_token, invalid_token, token_revoked]
       '405': [method_not_allowed]
@@ -866,6 +869,8 @@
       '500': [internal_error]
       '502': [upstream_unavailable]
       '503': [auth_check_unavailable, crypto_protocol_not_ready, crypto_unavailable]
+    x-contract-gaps:
+      - '#446'
 
 /users/storage/settings:
   put:
