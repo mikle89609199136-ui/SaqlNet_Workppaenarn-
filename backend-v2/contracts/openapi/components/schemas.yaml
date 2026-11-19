@@ -1969,22 +1969,31 @@ StorageUsage:
       type: integer
       format: int64
       minimum: 0
-      description: 'Currently SUM(LENGTH(content)) for own nondeleted messages: character count of stored content, not physical bytes. #445.'
+      description: >-
+        SUM of LENGTH(content) over the author's own non-deleted messages (sender_id, deleted_at IS NULL).
+        Character count, not bytes: a logical size, not the physical object size in the bucket.
     media:
       type: integer
       format: int64
       minimum: 0
-      description: 'Currently always zero; actual storage accounting requires #445.'
+      description: >-
+        SUM of size_bytes over the user's own uploads (uploader_id, purpose <> 'avatar') whose content_type is not
+        application/* — every other type counts, including unknown ones; content_type is matched
+        case-insensitively. Bytes; computed from media.uploads at request time.
     files:
       type: integer
       format: int64
       minimum: 0
-      description: 'Currently always zero; actual storage accounting requires #445.'
+      description: >-
+        SUM of size_bytes over the user's own uploads (uploader_id, purpose <> 'avatar') with content_type
+        LIKE 'application/*', matched case-insensitively. Bytes; computed from media.uploads at request time.
     cache:
       type: integer
       format: int64
       minimum: 0
-      description: 'Currently always zero; actual storage accounting requires #445.'
+      description: >-
+        Always 0: not a measured value; do not display as used space. There is no source in the database and
+        DELETE /users/storage/cache is a no-op. Bytes; the gap is tracked in #446.
 
 StorageResponse:
   type: object
